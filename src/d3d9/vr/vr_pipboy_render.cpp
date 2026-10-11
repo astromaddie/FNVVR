@@ -34,8 +34,6 @@ namespace dxvk {
     using SettingIntFn    = int32_t* (__fastcall*)(void* setting, void* unused);
     using BoolFn          = uint32_t (__cdecl*)();
     using PointerFn       = void* (__cdecl*)();
-    using VoidFn          = void (__cdecl*)();
-    using ImageSpaceFn    = void (__cdecl*)(void* renderer, void* source, void* destination);
 
     VrPipBoyRender* g_pipBoyRender = nullptr;
 
@@ -205,7 +203,6 @@ namespace dxvk {
   void VrPipBoyRender::drawWorld(uint8_t* main, void* target) {
     // The same steps as the game's normal world render, without the
     // first-person model, which the rendered-menu render draws after this
-    void* renderer = game<PointerFn>(VrGame::RendererSingleton)();
     uint32_t multisampling = game<BoolFn>(VrGame::IsMultisampling)() & 0xFF;
 
     auto shadowSceneNode = read<void*>(VrGame::ShadowSceneNodes);
@@ -240,12 +237,10 @@ namespace dxvk {
     if (accumulator && depthOfField && (game<ObjectFn>(VrGame::ImageSpaceDoDepth)(depthOfField, nullptr) & 0xFF))
       game<AccumulatorPassFn>(VrGame::DrawWorldDoDepth)(main, nullptr, accumulator, target);
 
-    if (!returnsTrue(VrGame::IsOutsideFrame))
-      game<VoidFn>(VrGame::EndOffscreenFrame)();
-
-    *reinterpret_cast<void**>(VrGame::ImageSpaceCamera) = game<PointerFn>(VrGame::GetWorldCamera)();
-    game<ImageSpaceFn>(VrGame::RenderImageSpaceEffects)(renderer, target, target);
-
+    // The rendered-menu render applies the image space effects once the
+    // first-person model is drawn, as the normal world render does. With the
+    // frozen background's flag clear it applies all of them, so applying
+    // them here too would tone map and tint the world twice.
     game<RestartTargetFn>(VrGame::DrawWorldRestartTarget)(main, nullptr, target, multisampling, VrGame::ClearDepth);
   }
 
