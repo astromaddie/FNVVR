@@ -262,6 +262,10 @@ namespace dxvk {
      * rotations of the bones below it. Every weapon gets this pose: some,
      * such as the Fat Man, hold the weapon with an unusual grip that a
      * mirror of the right hand would copy.
+     *
+     * The wrist comes from a second measurement with the 9mm pistol: the
+     * hand's and the forearm twist bone's local rotations in the forearm,
+     * which the Fat Man's animation bends and twists otherwise.
      */
     const VrGameTransform FreeHandPose = {
       {{ {  0.995157f, 0.0949835f, 0.0253174f },
@@ -275,7 +279,16 @@ namespace dxvk {
       VrGameRotation rotate;
     };
 
+    const VrGameRotation FreeHandWrist = {{
+      {  0.992455f,  0.114828f, -0.0429711f },
+      { 0.0934869f, -0.481991f,  0.871174f },
+      { 0.0793239f, -0.868619f,  -0.48909f } }};
+
     const FreeHandBone FreeHandBones[] = {
+      { VrGame::LeftHandNodeName, FreeHandWrist },
+      { "Bip01 L ForeTwist", {{ {       1.0f,       0.0f,       0.0f },
+                                {       0.0f,  0.850957f,  0.525236f },
+                                {       0.0f, -0.525236f,  0.850957f } }} },
       { "Bip01 L Thumb1", {{ {  0.818252f,  0.384053f,  0.427746f },
                              {  0.366491f,  0.224751f, -0.902869f },
                              { -0.442886f,  0.895539f, 0.0431507f } }} },
@@ -681,13 +694,13 @@ namespace dxvk {
 
     VrGameTransform target = vrComputeHeldTransform(controller, FreeHandPose);
 
-    // The rigid move taking the drawn hand onto the target moves the forearm
-    VrGameTransform move;
-    move.rotate    = target.rotate * vrTranspose(drawnHand.rotate);
-    move.translate = target.translate - move.rotate * drawnHand.translate;
+    // The forearm is placed so that the hand, at its fixed wrist rotation,
+    // lands on the target. The hand's offset in the forearm, scale
+    // included, is the animation's: it is the length of the forearm.
+    VrVector3 wrist = vrTranspose(drawnForearm.rotate) * (drawnHand.translate - drawnForearm.translate);
 
-    VrGameRotation worldRotation = move.rotate * drawnForearm.rotate;
-    VrVector3 worldTranslation   = move.rotate * drawnForearm.translate + move.translate;
+    VrGameRotation worldRotation = target.rotate * vrTranspose(FreeHandWrist);
+    VrVector3 worldTranslation   = target.translate - worldRotation * wrist;
 
     ParentFrame parent = parentFrame(forearm);
 
@@ -697,7 +710,7 @@ namespace dxvk {
     writeRotation(forearm, VrGame::ObjectLocalRotation, vrTranspose(parent.rotate) * worldRotation);
     writeVector(forearm, VrGame::NodeLocalTranslate, parent.toLocal(worldTranslation));
 
-    // The fingers take the pose too
+    // The wrist, the twist bone and the fingers take the pose too
     struct SavedBone {
       uint8_t*       bone;
       VrGameRotation rotate;
@@ -706,7 +719,7 @@ namespace dxvk {
     std::array<SavedBone, std::size(FreeHandBones)> saved;
     uint32_t savedCount = 0;
 
-    forEachObject(otherHand, MaxModelDepth, [&saved, &savedCount] (uint8_t* object) {
+    forEachObject(forearm, MaxModelDepth, [&saved, &savedCount] (uint8_t* object) {
       auto name = field<const char*>(object, VrGame::ObjectName);
 
       if (!name || savedCount == saved.size())
