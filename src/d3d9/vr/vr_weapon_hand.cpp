@@ -1,5 +1,7 @@
 #include <algorithm>
+#include <array>
 #include <cstring>
+#include <iterator>
 
 #include "../../util/log/log.h"
 #include "../../util/util_string.h"
@@ -232,52 +234,6 @@ namespace dxvk {
       return false;
     }
 
-    /**
-     * \brief Applies the inverse of a NiTransform to a point
-     */
-    VrVector3 inverseApply(const uint8_t* transform, const VrVector3& point) {
-      float scale = readField<float>(transform, VrGame::TransformScale);
-
-      if (scale == 0.0f)
-        scale = 1.0f;
-
-      return (vrTranspose(readRotation(transform, 0))
-        * (point - readVector(transform, VrGame::TransformTranslation))) * (1.0f / scale);
-    }
-
-    /**
-     * \brief Bind pose of a bone in a skin
-     *
-     * Skinning takes a vertex from the skin's root parent to the skin, then
-     * to the bone, so the bone's bind pose in the root parent's frame is
-     * the inverse of both.
-     */
-    bool findBindPose(uint8_t* skin, uint8_t* bone, VrGameTransform& pose) {
-      auto data  = field<uint8_t*>(skin, VrGame::SkinInstanceData);
-      auto bones = field<uint8_t**>(skin, VrGame::SkinInstanceBones);
-
-      if (!data || !bones)
-        return false;
-
-      auto boneData = field<uint8_t*>(data, VrGame::SkinDataBones);
-      uint32_t count = field<uint32_t>(data, VrGame::SkinDataBoneCount);
-
-      for (uint32_t i = 0; boneData && i < count; i++) {
-        if (bones[i] != bone)
-          continue;
-
-        const uint8_t* rootParentToSkin = data + VrGame::SkinDataRootParentToSkin;
-        const uint8_t* skinToBone       = boneData + i * VrGame::SkinBoneDataSize;
-
-        pose.rotate = vrTranspose(readRotation(rootParentToSkin, 0))
-                    * vrTranspose(readRotation(skinToBone, 0));
-        pose.translate = inverseApply(rootParentToSkin, inverseApply(skinToBone, VrVector3()));
-        return true;
-      }
-
-      return false;
-    }
-
     template<typename Fn>
     void forEachObject(uint8_t* object, uint32_t depth, const Fn& fn) {
       fn(object);
@@ -297,38 +253,100 @@ namespace dxvk {
     }
 
     /**
-     * \brief Mirror between two hand bones, from the skins that use them
+     * \brief Pose of the free left hand, relative to its controller
      *
-     * The two bind poses must come from skins with the same root parent,
-     * so that they are in the same frame.
+     * Measured in game with the 9mm pistol (2026-10-11), on the hand the
+     * VR layer then held as the mirror image of the right hand: the hand
+     * bone's rotation and offset in the left controller's frame (forward,
+     * up and right, as in vrCameraRotation, in game units), and the local
+     * rotations of the bones below it. Every weapon gets this pose: some,
+     * such as the Fat Man, hold the weapon with an unusual grip that a
+     * mirror of the right hand would copy.
+     *
+     * The wrist comes from a second measurement with the 9mm pistol: the
+     * hand's and the forearm twist bone's local rotations in the forearm,
+     * which the Fat Man's animation bends and twists otherwise.
      */
-    bool findBoneMirror(uint8_t* root, uint8_t* hand, uint8_t* otherHand, VrGameRotation& mirror) {
-      VrGameTransform bindHand, bindOtherHand;
-      uint8_t* handParent      = nullptr;
-      uint8_t* otherHandParent = nullptr;
+    const VrGameTransform FreeHandPose = {
+      {{ {  0.995157f, 0.0949835f, 0.0253174f },
+         { 0.0288025f, -0.035501f, -0.998955f },
+         { -0.0939852f,  0.994846f, -0.0380647f } }},
+      { -8.81553f, -1.23918f, -1.42719f },
+    };
 
-      forEachObject(root, MaxModelDepth, [&] (uint8_t* object) {
-        uint8_t* geometry = asGeometry(object);
-        uint8_t* skin = geometry ? field<uint8_t*>(geometry, VrGame::GeometrySkinInstance) : nullptr;
+    struct FreeHandBone {
+      const char*    name;
+      VrGameRotation rotate;
+    };
 
-        if (!skin)
-          return;
+    const VrGameRotation FreeHandWrist = {{
+      {  0.992455f,  0.114828f, -0.0429711f },
+      { 0.0934869f, -0.481991f,  0.871174f },
+      { 0.0793239f, -0.868619f,  -0.48909f } }};
 
-        uint8_t* parent = field<uint8_t*>(skin, VrGame::SkinInstanceRootParent);
-
-        if (!handParent && findBindPose(skin, hand, bindHand))
-          handParent = parent;
-
-        if (!otherHandParent && findBindPose(skin, otherHand, bindOtherHand))
-          otherHandParent = parent;
-      });
-
-      if (!handParent || handParent != otherHandParent)
-        return false;
-
-      mirror = vrComputeBoneMirror(bindHand, bindOtherHand);
-      return true;
-    }
+    const FreeHandBone FreeHandBones[] = {
+      { VrGame::LeftHandNodeName, FreeHandWrist },
+      { "Bip01 L ForeTwist", {{ {       1.0f,       0.0f,       0.0f },
+                                {       0.0f,  0.850957f,  0.525236f },
+                                {       0.0f, -0.525236f,  0.850957f } }} },
+      { "Bip01 L Thumb1", {{ {  0.818252f,  0.384053f,  0.427746f },
+                             {  0.366491f,  0.224751f, -0.902869f },
+                             { -0.442886f,  0.895539f, 0.0431507f } }} },
+      { "Bip01 L Thumb11", {{ {  0.967436f, -0.253117f,       0.0f },
+                              {  0.253117f,  0.967436f,       0.0f },
+                              {       0.0f,       0.0f,       1.0f } }} },
+      { "Bip01 L Thumb12", {{ {  0.994304f, -0.106582f,       0.0f },
+                              {  0.106582f,  0.994304f,       0.0f },
+                              {       0.0f,       0.0f,       1.0f } }} },
+      { "Bip01 L Hand01", {{ {  0.991822f, 0.0157553f,  0.126654f },
+                             { -0.0121424f,  0.999498f, -0.0292477f },
+                             { -0.127052f, 0.0274707f,  0.991516f } }} },
+      { "Bip01 L Finger1", {{ {  0.997184f, 0.00861518f, -0.074502f },
+                              { -0.0105104f,   0.99963f, -0.0250837f },
+                              { 0.0742583f, 0.0257961f,  0.996905f } }} },
+      { "Bip01 L Finger11", {{ {  0.985859f,  -0.16757f, -0.00119342f },
+                               {  0.167571f,   0.98586f, 0.000681602f },
+                               { 0.00106233f, -0.000871946f,  0.999999f } }} },
+      { "Bip01 L Finger12", {{ {  0.999859f, 0.0156992f, 0.0060174f },
+                               { -0.0157025f,  0.999877f, 0.000501849f },
+                               { -0.00600878f, -0.000596266f,  0.999982f } }} },
+      { "Bip01 L Hand02", {{ {  0.994522f,  0.104404f, 0.00510071f },
+                             { -0.104171f,  0.985903f,  0.130934f },
+                             { 0.00864123f, -0.130748f,  0.991378f } }} },
+      { "Bip01 L Finger2", {{ {  0.988127f, -0.153207f, -0.0114936f },
+                              {  0.152233f,  0.986443f, -0.0612823f },
+                              { 0.0207266f, 0.0588051f,  0.998054f } }} },
+      { "Bip01 L Finger21", {{ {   0.99929f, -0.0376753f, 0.000116667f },
+                               { 0.0376753f,   0.99929f,       0.0f },
+                               { -0.000116585f,       0.0f,       1.0f } }} },
+      { "Bip01 L Finger22", {{ {  0.999258f, 0.0385054f,       0.0f },
+                               { -0.0385054f,  0.999258f,       0.0f },
+                               {       0.0f,       0.0f,       1.0f } }} },
+      { "Bip01 L Hand03", {{ {  0.991125f, 0.0600862f,  -0.11858f },
+                             { -0.0447177f,  0.990733f,  0.128255f },
+                             {  0.125188f, -0.121814f,  0.984627f } }} },
+      { "Bip01 L Finger3", {{ {  0.992671f, -0.120352f, 0.0109717f },
+                              {  0.120378f,  0.992727f, -0.00169364f },
+                              { -0.0106881f, 0.00300198f,  0.999938f } }} },
+      { "Bip01 L Finger31", {{ {  0.998236f, -0.0586457f, 0.0092844f },
+                               { 0.0586366f,  0.998279f, 0.00125062f },
+                               { -0.00934176f, -0.000704007f,  0.999956f } }} },
+      { "Bip01 L Finger32", {{ {  0.991462f,  0.130393f,       0.0f },
+                               { -0.130393f,  0.991462f,       0.0f },
+                               {       0.0f,       0.0f,       1.0f } }} },
+      { "Bip01 L Hand04", {{ {  0.973566f, 0.0902254f, -0.209831f },
+                             { -0.0499923f,  0.980572f,  0.189685f },
+                             {  0.222868f, -0.174181f,  0.959162f } }} },
+      { "Bip01 L Finger4", {{ {  0.992131f, -0.120628f, 0.0335495f },
+                              {   0.12138f,  0.992377f, -0.0213405f },
+                              { -0.0307195f, 0.0252448f,  0.999209f } }} },
+      { "Bip01 L Finger41", {{ {  0.990757f, -0.135646f, -0.000347379f },
+                               {  0.135646f,  0.990757f, 0.00097353f },
+                               { 0.000212113f, -0.00101165f,  0.999999f } }} },
+      { "Bip01 L Finger42", {{ {  0.999922f, -0.012493f, -6.19373e-05f },
+                               {  0.012493f,  0.999922f,       0.0f },
+                               { 6.22444e-05f,       0.0f,       1.0f } }} },
+    };
 
   }
 
@@ -601,7 +619,7 @@ namespace dxvk {
     writeVector(root, VrGame::NodeLocalTranslate, translation);
 
     if (forearm && m_hasOtherHand && !m_twoHanded && !m_braced)
-      placeOtherHand(root, forearm, drawnForearm, drawnHand, hand, shift, updateData);
+      placeOtherHand(root, otherHand, drawnForearm, drawnHand, shift, updateData);
 
     hideArms(root);
 
@@ -661,44 +679,28 @@ namespace dxvk {
 
   void VrWeaponHand::placeOtherHand(
           uint8_t*              root,
-          uint8_t*              forearm,
+          uint8_t*              otherHand,
     const VrGameTransform&      drawnForearm,
     const VrGameTransform&      drawnHand,
-    const VrGameCameraPose&     hand,
     const VrVector3&            shift,
           void*                 updateData) {
     // The game animates the free hand anywhere, so its pose is not kept:
-    // it is held around its controller like the right hand around the
-    // other one, mirrored. The forearm carries the hand, and the hand's
-    // meshes only use bones below the forearm.
-    uint8_t* otherHand = findObject(root, VrGame::LeftHandNodeName);
-    uint8_t* handBone  = findObject(root, VrGame::RightHandNodeName);
-    VrGameRotation boneMirror;
-
-    if (!otherHand || !handBone || !findBoneMirror(root, handBone, otherHand, boneMirror)) {
-      if (!m_loggedMirror)
-        Logger::warn("VR: The bind pose of the hands was not found, the left hand stays where the game puts it");
-
-      m_loggedMirror = true;
-      return;
-    }
-
-    VrGameTransform placedHand;
-    placedHand.rotate    = readRotation(handBone, VrGame::ObjectWorldRotation);
-    placedHand.translate = readVector(handBone, VrGame::ObjectWorldTranslation);
+    // it takes a fixed pose around its controller. The forearm carries the
+    // hand, and the hand's meshes only use bones below the forearm.
+    uint8_t* forearm = field<uint8_t*>(otherHand, VrGame::ObjectParent);
 
     VrGameCameraPose controller = m_otherHand;
     controller.position = controller.position - shift;
 
-    VrGameTransform target = vrComputeMirroredHand(hand, placedHand, controller, boneMirror);
+    VrGameTransform target = vrComputeHeldTransform(controller, FreeHandPose);
 
-    // The rigid move taking the drawn hand onto the target moves the forearm
-    VrGameTransform move;
-    move.rotate    = target.rotate * vrTranspose(drawnHand.rotate);
-    move.translate = target.translate - move.rotate * drawnHand.translate;
+    // The forearm is placed so that the hand, at its fixed wrist rotation,
+    // lands on the target. The hand's offset in the forearm, scale
+    // included, is the animation's: it is the length of the forearm.
+    VrVector3 wrist = vrTranspose(drawnForearm.rotate) * (drawnHand.translate - drawnForearm.translate);
 
-    VrGameRotation worldRotation = move.rotate * drawnForearm.rotate;
-    VrVector3 worldTranslation   = move.rotate * drawnForearm.translate + move.translate;
+    VrGameRotation worldRotation = target.rotate * vrTranspose(FreeHandWrist);
+    VrVector3 worldTranslation   = target.translate - worldRotation * wrist;
 
     ParentFrame parent = parentFrame(forearm);
 
@@ -707,11 +709,40 @@ namespace dxvk {
 
     writeRotation(forearm, VrGame::ObjectLocalRotation, vrTranspose(parent.rotate) * worldRotation);
     writeVector(forearm, VrGame::NodeLocalTranslate, parent.toLocal(worldTranslation));
+
+    // The wrist, the twist bone and the fingers take the pose too
+    struct SavedBone {
+      uint8_t*       bone;
+      VrGameRotation rotate;
+    };
+
+    std::array<SavedBone, std::size(FreeHandBones)> saved;
+    uint32_t savedCount = 0;
+
+    forEachObject(forearm, MaxModelDepth, [&saved, &savedCount] (uint8_t* object) {
+      auto name = field<const char*>(object, VrGame::ObjectName);
+
+      if (!name || savedCount == saved.size())
+        return;
+
+      for (const FreeHandBone& pose : FreeHandBones) {
+        if (std::strcmp(name, pose.name))
+          continue;
+
+        saved[savedCount++] = { object, readRotation(object, VrGame::ObjectLocalRotation) };
+        writeRotation(object, VrGame::ObjectLocalRotation, pose.rotate);
+        return;
+      }
+    });
+
     updateObject(forearm, updateData);
 
     // The next eye's update starts from the game's pose again
     writeRotation(forearm, VrGame::ObjectLocalRotation, rotation);
     writeVector(forearm, VrGame::NodeLocalTranslate, translation);
+
+    for (uint32_t i = 0; i < savedCount; i++)
+      writeRotation(saved[i].bone, VrGame::ObjectLocalRotation, saved[i].rotate);
 
     // A skinned mesh computes its bound from its bones when it is updated
     // itself, and the hand's meshes are not below the forearm: without this,
@@ -725,7 +756,7 @@ namespace dxvk {
 
     if (!m_loggedOtherHand) {
       auto name = field<const char*>(forearm, VrGame::ObjectName);
-      Logger::info(str::format("VR: The left hand mirrors the right hand around its controller, moved by '",
+      Logger::info(str::format("VR: The left hand takes its free pose around its controller, moved by '",
         name ? name : "", "'"));
       m_loggedOtherHand = true;
     }

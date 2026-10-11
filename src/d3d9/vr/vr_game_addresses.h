@@ -177,20 +177,6 @@ namespace dxvk {
     constexpr uintptr_t SkinInstanceBones     = 0x14;
     constexpr uintptr_t SkinDataBoneCount     = 0x44;
 
-    /**
-     * Bind pose, read by 0x00E6FE30: the skin instance's root parent
-     * (NiAVObject*), the skin data's transform from the root parent to the
-     * skin, and its array of bone data, each starting with the transform
-     * from the skin to the bone. Transforms are NiTransform: rotation
-     * (row-major 3x3), translation, scale.
-     */
-    constexpr uintptr_t SkinInstanceRootParent = 0x10;
-    constexpr uintptr_t SkinDataRootParentToSkin = 0x0C;
-    constexpr uintptr_t SkinDataBones         = 0x40;
-    constexpr uintptr_t SkinBoneDataSize      = 0x4C;
-    constexpr uintptr_t TransformTranslation  = 0x24;
-    constexpr uintptr_t TransformScale        = 0x30;
-
     /** NiAVObject transforms: parent, local rotation (row-major 3x3) and world transform */
     constexpr uintptr_t ObjectParent          = 0x18;
     constexpr uintptr_t ObjectLocalRotation   = 0x34;
@@ -503,21 +489,19 @@ namespace dxvk {
      * Pieces of the world render that Main::Swap's normal path calls
      * (LaTerreur::RenderSubfonction, 0x00870BD0), used to draw the live
      * world behind the Pip-Boy instead of the frozen background. The same
-     * recipe as the Real-Time Menus plugin, which targets this executable.
+     * recipe as the Real-Time Menus plugin, which targets this executable,
+     * without its image space pass: the rendered-menu render applies it.
      * All __thiscall on Main unless noted:
      * - DrawWorld_Init, returns the sun;
      * - DrawWorld_UpdateWater;
      * - DrawWorld_RestartRenderTexture (target, multisampling, clear flags);
      * - DrawWorld_DrawScene (sun, draw hands, wireframe, VATS);
      * - DrawWorld_Refraction and DrawWorld_DoDepth (accumulator, target);
-     * - IsMultisampling, IsRefractionEnabled, IsOutsideFrame,
-     *   EndOffscreenFrame, ImageSpaceManager and renderer singletons:
-     *   __cdecl without arguments;
+     * - IsMultisampling, IsRefractionEnabled and the ImageSpaceManager
+     *   singleton: __cdecl without arguments;
      * - RefractivePassCount: __thiscall on the world accumulator (Main+0x88);
      * - ImageSpaceManager::GetEffect (__thiscall, effect id, 4 is depth of
      *   field) and the effect's DoDepth (__thiscall, reads +0x70);
-     * - RenderImageSpaceEffects: __cdecl (renderer, source, destination),
-     *   reads the world camera at 0x011F917C;
      * - ShadowSceneNode::IsWireframe: __thiscall on the world shadow scene
      *   node (first entry of 0x011F91C8).
      */
@@ -529,16 +513,11 @@ namespace dxvk {
     constexpr uintptr_t DrawWorldDoDepth         = 0x00875E40;
     constexpr uintptr_t IsMultisampling          = 0x004DC310;
     constexpr uintptr_t IsRefractionEnabled      = 0x005B9B00;
-    constexpr uintptr_t IsOutsideFrame           = 0x004E9510;
-    constexpr uintptr_t EndOffscreenFrame        = 0x00B6B790;
     constexpr uintptr_t ImageSpaceManagerSingleton = 0x004E3270;
-    constexpr uintptr_t RendererSingleton        = 0x0043C4B0;
     constexpr uintptr_t RefractivePassCount      = 0x00B63A90;
     constexpr uintptr_t ImageSpaceGetEffect      = 0x004EBBC0;
     constexpr uintptr_t ImageSpaceDoDepth        = 0x00871220;
     constexpr uint32_t  ImageSpaceDepthOfField   = 4;
-    constexpr uintptr_t RenderImageSpaceEffects  = 0x00B55AC0;
-    constexpr uintptr_t ImageSpaceCamera         = 0x011F917C;
     constexpr uintptr_t IsWireframe              = 0x00870770;
     constexpr uintptr_t ShadowSceneNodes         = 0x011F91C8;
     constexpr uintptr_t MainWorldAccumulator     = 0x88;

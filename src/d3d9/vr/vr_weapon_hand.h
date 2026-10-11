@@ -129,7 +129,6 @@ namespace dxvk {
     bool             m_loggedOtherHand = false;
     bool             m_loggedTwoHanded = false;
     bool             m_loggedBraced = false;
-    bool             m_loggedMirror = false;
     bool             m_loggedSnapAim = false;
 
     // Arm meshes culled by the VR layer, compared but not dereferenced
@@ -160,10 +159,9 @@ namespace dxvk {
 
     void placeOtherHand(
             uint8_t*              root,
-            uint8_t*              forearm,
+            uint8_t*              otherHand,
       const VrGameTransform&      drawnForearm,
       const VrGameTransform&      drawnHand,
-      const VrGameCameraPose&     hand,
       const VrVector3&            shift,
             void*                 updateData);
 

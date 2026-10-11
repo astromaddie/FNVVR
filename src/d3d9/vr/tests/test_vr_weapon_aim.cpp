@@ -124,55 +124,21 @@ TEST_CASE(two_handed_pose_keeps_the_hand_when_aligned) {
 }
 
 
-TEST_CASE(mirrored_hand_is_the_mirror_image_of_the_hand) {
-  // Everything on the left is the right side mirrored across x = 0
-  VrGameRotation mirrorX;
-  mirrorX.m[0][0] = -1.0f;
+TEST_CASE(held_transform_follows_its_controller) {
+  // Half a turn around the controller's forward axis, held 10 units in
+  // front of it and 2 units to its right
+  VrGameTransform local;
+  local.rotate.m[1][1] = -1.0f;
+  local.rotate.m[2][2] = -1.0f;
+  local.translate = { 10.0f, 0.0f, 2.0f };
 
-  // Mirrored bones keep right-handed axes by flipping their third axis
-  VrGameRotation flipBone;
-  flipBone.m[2][2] = -1.0f;
+  VrGameTransform held = vrComputeHeldTransform(eastFacing({ 1.0f, 2.0f, 3.0f }), local);
 
-  float c = std::cos(Pi / 6.0f);
-  float s = std::sin(Pi / 6.0f);
-
-  VrGameTransform bindRight;
-  bindRight.rotate.m[0][0] = 0.0f; bindRight.rotate.m[0][1] = -1.0f;
-  bindRight.rotate.m[1][0] = 1.0f; bindRight.rotate.m[1][1] =  0.0f;
-  bindRight.translate = { 20.0f, 5.0f, 100.0f };
-
-  VrGameTransform bindLeft;
-  bindLeft.rotate    = mirrorX * bindRight.rotate * flipBone;
-  bindLeft.translate = { -20.0f, 5.0f, 100.0f };
-
-  VrGameCameraPose right;
-  right.forward  = { 0.6f, 0.8f, 0.0f };
-  right.up       = { 0.0f, 0.0f, 1.0f };
-  right.right    = { 0.8f, -0.6f, 0.0f };
-  right.position = { 22.0f, 35.0f, 92.0f };
-
-  VrGameCameraPose left;
-  left.forward  = { -0.6f, 0.8f, 0.0f };
-  left.up       = { 0.0f, 0.0f, 1.0f };
-  left.right    = { 0.8f, 0.6f, 0.0f };
-  left.position = { -22.0f, 35.0f, 92.0f };
-
-  VrGameTransform rightBone;
-  rightBone.rotate.m[1][1] = c; rightBone.rotate.m[1][2] = -s;
-  rightBone.rotate.m[2][1] = s; rightBone.rotate.m[2][2] =  c;
-  rightBone.translate = { 25.0f, 40.0f, 90.0f };
-
-  VrGameRotation boneMirror = vrComputeBoneMirror(bindRight, bindLeft);
-  VrGameTransform leftBone  = vrComputeMirroredHand(right, rightBone, left, boneMirror);
-
-  VrGameRotation expected = mirrorX * rightBone.rotate * flipBone;
-
-  for (uint32_t i = 0; i < 3; i++) {
-    for (uint32_t j = 0; j < 3; j++)
-      CHECK_NEAR(leftBone.rotate.m[i][j], expected.m[i][j], 1e-4);
-  }
-
-  checkVector(leftBone.translate, -25.0f, 40.0f, 90.0f);
+  // Facing east, right is south: the held up axis points down
+  checkVector(held.translate, 11.0f, 0.0f, 3.0f);
+  checkVector(held.rotate * VrVector3 { 1.0f, 0.0f, 0.0f }, 1.0f, 0.0f, 0.0f);
+  checkVector(held.rotate * VrVector3 { 0.0f, 1.0f, 0.0f }, 0.0f, 0.0f, -1.0f);
+  checkVector(held.rotate * VrVector3 { 0.0f, 0.0f, 1.0f }, 0.0f, 1.0f, 0.0f);
 }
 
 
