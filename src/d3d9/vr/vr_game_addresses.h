@@ -177,20 +177,6 @@ namespace dxvk {
     constexpr uintptr_t SkinInstanceBones     = 0x14;
     constexpr uintptr_t SkinDataBoneCount     = 0x44;
 
-    /**
-     * Bind pose, read by 0x00E6FE30: the skin instance's root parent
-     * (NiAVObject*), the skin data's transform from the root parent to the
-     * skin, and its array of bone data, each starting with the transform
-     * from the skin to the bone. Transforms are NiTransform: rotation
-     * (row-major 3x3), translation, scale.
-     */
-    constexpr uintptr_t SkinInstanceRootParent = 0x10;
-    constexpr uintptr_t SkinDataRootParentToSkin = 0x0C;
-    constexpr uintptr_t SkinDataBones         = 0x40;
-    constexpr uintptr_t SkinBoneDataSize      = 0x4C;
-    constexpr uintptr_t TransformTranslation  = 0x24;
-    constexpr uintptr_t TransformScale        = 0x30;
-
     /** NiAVObject transforms: parent, local rotation (row-major 3x3) and world transform */
     constexpr uintptr_t ObjectParent          = 0x18;
     constexpr uintptr_t ObjectLocalRotation   = 0x34;
