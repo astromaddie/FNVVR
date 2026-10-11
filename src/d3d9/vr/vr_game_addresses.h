@@ -471,6 +471,100 @@ namespace dxvk {
     /** Menus driven by the sticks, where the pointer is off */
     constexpr uint32_t  VatsMenuId = 0x420;
 
+    /**
+     * Pip-Boy render, see findings/pipboy.md §3.
+     *
+     * When the Pip-Boy opens, Main::Swap renders the world once, mono and
+     * blurred, into a background texture (0x00871DC0, __thiscall on Main
+     * without arguments, called at the first site) and sets the flag
+     * 0x011DEA29. While that flag is set, Swap draws the rendered menu
+     * through LaTerreur::Render (__thiscall on Main: target, rendered menu
+     * flag, flag; called with zeros at the world branch's site). The
+     * rendered-menu render (0x008707C0) initialises its render target
+     * (__thiscall on Main, four stack arguments, returns the target), draws
+     * the frozen background (DrawWorld_CopyMenuBG, __thiscall on Main: image
+     * space manager, renderer, multisampling, destination), the first-person
+     * model and finally the Pip-Boy screen (RenderPipBoy, __thiscall on
+     * Main: screen geometry, renderer).
+     */
+    constexpr uintptr_t PipBoyBackgroundCallSite   = 0x0087000F;
+    constexpr uintptr_t PipBoyBackground           = 0x00871DC0;
+    constexpr uintptr_t WorldRenderCallSite        = 0x00870244;
+    constexpr uintptr_t Render                     = 0x008706B0;
+    constexpr uintptr_t IsPipBoyOpen               = 0x007079B0;
+    constexpr uintptr_t RenderedMenuTargetCallSite = 0x0087086B;
+    constexpr uintptr_t InitRenderTexture          = 0x00872F50;
+    constexpr uintptr_t RenderedMenuBackgroundCallSite = 0x00870887;
+    constexpr uintptr_t CopyMenuBackground         = 0x00874B90;
+    constexpr uintptr_t PipBoyScreenCallSite       = 0x008709AA;
+    constexpr uintptr_t RenderPipBoy               = 0x008761E0;
+
+    /**
+     * Pieces of the world render that Main::Swap's normal path calls
+     * (LaTerreur::RenderSubfonction, 0x00870BD0), used to draw the live
+     * world behind the Pip-Boy instead of the frozen background. The same
+     * recipe as the Real-Time Menus plugin, which targets this executable.
+     * All __thiscall on Main unless noted:
+     * - DrawWorld_Init, returns the sun;
+     * - DrawWorld_UpdateWater;
+     * - DrawWorld_RestartRenderTexture (target, multisampling, clear flags);
+     * - DrawWorld_DrawScene (sun, draw hands, wireframe, VATS);
+     * - DrawWorld_Refraction and DrawWorld_DoDepth (accumulator, target);
+     * - IsMultisampling, IsRefractionEnabled, IsOutsideFrame,
+     *   EndOffscreenFrame, ImageSpaceManager and renderer singletons:
+     *   __cdecl without arguments;
+     * - RefractivePassCount: __thiscall on the world accumulator (Main+0x88);
+     * - ImageSpaceManager::GetEffect (__thiscall, effect id, 4 is depth of
+     *   field) and the effect's DoDepth (__thiscall, reads +0x70);
+     * - RenderImageSpaceEffects: __cdecl (renderer, source, destination),
+     *   reads the world camera at 0x011F917C;
+     * - ShadowSceneNode::IsWireframe: __thiscall on the world shadow scene
+     *   node (first entry of 0x011F91C8).
+     */
+    constexpr uintptr_t DrawWorldInit            = 0x00872B00;
+    constexpr uintptr_t DrawWorldUpdateWater     = 0x008727D0;
+    constexpr uintptr_t DrawWorldRestartTarget   = 0x00874B50;
+    constexpr uintptr_t DrawWorldDrawScene       = 0x00873200;
+    constexpr uintptr_t DrawWorldRefraction      = 0x00874920;
+    constexpr uintptr_t DrawWorldDoDepth         = 0x00875E40;
+    constexpr uintptr_t IsMultisampling          = 0x004DC310;
+    constexpr uintptr_t IsRefractionEnabled      = 0x005B9B00;
+    constexpr uintptr_t IsOutsideFrame           = 0x004E9510;
+    constexpr uintptr_t EndOffscreenFrame        = 0x00B6B790;
+    constexpr uintptr_t ImageSpaceManagerSingleton = 0x004E3270;
+    constexpr uintptr_t RendererSingleton        = 0x0043C4B0;
+    constexpr uintptr_t RefractivePassCount      = 0x00B63A90;
+    constexpr uintptr_t ImageSpaceGetEffect      = 0x004EBBC0;
+    constexpr uintptr_t ImageSpaceDoDepth        = 0x00871220;
+    constexpr uint32_t  ImageSpaceDepthOfField   = 4;
+    constexpr uintptr_t RenderImageSpaceEffects  = 0x00B55AC0;
+    constexpr uintptr_t ImageSpaceCamera         = 0x011F917C;
+    constexpr uintptr_t IsWireframe              = 0x00870770;
+    constexpr uintptr_t ShadowSceneNodes         = 0x011F91C8;
+    constexpr uintptr_t MainWorldAccumulator     = 0x88;
+
+    /** Clear flags of NiRenderer: back buffer 1, depth 4 */
+    constexpr uint32_t  ClearBackAndDepth = 5;
+    constexpr uint32_t  ClearDepth        = 4;
+
+    /**
+     * DrawWorld_DrawScene reads iNumHWThreads (Setting::Int, __thiscall on
+     * the setting, returns a pointer to its value) at this site and, above
+     * 1, hands rendering back to the AI threads. Its normal caller has
+     * synchronised the render threads for that; the rendered-menu render
+     * has not, so the value reads 0 while the VR layer draws the world there.
+     */
+    constexpr uintptr_t DrawSceneThreadsCallSite = 0x008743B0;
+    constexpr uintptr_t SettingInt               = 0x0043D4D0;
+
+    /**
+     * The first-person model is drawn with its root's translation set to
+     * this point (also pushed by PlaceCamera at FirstPersonZeroSite), so
+     * that it sits near the origin. RenderPipBoy updates the model there
+     * again and moves the world camera into that space.
+     */
+    constexpr uintptr_t FirstPersonDrawOrigin = 0x011F426C;
+
   }
 
 }

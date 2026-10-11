@@ -13,6 +13,7 @@
 #include "vr_game_state.h"
 #include "vr_hud_layers.h"
 #include "vr_menu_scenes.h"
+#include "vr_pipboy_render.h"
 #include "vr_preview_window.h"
 #include "vr_weapon_hand.h"
 
@@ -67,7 +68,8 @@ namespace dxvk {
    * keeps showing (messages during a dialogue) without the menus, so the
    * game window shows no interface then. Menus with a 3D scene of their own
    * (lockpicking, casino games) get it drawn first, on an opaque
-   * background. The Pip-Boy is not shown.
+   * background. The Pip-Boy is drawn over the live world, see
+   * VrPipBoyRender.
    *
    * The main menu and the loading screens have no 3D scene. There, the game
    * draws a single frame, and the whole presented image, interface included,
@@ -194,6 +196,12 @@ namespace dxvk {
     std::unique_ptr<VrWeaponHand> m_weaponHand;
     VrVector3           m_eyePosition;
 
+    // The Pip-Boy over the live world. Its screen pass moves the camera into
+    // the first-person drawing space, offset from the world by this shift.
+    std::unique_ptr<VrPipBoyRender> m_pipBoyRender;
+    VrVector3           m_screenShift;
+    bool                m_screenPass = false;
+
     // Latest tracked head pose, used to place the panel
     VrPose m_headPose;
     bool   m_hasHeadPose   = false;
@@ -265,6 +273,8 @@ namespace dxvk {
             void*                 main);
 
     void applyEyePose();
+
+    void setScreenPass(const VrVector3* shift);
 
     void updateWeaponHand(const VrInputState& input, VrGameStateKind state,
       const VrGameCameraPose& gameCamera);

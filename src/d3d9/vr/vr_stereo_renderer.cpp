@@ -142,6 +142,10 @@ namespace dxvk {
     if (weaponInHand)
       renderer->m_weaponHand = VrWeaponHand::install();
 
+    VrStereoRenderer* self = renderer.get();
+    renderer->m_pipBoyRender = VrPipBoyRender::install(
+      [self] (const VrVector3* shift) { self->setScreenPass(shift); });
+
     g_stereoRenderer = renderer.get();
     return renderer;
   }
@@ -468,7 +472,23 @@ namespace dxvk {
     VrGameCameraPose pose = vrComputeEyeCameraPose(m_gameCameraPose, eyeInReference, VrGameUnitsPerMetre);
     m_eyePosition = pose.position;
 
+    if (m_screenPass)
+      pose.position = pose.position - m_screenShift;
+
     m_renderCamera.apply(pose, vrComputeGameFrustum(m_eyeView->fov));
+  }
+
+
+  void VrStereoRenderer::setScreenPass(const VrVector3* shift) {
+    // The pass updates the camera itself, which re-applies the pose through
+    // cameraUpdateHook, and restores it before it returns
+    m_screenPass = shift != nullptr;
+
+    if (shift)
+      m_screenShift = *shift;
+
+    if (m_eyeView)
+      applyEyePose();
   }
 
 
