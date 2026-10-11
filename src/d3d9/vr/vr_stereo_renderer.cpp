@@ -252,6 +252,8 @@ namespace dxvk {
     m_layer = chooseLayer(state);
     m_hudRendered  = false;
     m_menuRendered = false;
+    m_overPipBoy   = state == VrGameStateKind::PipBoy;
+    m_menuDrawn    = !m_overPipBoy;
 
     // The panel is placed again when it switches from the whole frame to a
     // menu drawn in game
@@ -338,6 +340,8 @@ namespace dxvk {
     // A menu keeps its last image for a frame where it was not drawn
     if (m_menuRendered)
       submitMenu();
+    else if (m_overPipBoy)
+      hidePanel();
 
     if (m_preview)
       m_preview->present(eyes);
@@ -559,6 +563,8 @@ namespace dxvk {
         return m_hudAvailable ? InterfaceLayer::Hud : InterfaceLayer::None;
       case VrGameStateKind::Menu:
         return InterfaceLayer::Menu;
+      case VrGameStateKind::PipBoy:
+        return m_hudLayers.menusFound() ? InterfaceLayer::Menu : InterfaceLayer::None;
       default:
         return InterfaceLayer::None;
     }
@@ -623,7 +629,7 @@ namespace dxvk {
     if (layer == InterfaceLayer::Hud)
       m_hudRendered = rendered;
     else
-      m_menuRendered = rendered;
+      m_menuRendered = rendered && m_menuDrawn;
 
     m_device->SetRenderTarget(0, renderTarget.ptr());
     m_device->SetDepthStencilSurface(depthStencil.ptr());
@@ -747,6 +753,10 @@ namespace dxvk {
     // renderLayer. Menus are drawn without any HUD group, and the HUD
     // without the menus that are open.
     InterfaceLayer layer = eyeLayer();
+
+    // The game culled the menus drawn on the Pip-Boy's screen before this
+    if (layer == InterfaceLayer::Menu && m_overPipBoy)
+      m_menuDrawn = m_hudLayers.isMenuDrawn();
 
     if (layer == InterfaceLayer::None || !m_hudAvailable || m_hudIsolated)
       return;

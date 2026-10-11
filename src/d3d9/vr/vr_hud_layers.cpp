@@ -83,6 +83,30 @@ namespace dxvk {
   }
 
 
+  bool VrHudLayers::isMenuDrawn() const {
+    if (!m_menusFound)
+      return false;
+
+    uintptr_t tiles = readField<uintptr_t>(VrGame::MenuTiles, 0);
+    uint32_t  menus = readField<uint16_t>(VrGame::MenuTileCount, 0);
+
+    for (uint32_t i = 0; tiles && i < menus; i++) {
+      if (i == VrGame::HudMenuId - VrGame::FirstMenuId)
+        continue;
+
+      uintptr_t tile = readField<uintptr_t>(tiles, i * sizeof(uintptr_t));
+      uintptr_t node = tile ? readField<uintptr_t>(tile, VrGame::TileNode) : 0;
+
+      // A node outside the interface scene graph is not drawn
+      if (node && readField<uintptr_t>(node, VrGame::ObjectParent)
+       && !(readField<uint32_t>(node, VrGame::ObjectFlags) & VrGame::ObjectFlagAppCulled))
+        return true;
+    }
+
+    return false;
+  }
+
+
   void VrHudLayers::cullTile(uintptr_t tile) {
     uintptr_t node = tile ? readField<uintptr_t>(tile, VrGame::TileNode) : 0;
 
