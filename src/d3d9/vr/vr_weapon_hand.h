@@ -28,6 +28,10 @@ namespace dxvk {
    *   the game animated in front of its camera. They start from the muzzle
    *   drawn in the hand instead, along the direction the hand points, with
    *   the game's spread kept.
+   * - AnimData::MorphOrBlendToSequence starts the game's animations. When
+   *   the other hand supports a pistol, the game's aim animation starts
+   *   without blending from the previous pose, so the left hand is on the
+   *   weapon at once instead of reaching for it.
    *
    * Only used on the game's main thread.
    */
@@ -102,6 +106,12 @@ namespace dxvk {
     bool             m_twoHanded = false;
     bool             m_braced = false;
 
+    // Whether the aim animation of a new brace still has to skip its blend:
+    // only the first one, so that returning to the aim after a shot keeps
+    // the game's blend. Cleared at the frame after it was skipped.
+    bool             m_snapAim = false;
+    bool             m_snappedAim = false;
+
     // Set before PlaceCamera, used by the update it makes
     uint8_t*         m_main = nullptr;
     VrVector3        m_rootPosition;
@@ -120,6 +130,7 @@ namespace dxvk {
     bool             m_loggedTwoHanded = false;
     bool             m_loggedBraced = false;
     bool             m_loggedMirror = false;
+    bool             m_loggedSnapAim = false;
 
     // Arm meshes culled by the VR layer, compared but not dereferenced
     // until they are found in the model again
@@ -135,6 +146,13 @@ namespace dxvk {
             float x, float y, float z, float heading, float pitch,
             uint32_t a9, uint32_t a10, uint32_t a11, uint32_t a12,
             float spreadHeading, float spreadPitch, uint32_t a15);
+
+    static void* __fastcall playSequenceHook(
+            uint8_t*              animData,
+            void*                 unused,
+            void*                 sequence,
+            uint32_t              groupId,
+            int32_t               sequenceType);
 
     void placeModel(uint8_t* root, void* updateData);
 

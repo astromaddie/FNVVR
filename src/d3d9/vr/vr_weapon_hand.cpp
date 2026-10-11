@@ -34,6 +34,11 @@ namespace dxvk {
     // equipped weapon's inventory entry
     using GetWeaponInfoFn = uint8_t* (__fastcall*)(uint8_t* process, void* unused);
 
+    // AnimData::MorphOrBlendToSequence, __thiscall with three stack
+    // arguments, returns the sequence
+    using PlaySequenceFn = void* (__fastcall*)(uint8_t* animData, void* unused,
+      void* sequence, uint32_t groupId, int32_t sequenceType);
+
     // The weapon node is a few levels below the skeleton's root, and the
     // muzzle a few levels below the weapon
     constexpr uint32_t MaxModelDepth = 16;
@@ -353,6 +358,18 @@ namespace dxvk {
         VrGame::ProjectileCreate, reinterpret_cast<const void*>(&VrWeaponHand::createProjectileHook)))
       Logger::warn("VR: The projectile call was not found, the weapon shoots along the head");
 
+    if (found) {
+      bool redirected = true;
+
+      for (uintptr_t site : VrGame::PlaySequenceCallSites) {
+        redirected &= VrGameMemory::redirectCall(site,
+          VrGame::PlaySequence, reinterpret_cast<const void*>(&VrWeaponHand::playSequenceHook));
+      }
+
+      if (!redirected)
+        Logger::warn("VR: An animation call was not found, the left hand may reach for a pistol before aiming");
+    }
+
     if (!found) {
       Logger::info("VR: The first-person model was not found, the weapon stays in front of the head");
       return nullptr;
@@ -378,6 +395,11 @@ namespace dxvk {
       m_hand = *hand;
     else
       m_hasAim = false;
+
+    if (m_snappedAim) {
+      m_snapAim    = false;
+      m_snappedAim = false;
+    }
 
     // The grip lets go as soon as it is released, even if the model is not
     // drawn this frame
@@ -447,6 +469,45 @@ namespace dxvk {
     return reinterpret_cast<ProjectileCreateFn>(VrGame::ProjectileCreate)(
       projectile, shooter, target, weapon, x, y, z, heading, pitch,
       a9, a10, a11, a12, spreadHeading, spreadPitch, a15);
+  }
+
+
+  void* __fastcall VrWeaponHand::playSequenceHook(
+          uint8_t*              animData,
+          void*                 unused,
+          void*                 sequence,
+          uint32_t              groupId,
+          int32_t               sequenceType) {
+    auto playSequence = reinterpret_cast<PlaySequenceFn>(VrGame::PlaySequence);
+    uint8_t* object = player();
+    uint8_t  group  = uint8_t(groupId & 0xFF);
+
+    bool snap = g_weaponHand && g_weaponHand->m_braced && g_weaponHand->m_snapAim
+      && object && animData && animData == field<uint8_t*>(object, VrGame::PlayerFirstPersonAnimData)
+      && group >= VrGame::AnimGroupAimIS && group <= VrGame::AnimGroupAimISDown;
+
+    if (!snap)
+      return playSequence(animData, nullptr, sequence, groupId, sequenceType);
+
+    // The game's own way to start a sequence in its pose: the flag makes
+    // the blend time zero. It is restored so that only this sequence skips
+    // its blend. The aim's up and down variants start in the same game
+    // update, so the brace stops snapping at the next frame.
+    uint8_t& skipBlend = field<uint8_t>(animData, VrGame::AnimDataSkipBlend);
+    uint8_t  previous  = skipBlend;
+
+    skipBlend = 1;
+    void* result = playSequence(animData, nullptr, sequence, groupId, sequenceType);
+    skipBlend = previous;
+
+    g_weaponHand->m_snappedAim = true;
+
+    if (!g_weaponHand->m_loggedSnapAim) {
+      Logger::info("VR: The aim animation starts without blending while the left hand supports the pistol");
+      g_weaponHand->m_loggedSnapAim = true;
+    }
+
+    return result;
   }
 
 
@@ -580,8 +641,10 @@ namespace dxvk {
     } else {
       m_twoHanded = false;
 
-      if (!m_braced)
-        m_braced = vrLength(m_hand.position - m_otherHand.position) <= BracedGripDistance;
+      if (!m_braced) {
+        m_braced  = vrLength(m_hand.position - m_otherHand.position) <= BracedGripDistance;
+        m_snapAim = m_braced;
+      }
     }
 
     if (m_twoHanded && !m_loggedTwoHanded) {

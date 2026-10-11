@@ -138,6 +138,24 @@ namespace dxvk {
     constexpr uintptr_t InventoryEntryForm    = 0x08;
     constexpr uintptr_t WeaponAnimationType   = 0xF4;
 
+    /**
+     * Animation sequences, see findings/weapon.md. Every sequence an actor
+     * plays starts in AnimData::MorphOrBlendToSequence (__thiscall on
+     * AnimData with three stack arguments: sequence, 16-bit group ID,
+     * sequence type; returns the sequence), called from these four sites.
+     * It blends from the previous pose unless the byte at AnimData+0x120 is
+     * set, which the game clears after each animation update. The player's
+     * first-person AnimData is at +0x690 (PlayerCharacter::GetAnimation,
+     * 0x00950A60). The low byte of a group ID indexes the group table
+     * (0x011977D8): AimIS, AimISUp and AimISDown are 0x14 to 0x16.
+     */
+    constexpr uintptr_t PlaySequence             = 0x004949A0;
+    constexpr uintptr_t PlaySequenceCallSites[]  = { 0x00494989, 0x004956FF, 0x00495E2A, 0x004973B4 };
+    constexpr uintptr_t AnimDataSkipBlend        = 0x120;
+    constexpr uintptr_t PlayerFirstPersonAnimData = 0x690;
+    constexpr uint8_t   AnimGroupAimIS           = 0x14;
+    constexpr uint8_t   AnimGroupAimISDown       = 0x16;
+
     /** Nodes of the first-person model: the weapon, under the right hand, and the muzzle in the weapon's model */
     constexpr char WeaponNodeName[]           = "Weapon";
     constexpr char ProjectileNodeName[]       = "ProjectileNode";
