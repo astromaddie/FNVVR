@@ -32,6 +32,11 @@ namespace dxvk {
    *   the other hand supports a pistol, the game's aim animation starts
    *   without blending from the previous pose, so the left hand is on the
    *   weapon at once instead of reaching for it.
+   * - While the Pip-Boy is shown, the model stays where the game puts it,
+   *   the left forearm, which carries the Pip-Boy, is moved to the left
+   *   controller as the free hand is, and the right hand and the weapon
+   *   are hidden. RenderPipBoy updates the model again before it draws the
+   *   Pip-Boy screen, so the forearm is moved again after that update.
    *
    * Only used on the game's main thread.
    */
@@ -58,12 +63,15 @@ namespace dxvk {
      *    \c nullptr if it is not tracked
      * \param [in] grip Whether the other hand's grip on the weapon is held:
      *    it takes the weapon once it comes near it, and lets go on release
+     * \param [in] pipBoy Whether the Pip-Boy is shown: the other hand then
+     *    carries it, and \c hand is ignored
      */
     void beginFrame(
       const VrGameCameraPose&     gameCamera,
       const VrGameCameraPose*     hand,
       const VrGameCameraPose*     otherHand,
-            bool                  grip);
+            bool                  grip,
+            bool                  pipBoy);
 
     /**
      * \brief Called before the game places the first-person camera for an eye
@@ -101,6 +109,7 @@ namespace dxvk {
     VrGameCameraPose m_otherHand;
     bool             m_hasOtherHand = false;
     bool             m_grip = false;
+    bool             m_pipBoy = false;
 
     // Whether the other hand holds the weapon
     bool             m_twoHanded = false;
@@ -117,6 +126,12 @@ namespace dxvk {
     VrVector3        m_rootPosition;
     VrVector3        m_eyePosition;
 
+    // Offset from the world to the model's drawing space, set when the
+    // forearm carrying the Pip-Boy was moved for the eye being drawn, for
+    // RenderPipBoy's update
+    VrVector3        m_pipBoyShift;
+    bool             m_pipBoyPlaced = false;
+
     // Muzzle relative to the first-person root, and the direction the
     // hand pointed, when the weapon was last drawn in the hand
     VrVector3        m_muzzleOffset;
@@ -130,12 +145,21 @@ namespace dxvk {
     bool             m_loggedTwoHanded = false;
     bool             m_loggedBraced = false;
     bool             m_loggedSnapAim = false;
+    bool             m_loggedPipBoy = false;
+    bool             m_loggedRightHand = false;
 
-    // Arm meshes culled by the VR layer, compared but not dereferenced
-    // until they are found in the model again
-    std::vector<uint8_t*> m_hiddenMeshes;
+    // Objects culled by the VR layer, compared but not dereferenced until
+    // they are found in the model again, and whether the right hand and the
+    // weapon are among them
+    std::vector<uint8_t*> m_hiddenObjects;
+    bool             m_hidesRightHand = false;
 
     static void __fastcall updateHook(
+            uint8_t*              object,
+            void*                 unused,
+            void*                 updateData);
+
+    static void __fastcall pipBoyUpdateHook(
             uint8_t*              object,
             void*                 unused,
             void*                 updateData);
@@ -155,17 +179,19 @@ namespace dxvk {
 
     void placeModel(uint8_t* root, void* updateData);
 
+    void placePipBoyArm(uint8_t* root, const VrVector3& shift, void* updateData);
+
     void updateGrip(GripKind kind, bool canHold, const VrVector3& support);
 
     void placeOtherHand(
             uint8_t*              root,
             uint8_t*              otherHand,
-      const VrGameTransform&      drawnForearm,
-      const VrGameTransform&      drawnHand,
       const VrVector3&            shift,
             void*                 updateData);
 
-    void hideArms(uint8_t* root);
+    void hideArms(uint8_t* root, bool rightHand);
+
+    void hide(uint8_t* object, bool log);
 
     void showArms(uint8_t* root);
 
