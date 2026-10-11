@@ -370,6 +370,12 @@ namespace dxvk {
     found = found && VrGameMemory::redirectCall(VrGame::FirstPersonUpdateCallSite,
       VrGame::ObjectUpdate, reinterpret_cast<const void*>(&VrWeaponHand::updateHook));
 
+    // If this one fails, the Pip-Boy's screen is drawn where the game
+    // animates the forearm, while the forearm is drawn on the controller
+    if (found && !VrGameMemory::redirectCall(VrGame::PipBoyModelUpdateCallSite,
+        VrGame::ObjectUpdate, reinterpret_cast<const void*>(&VrWeaponHand::pipBoyUpdateHook)))
+      Logger::warn("VR: The Pip-Boy's model update was not found, its screen stays where the game animates it");
+
     // If this one fails, the weapon is drawn in the hand but shoots from
     // the game's muzzle, along the head
     if (found && !VrGameMemory::redirectCall(VrGame::ProjectileCreateCallSite,
@@ -403,11 +409,16 @@ namespace dxvk {
     const VrGameCameraPose&     gameCamera,
     const VrGameCameraPose*     hand,
     const VrGameCameraPose*     otherHand,
-          bool                  grip) {
+          bool                  grip,
+          bool                  pipBoy) {
+    if (pipBoy)
+      hand = nullptr;
+
     m_gameCamera   = gameCamera;
     m_hasHand      = hand != nullptr;
     m_hasOtherHand = otherHand != nullptr;
     m_grip         = grip;
+    m_pipBoy       = pipBoy;
 
     if (hand)
       m_hand = *hand;
@@ -434,8 +445,9 @@ namespace dxvk {
   void VrWeaponHand::beforePlaceCamera(
           void*                 main,
     const VrVector3&            eyePosition) {
-    m_main        = static_cast<uint8_t*>(main);
-    m_eyePosition = eyePosition;
+    m_main         = static_cast<uint8_t*>(main);
+    m_eyePosition  = eyePosition;
+    m_pipBoyPlaced = false;
 
     uint8_t* object = player();
     uint8_t* root   = object ? field<uint8_t*>(object, VrGame::PlayerFirstPersonRoot) : nullptr;
@@ -459,6 +471,26 @@ namespace dxvk {
 
     if (g_weaponHand && g_weaponHand->m_main)
       g_weaponHand->placeModel(object, updateData);
+  }
+
+
+  void __fastcall VrWeaponHand::pipBoyUpdateHook(
+          uint8_t*              object,
+          void*                 unused,
+          void*                 updateData) {
+    updateObject(object, updateData);
+
+    // The update puts the forearm back where the game animates it, for the
+    // Pip-Boy screen drawn after it. The model is at the same draw origin
+    // as in PlaceCamera, so the eye's shift still applies.
+    uint8_t* character = player();
+
+    if (!g_weaponHand || !g_weaponHand->m_pipBoyPlaced || !character
+     || object != field<uint8_t*>(character, VrGame::PlayerFirstPersonRoot))
+      return;
+
+    if (uint8_t* otherHand = findObject(object, VrGame::LeftHandNodeName))
+      g_weaponHand->placeOtherHand(object, otherHand, g_weaponHand->m_pipBoyShift, updateData);
   }
 
 
@@ -559,6 +591,14 @@ namespace dxvk {
     if (uint8_t* camera = field<uint8_t*>(main, VrGame::MainFirstPersonCamera))
       writeVector(camera, VrGame::CameraWorldTranslation, m_eyePosition - shift);
 
+    if (m_pipBoy) {
+      m_hasAim    = false;
+      m_twoHanded = false;
+      m_braced    = false;
+      placePipBoyArm(root, shift, updateData);
+      return;
+    }
+
     uint8_t* weapon = m_hasHand && holdsWeapon(object)
       ? findObject(root, VrGame::WeaponNodeName) : nullptr;
 
@@ -576,18 +616,7 @@ namespace dxvk {
     uint8_t* forearm   = otherHand ? field<uint8_t*>(otherHand, VrGame::ObjectParent) : nullptr;
 
     VrVector3 drawnWeapon = readVector(weapon, VrGame::ObjectWorldTranslation);
-
-    VrGameTransform drawnHand;
-    drawnHand.translate = drawnWeapon;
-
-    VrGameTransform drawnForearm;
-
-    if (forearm) {
-      drawnHand.rotate       = readRotation(otherHand, VrGame::ObjectWorldRotation);
-      drawnHand.translate    = readVector(otherHand, VrGame::ObjectWorldTranslation);
-      drawnForearm.rotate    = readRotation(forearm, VrGame::ObjectWorldRotation);
-      drawnForearm.translate = readVector(forearm, VrGame::ObjectWorldTranslation);
-    }
+    VrVector3 drawnHand   = forearm ? readVector(otherHand, VrGame::ObjectWorldTranslation) : drawnWeapon;
 
     VrGameCameraPose hand = m_hand;
     hand.position = hand.position - shift;
@@ -595,7 +624,7 @@ namespace dxvk {
     VrGameTransform rig = vrComputeRigToHand(m_gameCamera, drawnWeapon, hand);
 
     // With both hands on the weapon, it points along the line between them
-    VrVector3 support = rig.rotate * (drawnHand.translate - drawnWeapon);
+    VrVector3 support = rig.rotate * (drawnHand - drawnWeapon);
     updateGrip(weaponGrip(object), forearm != nullptr, support);
 
     if (m_twoHanded) {
@@ -619,9 +648,9 @@ namespace dxvk {
     writeVector(root, VrGame::NodeLocalTranslate, translation);
 
     if (forearm && m_hasOtherHand && !m_twoHanded && !m_braced)
-      placeOtherHand(root, otherHand, drawnForearm, drawnHand, shift, updateData);
+      placeOtherHand(root, otherHand, shift, updateData);
 
-    hideArms(root);
+    hideArms(root, false);
 
     uint8_t* muzzle = findObject(weapon, VrGame::ProjectileNodeName);
 
@@ -637,6 +666,29 @@ namespace dxvk {
       Logger::info("VR: The weapon is in the right hand");
       m_loggedActive = true;
     }
+  }
+
+
+  void VrWeaponHand::placePipBoyArm(uint8_t* root, const VrVector3& shift, void* updateData) {
+    // The game raises the forearm in front of its camera, which follows the
+    // head: the forearm follows the left controller instead, and the
+    // Pip-Boy with it
+    uint8_t* otherHand = findObject(root, VrGame::LeftHandNodeName);
+
+    if (otherHand && m_hasOtherHand && field<uint8_t*>(otherHand, VrGame::ObjectParent)) {
+      placeOtherHand(root, otherHand, shift, updateData);
+      m_pipBoyShift  = shift;
+      m_pipBoyPlaced = true;
+
+      if (!m_loggedPipBoy) {
+        Logger::info("VR: The Pip-Boy is on the left forearm, which follows the left controller");
+        m_loggedPipBoy = true;
+      }
+    }
+
+    // The game animates the right hand in front of its camera, so it is
+    // hidden with the weapon until it has a pose of its own
+    hideArms(root, true);
   }
 
 
@@ -680,14 +732,16 @@ namespace dxvk {
   void VrWeaponHand::placeOtherHand(
           uint8_t*              root,
           uint8_t*              otherHand,
-    const VrGameTransform&      drawnForearm,
-    const VrGameTransform&      drawnHand,
     const VrVector3&            shift,
           void*                 updateData) {
     // The game animates the free hand anywhere, so its pose is not kept:
     // it takes a fixed pose around its controller. The forearm carries the
     // hand, and the hand's meshes only use bones below the forearm.
     uint8_t* forearm = field<uint8_t*>(otherHand, VrGame::ObjectParent);
+
+    VrGameRotation forearmRotation = readRotation(forearm, VrGame::ObjectWorldRotation);
+    VrVector3 forearmPosition      = readVector(forearm, VrGame::ObjectWorldTranslation);
+    VrVector3 handPosition         = readVector(otherHand, VrGame::ObjectWorldTranslation);
 
     VrGameCameraPose controller = m_otherHand;
     controller.position = controller.position - shift;
@@ -697,7 +751,7 @@ namespace dxvk {
     // The forearm is placed so that the hand, at its fixed wrist rotation,
     // lands on the target. The hand's offset in the forearm, scale
     // included, is the animation's: it is the length of the forearm.
-    VrVector3 wrist = vrTranspose(drawnForearm.rotate) * (drawnHand.translate - drawnForearm.translate);
+    VrVector3 wrist = vrTranspose(forearmRotation) * (handPosition - forearmPosition);
 
     VrGameRotation worldRotation = target.rotate * vrTranspose(FreeHandWrist);
     VrVector3 worldTranslation   = target.translate - worldRotation * wrist;
@@ -763,7 +817,7 @@ namespace dxvk {
   }
 
 
-  void VrWeaponHand::hideArms(uint8_t* root) {
+  void VrWeaponHand::hideArms(uint8_t* root, bool rightHand) {
     uint8_t* hands[2] = {
       findObject(root, VrGame::LeftHandNodeName),
       findObject(root, VrGame::RightHandNodeName) };
@@ -775,6 +829,13 @@ namespace dxvk {
       m_loggedArms = true;
       return;
     }
+
+    // The right hand and the weapon are shown again when they no longer
+    // have to be hidden
+    if (rightHand != m_hidesRightHand)
+      showArms(root);
+
+    m_hidesRightHand = rightHand;
 
     UpperArm arms[2];
 
@@ -790,45 +851,76 @@ namespace dxvk {
       }
     }
 
+    // A mesh shared by both hands stays, so that the left hand is drawn
+    auto isRightHandMesh = [&arms, rightHand] (uint8_t* geometry) {
+      return rightHand && isSkinnedBelow(geometry, arms[1].forearm)
+        && !isSkinnedBelow(geometry, arms[0].forearm);
+    };
+
     // The meshes are culled with the first-person camera after this update
-    forEachObject(root, MaxModelDepth, [this, &arms] (uint8_t* object) {
+    forEachObject(root, MaxModelDepth, [this, &arms, &isRightHandMesh] (uint8_t* object) {
       uint8_t* geometry = asGeometry(object);
 
-      if (!geometry || !isArmMesh(geometry, arms))
+      if (!geometry)
         return;
 
-      field<uint32_t>(geometry, VrGame::ObjectFlags) |= VrGame::ObjectFlagAppCulled;
-
-      if (std::find(m_hiddenMeshes.begin(), m_hiddenMeshes.end(), geometry) != m_hiddenMeshes.end())
-        return;
-
-      m_hiddenMeshes.push_back(geometry);
-
-      if (!m_loggedArms) {
-        auto name = field<const char*>(geometry, VrGame::ObjectName);
-        Logger::info(str::format("VR: Hiding the arm mesh '", name ? name : "", "'"));
-      }
+      if (isArmMesh(geometry, arms))
+        hide(geometry, !m_loggedArms);
+      else if (isRightHandMesh(geometry))
+        hide(geometry, !m_loggedRightHand);
     });
 
-    if (!m_loggedArms && m_hiddenMeshes.empty())
+    if (rightHand) {
+      if (uint8_t* weapon = findObject(root, VrGame::WeaponNodeName))
+        hide(weapon, !m_loggedRightHand);
+
+      m_loggedRightHand = true;
+    }
+
+    if (!m_loggedArms && m_hiddenObjects.empty())
       Logger::warn("VR: No arm mesh was found, the arms stay visible");
 
     m_loggedArms = true;
   }
 
 
-  void VrWeaponHand::showArms(uint8_t* root) {
-    if (m_hiddenMeshes.empty())
+  void VrWeaponHand::hide(uint8_t* object, bool log) {
+    uint32_t& flags = field<uint32_t>(object, VrGame::ObjectFlags);
+    bool hidden = std::find(m_hiddenObjects.begin(), m_hiddenObjects.end(), object) != m_hiddenObjects.end();
+
+    // An object the game culls itself is left to the game, so that it is
+    // not shown again when the VR layer lets go of it
+    if (!hidden && (flags & VrGame::ObjectFlagAppCulled))
       return;
 
-    // Meshes no longer in the model may have been freed, so only the ones
+    flags |= VrGame::ObjectFlagAppCulled;
+
+    if (hidden)
+      return;
+
+    m_hiddenObjects.push_back(object);
+
+    if (log) {
+      auto name = field<const char*>(object, VrGame::ObjectName);
+      Logger::info(str::format("VR: Hiding '", name ? name : "", "'"));
+    }
+  }
+
+
+  void VrWeaponHand::showArms(uint8_t* root) {
+    m_hidesRightHand = false;
+
+    if (m_hiddenObjects.empty())
+      return;
+
+    // Objects no longer in the model may have been freed, so only the ones
     // still found in it are touched
     forEachObject(root, MaxModelDepth, [this] (uint8_t* object) {
-      if (std::find(m_hiddenMeshes.begin(), m_hiddenMeshes.end(), object) != m_hiddenMeshes.end())
+      if (std::find(m_hiddenObjects.begin(), m_hiddenObjects.end(), object) != m_hiddenObjects.end())
         field<uint32_t>(object, VrGame::ObjectFlags) &= ~VrGame::ObjectFlagAppCulled;
     });
 
-    m_hiddenMeshes.clear();
+    m_hiddenObjects.clear();
   }
 
 

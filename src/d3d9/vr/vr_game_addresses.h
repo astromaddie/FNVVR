@@ -111,6 +111,14 @@ namespace dxvk {
     constexpr uint8_t   FirstPersonCamera[]       = { 0x81, 0xC1, 0xA0, 0x00, 0x00, 0x00 };
 
     /**
+     * RenderPipBoy (0x008761E0) sets the first-person root's translation to
+     * the draw origin and updates it again at this site (NiAVObject::Update),
+     * before it draws the model for depth and the Pip-Boy screen, see
+     * findings/pipboy.md §3.4
+     */
+    constexpr uintptr_t PipBoyModelUpdateCallSite = 0x008762C6;
+
+    /**
      * Call to Projectile::Create in TESObjectWEAP::Fire (0x00523150), and the
      * function: __cdecl with 16 arguments, see ProjectileCreateFn
      */
