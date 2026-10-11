@@ -173,6 +173,12 @@ namespace dxvk {
     bool   m_menuRendered  = false;
     bool   m_hudIsolated   = false;
     bool   m_hudShown      = false;
+
+    // The Pip-Boy is not on the panel, but the menus the game draws over
+    // it, such as message boxes, are: the panel is shown only while the
+    // left eye's pass finds one
+    bool   m_overPipBoy    = false;
+    bool   m_menuDrawn     = false;
     bool   m_interfaceFailed = false;
     bool   m_loggedHudFailure = false;
 

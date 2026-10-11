@@ -56,6 +56,15 @@ namespace dxvk {
     }
 
     /**
+     * \brief Checks whether the interface pass draws a menu other than the HUD
+     *
+     * Valid once the game culled the menus for the pass. While the Pip-Boy
+     * is open, the game culls the menus drawn on its screen, so only the
+     * ones drawn over it, such as message boxes, are left.
+     */
+    bool isMenuDrawn() const;
+
+    /**
      * \brief Clears the flags set by the last isolate call
      */
     void restore();
