@@ -157,6 +157,11 @@ namespace dxvk {
     renderer->m_pipBoyRender = VrPipBoyRender::install(
       [self] (const VrVector3* shift) { self->setScreenPass(shift); });
 
+    renderer->m_pipBoyAnimation = VrPipBoyAnimation::install();
+
+    if (!renderer->m_pipBoyAnimation)
+      Logger::info("VR: The Pip-Boy animation waits were not found, the arm is raised and lowered as in the game");
+
     g_stereoRenderer = renderer.get();
     return renderer;
   }
