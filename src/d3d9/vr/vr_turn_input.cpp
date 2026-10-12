@@ -44,4 +44,12 @@ namespace dxvk {
     m_armed = false;
   }
 
+
+  void VrTurnInput::setConfig(const VrTurnConfig& config) {
+    if (config.smooth != m_config.smooth)
+      m_armed = false;
+
+    m_config = config;
+  }
+
 }

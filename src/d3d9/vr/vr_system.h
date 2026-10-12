@@ -6,6 +6,7 @@
 
 #include "vr_backend.h"
 #include "vr_game_resolution.h"
+#include "vr_options.h"
 #include "vr_stereo_renderer.h"
 
 namespace dxvk {
@@ -103,6 +104,8 @@ namespace dxvk {
     bool                                 m_hasSession = false;
 
     void chooseResolution();
+
+    void applyOptions(const VrOptions& options);
 
   };
 

@@ -40,6 +40,12 @@ namespace dxvk {
   }
 
 
+  void VrControls::setTurnConfig(const VrTurnConfig& turn) {
+    if (m_headLook)
+      m_headLook->setTurnConfig(turn);
+  }
+
+
   void VrControls::update(
     const VrInputState&         input,
           VrGameStateKind       state,

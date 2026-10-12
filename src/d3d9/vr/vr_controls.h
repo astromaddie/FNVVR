@@ -32,6 +32,11 @@ namespace dxvk {
     void setHeadLook(std::unique_ptr<VrHeadLook> headLook);
 
     /**
+     * \brief Changes how the turning stick turns
+     */
+    void setTurnConfig(const VrTurnConfig& turn);
+
+    /**
      * \brief Processes the input sampled for a frame
      *
      * \param [in] input Input returned by the backend

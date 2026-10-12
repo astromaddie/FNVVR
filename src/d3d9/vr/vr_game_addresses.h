@@ -636,6 +636,67 @@ namespace dxvk {
     constexpr uint16_t  BillboardModeMask        = 0x7;
     constexpr uint16_t  BillboardAlwaysFaceCenter = 3;
 
+    /**
+     * Settings pages of the start menu, see findings/options-menu.md. The
+     * menu builds its pages from two global arrays of option objects, filled
+     * by CreateMenuElements; an option's mask selects the page it shows on.
+     *
+     * - StartMenuGlobal: StartMenu*, null when no start menu exists;
+     * - the option array and the user option array, and their append
+     *   function (__thiscall on the array, one stack argument: a pointer to
+     *   the option pointer), called at ControlsOptionAppendCallSite for the
+     *   Controls entry of the Settings list;
+     * - OptionConstruct: __thiscall (text, callback, mask), objects are
+     *   OptionSize bytes from the game's heap (HeapAllocate, __cdecl size);
+     * - UserOptionConstruct: __cdecl (object, text, callback, mask, type,
+     *   number of settings, arrow spacing, then one name per setting),
+     *   objects are UserOptionSize bytes;
+     * - PopulateOptions: __thiscall on the menu with a mask, shows the
+     *   options of a page; SetListEnabled: __thiscall on a list box with a
+     *   bool; the Settings list box is at StartMenuSettingsList;
+     * - StartMenuFlags: bit StartMenuOptionsInitialised is set once the
+     *   option callbacks were run to initialise their values;
+     * - the tile of the menu holds the page's _center_x, copied from the
+     *   Gameplay page's trait (PageCenterTraitGameplay);
+     * - Tile::GetFloat and Tile::SetFloat: __thiscall on the tile with the
+     *   trait (and a float and a bool); AddUserTrait: __cdecl (name, id).
+     */
+    constexpr uintptr_t StartMenuGlobal              = 0x011DAAC0;
+    constexpr uintptr_t OptionArray                  = 0x011DAB88;
+    constexpr uintptr_t UserOptionArray              = 0x011DAB50;
+    constexpr uintptr_t OptionArrayAppend            = 0x007CB2E0;
+    constexpr uintptr_t ControlsOptionAppendCallSite = 0x007CCD02;
+    constexpr uintptr_t OptionConstruct              = 0x007CE620;
+    constexpr uintptr_t UserOptionConstruct          = 0x007D6350;
+    constexpr uintptr_t HeapAllocate                 = 0x00401000;
+    constexpr uintptr_t PopulateOptions              = 0x007D42B0;
+    constexpr uintptr_t SetListEnabled               = 0x007D74F0;
+    constexpr uintptr_t TileGetFloat                 = 0x00A011B0;
+    constexpr uintptr_t TileSetFloat                 = 0x00A012D0;
+    constexpr uintptr_t AddUserTrait                 = 0x00A00940;
+    constexpr size_t    OptionSize                   = 0x10;
+    constexpr size_t    UserOptionSize               = 0x30;
+    constexpr uintptr_t StartMenuSettingsList        = 0xB4;
+    constexpr uintptr_t StartMenuTile                = 0x04;
+    constexpr uintptr_t StartMenuFlags               = 0x1A8;
+    constexpr uint32_t  StartMenuOptionsInitialised  = 0x20;
+    constexpr uintptr_t UserOptionValue              = 0x14;
+    constexpr uintptr_t UserOptionDefaultValue       = 0x18;
+    constexpr uint32_t  OptionMaskSettingsList       = 0x04;
+    constexpr uint32_t  PageCenterTraitGameplay      = 0x1005;
+    constexpr char      CenterXTraitName[]           = "_center_x";
+
+    /** First bytes of the functions above that the options page calls, checked before hooking */
+    constexpr uint8_t   OptionConstructPrologue[]     = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x8B };
+    constexpr uint8_t   UserOptionConstructPrologue[] = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x18, 0xEA };
+    constexpr uint8_t   PopulateOptionsPrologue[]     = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x44, 0x89, 0x4D };
+    constexpr uint8_t   OptionArrayAppendPrologue[]   = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x08, 0x89, 0x4D };
+    constexpr uint8_t   TileGetFloatPrologue[]        = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x0C, 0x89, 0x4D };
+    constexpr uint8_t   TileSetFloatPrologue[]        = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x62, 0xCD };
+    constexpr uint8_t   AddUserTraitPrologue[]        = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x94, 0xCC };
+    constexpr uint8_t   HeapAllocatePrologue[]        = { 0x55, 0x8B, 0xEC, 0x8B, 0x45, 0x08, 0x50, 0xE8 };
+    constexpr uint8_t   SetListEnabledPrologue[]      = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x4E, 0xEA };
+
   }
 
 }

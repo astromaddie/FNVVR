@@ -20,6 +20,8 @@
 #include "vr_gamepad_head.h"
 #include "vr_gamepad_hook.h"
 #include "vr_menu_cursor.h"
+#include "vr_options_file.h"
+#include "vr_options_menu.h"
 #include "vr_stereo_renderer.h"
 #include "vr_system.h"
 
@@ -135,6 +137,14 @@ namespace dxvk {
     turn.snapAngle   = config.getOption<float>("d3d9.vrSnapTurnAngle", turn.snapAngle);
     turn.smoothSpeed = config.getOption<float>("d3d9.vrSmoothTurnSpeed", turn.smoothSpeed);
 
+    // What the player picked on the options page overrides dxvk.conf
+    VrOptions options;
+    options.smoothTurn      = turn.smooth;
+    options.smoothTurnSpeed = turn.smoothSpeed;
+    VrOptionsFile::load(options);
+    turn.smooth      = options.smoothTurn;
+    turn.smoothSpeed = options.smoothTurnSpeed;
+
     if (auto* emulator = dynamic_cast<VrEmulatorBackend*>(backend.get())) {
       VrEmulatorKeyboard keyboard;
       emulator->setInputSource([keyboard] {
@@ -165,6 +175,11 @@ namespace dxvk {
 
     g_vrSystem.reset(new VrSystem(std::move(backend), showPreview, panel, turn, weaponInHand, headsetResolution));
     DxvkInstance::registerExtensionProvider(g_vrSystem->m_extensionProvider.get());
+
+    VrOptionsMenu::install(options, [] (const VrOptions& changed) {
+      if (g_vrSystem)
+        g_vrSystem->applyOptions(changed);
+    });
   }
 
 
@@ -196,6 +211,17 @@ namespace dxvk {
 
     Logger::info(str::format("VR: The game renders at ", size.width, "x", size.height,
       " in a window, for an eye resolution of ", eye.width, "x", eye.height));
+  }
+
+
+  void VrSystem::applyOptions(const VrOptions& options) {
+    m_turnConfig.smooth      = options.smoothTurn;
+    m_turnConfig.smoothSpeed = options.smoothTurnSpeed;
+
+    if (m_stereoRenderer)
+      m_stereoRenderer->setTurnConfig(m_turnConfig);
+
+    VrOptionsFile::save(options);
   }
 
 

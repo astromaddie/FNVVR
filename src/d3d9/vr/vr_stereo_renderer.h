@@ -125,6 +125,15 @@ namespace dxvk {
      */
     bool onPresent(IDirect3DSwapChain9* swapchain);
 
+    /**
+     * \brief Changes how the turning stick turns
+     *
+     * Called from the game's options page, on the game's thread.
+     */
+    void setTurnConfig(const VrTurnConfig& turn) {
+      m_controls.setTurnConfig(turn);
+    }
+
   private:
 
     static constexpr uint32_t NoEye = ~0u;

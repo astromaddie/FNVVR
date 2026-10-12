@@ -57,6 +57,13 @@ namespace dxvk {
     void update(const VrPose* headInReference, float turnStick, float dt);
 
     /**
+     * \brief Changes how the turning stick turns
+     */
+    void setTurnConfig(const VrTurnConfig& turn) {
+      m_turn.setConfig(turn);
+    }
+
+    /**
      * \brief Replaces the game's camera rotation by the body's
      *
      * Only while the heading and look angle are still the ones written
