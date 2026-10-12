@@ -95,6 +95,17 @@ namespace dxvk {
     constexpr uint8_t   ControlLook       = 0x2;
 
     /**
+     * Call in PlayerCharacter::UpdateCamera to
+     * Animation::GetSmallestHavokBlendValue (__thiscall with the head's
+     * parent bone, returns a float). Below 1, an animation moves the
+     * third-person head, such as getting out of bed at a new game, and the
+     * camera is pulled from the first-person camera node towards the
+     * third-person one. See findings/camera.md.
+     */
+    constexpr uintptr_t HeadBlendCallSite = 0x0094B24B;
+    constexpr uintptr_t HeadBlend         = 0x00496550;
+
+    /**
      * Weapon in the hand, see findings/weapon.md.
      *
      * Main::PlaceCamera draws the first-person model around the origin: it

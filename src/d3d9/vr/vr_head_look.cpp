@@ -19,6 +19,9 @@ namespace dxvk {
     // Setters of the heading and the look angle, __thiscall with a float
     using SetAngleFn  = void (__fastcall*)(uint8_t* object, void* unused, float angle);
 
+    // Animation::GetSmallestHavokBlendValue, __thiscall with a bone
+    using HeadBlendFn = float (__fastcall*)(void* animation, void* unused, void* bone);
+
     // Sit state getter, __thiscall without arguments
     using SitStateFn  = int32_t (__fastcall*)(uint8_t* object, void* unused);
 
@@ -86,6 +89,10 @@ namespace dxvk {
     if (!VrGameMemory::redirectCall(VrGame::FocusOnActorTurnCallSite,
         VrGame::FocusOnActor, reinterpret_cast<const void*>(&VrHeadLook::focusHook)))
       Logger::warn("VR: The dialogue camera was not found, dialogues turn the view");
+
+    if (!VrGameMemory::redirectCall(VrGame::HeadBlendCallSite,
+        VrGame::HeadBlend, reinterpret_cast<const void*>(&VrHeadLook::headBlendHook)))
+      Logger::warn("VR: The animated camera was not found, the view swings with the head while an animation moves it");
 
     std::unique_ptr<VrHeadLook> headLook(new VrHeadLook(turn));
     g_headLook = headLook.get();
@@ -166,6 +173,19 @@ namespace dxvk {
   }
 
 
+  float __fastcall VrHeadLook::headBlendHook(
+          void*                 animation,
+          void*                 unused,
+          void*                 bone) {
+    float blend = reinterpret_cast<HeadBlendFn>(VrGame::HeadBlend)(animation, nullptr, bone);
+
+    if (g_headLook)
+      g_headLook->m_cameraAnimated = blend < 1.0f;
+
+    return blend;
+  }
+
+
   bool VrHeadLook::headControlsLook(uint8_t* player) {
     if (*reinterpret_cast<const uint32_t*>(VrGame::VatsCameraState) != 0)
       return false;
@@ -189,23 +209,36 @@ namespace dxvk {
 
     float heading = readField<float>(player, VrGame::RefHeading);
 
+    // While an animation moves the head, the camera follows the third-person
+    // head, which the heading turns and the look angle bends around the
+    // body: turning or nodding the head would swing the view. The player
+    // then keeps the body heading and looks level; the eyes still turn with
+    // the head.
+    float yaw   = m_cameraAnimated ? 0.0f : m_head.yaw;
+    float pitch = m_cameraAnimated ? 0.0f : m_head.pitch;
+
+    if (m_cameraAnimated && !m_loggedAnimated) {
+      Logger::info("VR: An animation moves the camera, the head no longer turns the player");
+      m_loggedAnimated = true;
+    }
+
     // Whatever turned the player since the last update, the mouse
     // included, turns the body
     if (!m_active)
-      m_bodyHeading = heading - m_head.yaw;
+      m_bodyHeading = heading - yaw;
     else
       m_bodyHeading += angleDifference(heading, m_writtenHeading);
 
     m_bodyHeading = vrWrapHeading(m_bodyHeading + m_pendingTurn);
     m_pendingTurn = 0.0f;
 
-    virtualFunction<SetAngleFn>(player, VrGame::SetHeadingSlot)(player, nullptr, vrWrapHeading(m_bodyHeading + m_head.yaw));
-    reinterpret_cast<SetAngleFn>(VrGame::SetLooking)(player, nullptr, m_head.pitch);
+    virtualFunction<SetAngleFn>(player, VrGame::SetHeadingSlot)(player, nullptr, vrWrapHeading(m_bodyHeading + yaw));
+    reinterpret_cast<SetAngleFn>(VrGame::SetLooking)(player, nullptr, pitch);
 
     // The setters wrap and clamp
     m_writtenHeading = readField<float>(player, VrGame::RefHeading);
     m_writtenPitch   = readField<float>(player, VrGame::RefPitch);
-    m_bodyHeading    = vrWrapHeading(m_writtenHeading - m_head.yaw);
+    m_bodyHeading    = vrWrapHeading(m_writtenHeading - yaw);
     m_active         = true;
 
     if (!m_loggedActive) {
