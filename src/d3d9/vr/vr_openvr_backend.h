@@ -99,6 +99,14 @@ namespace dxvk {
 
     bool initializeInput();
 
+    /**
+     * \brief Logs the headset model and each eye's projection and offset
+     *
+     * Lets logs from different headsets be compared when the image
+     * looks distorted on one of them.
+     */
+    void logEyeGeometry();
+
     void readActions(VrInputState& input);
 
     /**

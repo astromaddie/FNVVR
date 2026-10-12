@@ -108,6 +108,21 @@ namespace dxvk {
       return std::string(buffer.data(), size);
     }
 
+    std::string headsetString(vr::IVRSystem* system, vr::TrackedDeviceProperty property) {
+      vr::ETrackedPropertyError error = vr::TrackedProp_Success;
+      uint32_t length = system->GetStringTrackedDeviceProperty(
+        vr::k_unTrackedDeviceIndex_Hmd, property, nullptr, 0, &error);
+
+      if (!length)
+        return "(unknown)";
+
+      std::vector<char> buffer(length);
+      length = system->GetStringTrackedDeviceProperty(
+        vr::k_unTrackedDeviceIndex_Hmd, property, buffer.data(), length, &error);
+
+      return error == vr::TrackedProp_Success ? trimTerminator(std::move(buffer), length) : "(unknown)";
+    }
+
   }
 
 
@@ -220,7 +235,49 @@ namespace dxvk {
     m_inputReady = initializeInput();
 
     Logger::info("VR: OpenVR initialized");
+    logEyeGeometry();
     return true;
+  }
+
+
+  void VrOpenVrBackend::logEyeGeometry() {
+    constexpr float DegreesPerRadian = 57.2957795f;
+    constexpr float MillimetresPerMetre = 1000.0f;
+
+    VrExtent extent = recommendedEyeExtent();
+
+    Logger::info(str::format("VR: Headset ", headsetString(m_runtime->system, vr::Prop_ModelNumber_String),
+      " by ", headsetString(m_runtime->system, vr::Prop_ManufacturerName_String),
+      ", recommended eye size ", extent.width, "x", extent.height));
+
+    for (uint32_t i = 0; i < VrEyeCount; i++) {
+      vr::EVREye eye = i == uint32_t(VrEye::Left) ? vr::Eye_Left : vr::Eye_Right;
+
+      float left = 0.0f, right = 0.0f, top = 0.0f, bottom = 0.0f;
+      m_runtime->system->GetProjectionRaw(eye, &left, &right, &top, &bottom);
+      VrFov fov = vrFovFromProjectionRaw(left, right, top, bottom);
+
+      // Tilt of the eye's display relative to the head, zero unless the
+      // displays are canted
+      VrPose eyeInHead = poseFromOpenVr(getEyeToHeadTransform(m_runtime->system, eye));
+      VrVector3 forward = vrRotate(eyeInHead.orientation, VrVector3 { 0.0f, 0.0f, -1.0f });
+      VrVector3 up      = vrRotate(eyeInHead.orientation, VrVector3 { 0.0f, 1.0f, 0.0f });
+
+      float yaw   = std::atan2(-forward.x, -forward.z);
+      float pitch = std::asin(std::clamp(forward.y, -1.0f, 1.0f));
+      float roll  = std::atan2(-up.x, up.y);
+
+      Logger::info(str::format("VR: ", eye == vr::Eye_Left ? "Left" : "Right", " eye: raw projection left ", left,
+        " right ", right, " top ", top, " bottom ", bottom,
+        " (", (fov.angleRight - fov.angleLeft) * DegreesPerRadian, "x",
+        (fov.angleUp - fov.angleDown) * DegreesPerRadian, " degrees, aspect ",
+        (right - left) / (bottom - top), "), offset from the head ",
+        eyeInHead.position.x * MillimetresPerMetre, ", ",
+        eyeInHead.position.y * MillimetresPerMetre, ", ",
+        eyeInHead.position.z * MillimetresPerMetre, " mm, yaw ",
+        yaw * DegreesPerRadian, " pitch ", pitch * DegreesPerRadian,
+        " roll ", roll * DegreesPerRadian, " degrees"));
+    }
   }
 
 
