@@ -304,6 +304,7 @@ namespace dxvk {
     auto views = m_backend.locateViews(timing.predictedDisplayTime);
 
     m_gameCamera     = m_renderCamera.save();
+    logGameFrustum();
     m_gameCameraPose = m_renderCamera.readPose();
 
     // The game placed its first-person model for its own camera
@@ -600,11 +601,86 @@ namespace dxvk {
     if (m_eye == NoEye || m_eyeCopied[m_eye])
       return;
 
+    logEyeCapture();
+
     m_eyeCopied[m_eye] = copyRenderTarget(m_eye);
 
     if (!m_eyeCopied[m_eye] && !m_loggedFailure) {
       Logger::err("VR: Failed to copy the rendered eye image");
       m_loggedFailure = true;
+    }
+  }
+
+
+  void VrStereoRenderer::logGameFrustum() {
+    constexpr float DegreesPerRadian = 57.2957795f;
+    constexpr float Tolerance = 1e-4f;
+
+    const float* frustum = m_gameCamera.frustum;
+    bool changed = false;
+
+    for (uint32_t i = 0; i < 4; i++)
+      changed |= std::abs(frustum[i] - m_loggedGameFrustum[i]) > Tolerance;
+
+    if (!changed || m_gameFrustumLogs > MaxGameFrustumLogs)
+      return;
+
+    std::copy(frustum, frustum + 4, m_loggedGameFrustum);
+
+    if (m_gameFrustumLogs++ == MaxGameFrustumLogs) {
+      Logger::info("VR: The game's camera frustum keeps changing, further changes are not logged");
+      return;
+    }
+
+    // Left, right, top and bottom are tangents of the half angles
+    Logger::info(str::format("VR: The game's camera frustum is left ", frustum[0], " right ", frustum[1],
+      " top ", frustum[2], " bottom ", frustum[3], " (",
+      (std::atan(frustum[1]) - std::atan(frustum[0])) * DegreesPerRadian, "x",
+      (std::atan(frustum[2]) - std::atan(frustum[3])) * DegreesPerRadian, " degrees), near ",
+      frustum[4], " far ", frustum[5]));
+  }
+
+
+  void VrStereoRenderer::logEyeCapture() {
+    D3DSURFACE_DESC target = { };
+    m_gameTarget->GetDesc(&target);
+
+    if (target.Width != m_loggedTargetWidth || target.Height != m_loggedTargetHeight) {
+      D3DVIEWPORT9 viewport = { };
+      m_device->GetViewport(&viewport);
+
+      D3DSURFACE_DESC eye = { };
+      m_eyeTextures[m_eye]->GetLevelDesc(0, &eye);
+
+      Logger::info(str::format("VR: Eye image copied from a ", target.Width, "x", target.Height,
+        " game target (viewport ", viewport.X, ",", viewport.Y, " ", viewport.Width, "x", viewport.Height,
+        ") into a ", eye.Width, "x", eye.Height, " eye texture"));
+
+      m_loggedTargetWidth  = target.Width;
+      m_loggedTargetHeight = target.Height;
+    }
+
+    if (m_warnedEyeFrustum || m_screenPass)
+      return;
+
+    // The game may set its own field of view while it draws the frame
+    VrGameFrustum written = vrComputeGameFrustum(m_eyeView->fov);
+    const float expected[4] = { written.left, written.right, written.top, written.bottom };
+    const float* used = m_renderCamera.save().frustum;
+
+    for (uint32_t i = 0; i < 4; i++) {
+      if (std::abs(used[i] - expected[i]) > 1e-4f) {
+        Logger::warn(str::format("VR: The eye was drawn with the frustum left ", used[0], " right ", used[1],
+          " top ", used[2], " bottom ", used[3], " instead of the headset's left ", expected[0],
+          " right ", expected[1], " top ", expected[2], " bottom ", expected[3]));
+        m_warnedEyeFrustum = true;
+        return;
+      }
+    }
+
+    if (!m_loggedEyeFrustum) {
+      Logger::info("VR: The eye is drawn with the headset's frustum");
+      m_loggedEyeFrustum = true;
     }
   }
 

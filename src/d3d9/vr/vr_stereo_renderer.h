@@ -242,6 +242,17 @@ namespace dxvk {
     bool   m_loggedStart   = false;
     bool   m_loggedFailure = false;
 
+    // Geometry logs, to compare headsets whose image looks distorted. The
+    // game's own frustum changes during dialogue zooms, so only the first
+    // changes are logged
+    constexpr static uint32_t MaxGameFrustumLogs = 8;
+    float    m_loggedGameFrustum[4] = { };
+    uint32_t m_gameFrustumLogs      = 0;
+    uint32_t m_loggedTargetWidth    = 0;
+    uint32_t m_loggedTargetHeight   = 0;
+    bool     m_loggedEyeFrustum     = false;
+    bool     m_warnedEyeFrustum     = false;
+
     static void __fastcall swapHook(
             void*                 main,
             void*                 unused);
@@ -302,6 +313,17 @@ namespace dxvk {
       const VrInputState&         input,
             VrGameStateKind       state,
             float                 dt);
+
+    /**
+     * \brief Logs the frustum the game set for its camera when it changes
+     */
+    void logGameFrustum();
+
+    /**
+     * \brief Logs the viewport and sizes of the eye copy, and warns when the
+     *    frustum the eye is drawn with is not the one written for it
+     */
+    void logEyeCapture();
 
     void captureEye();
 

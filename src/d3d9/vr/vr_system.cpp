@@ -1,3 +1,7 @@
+#include <windows.h>
+#include <tlhelp32.h>
+
+#include <cwctype>
 #include <memory>
 
 #include "../../dxvk/dxvk_instance.h"
@@ -23,6 +27,54 @@ namespace dxvk {
 
   static std::unique_ptr<VrSystem> g_vrSystem;
   static bool                      g_vrInitialized = false;
+
+
+  namespace {
+
+    std::wstring lowercase(std::wstring text) {
+      for (wchar_t& c : text)
+        c = wchar_t(std::towlower(c));
+      return text;
+    }
+
+    /**
+     * \brief Logs the modules loaded from outside the Windows folder
+     *
+     * Script extenders, plugins and other graphics wrappers (ENB, ReShade)
+     * can change the camera or the image, so their presence is part of
+     * what a distortion report needs.
+     */
+    void logLoadedModules() {
+      WCHAR windows[MAX_PATH] = { };
+      UINT length = GetSystemWindowsDirectoryW(windows, MAX_PATH);
+      std::wstring windowsPath = lowercase(std::wstring(windows, length < MAX_PATH ? length : 0));
+
+      HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, 0);
+
+      if (snapshot == INVALID_HANDLE_VALUE)
+        return;
+
+      std::string list;
+      MODULEENTRY32W entry = { };
+      entry.dwSize = sizeof(entry);
+
+      for (BOOL found = Module32FirstW(snapshot, &entry); found; found = Module32NextW(snapshot, &entry)) {
+        std::wstring path = lowercase(entry.szExePath);
+
+        if (!windowsPath.empty() && path.compare(0, windowsPath.size(), windowsPath) == 0)
+          continue;
+
+        if (!list.empty())
+          list += ", ";
+
+        list += str::fromws(entry.szExePath);
+      }
+
+      CloseHandle(snapshot);
+      Logger::info(str::format("VR: Modules loaded outside the Windows folder: ", list));
+    }
+
+  }
 
 
   VrSystem::VrSystem(std::unique_ptr<IVRBackend> backend, bool showPreview,
@@ -168,6 +220,8 @@ namespace dxvk {
 
     if (!VrD3D9Bridge::queryGraphicsBinding(device, binding))
       return false;
+
+    logLoadedModules();
 
     VkPhysicalDevice preferred = m_backend->selectPhysicalDevice(binding.instance);
 
