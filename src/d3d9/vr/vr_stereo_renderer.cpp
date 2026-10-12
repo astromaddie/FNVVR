@@ -142,6 +142,11 @@ namespace dxvk {
     if (weaponInHand)
       renderer->m_weaponHand = VrWeaponHand::install();
 
+    renderer->m_skyAnchor = VrSkyAnchor::install();
+
+    if (!renderer->m_skyAnchor)
+      Logger::warn("VR: The sky placement was not found, the sky is drawn around the camera instead of each eye");
+
     // The gaze finds the Pip-Boy's screen through the free left hand's pose
     renderer->m_pipBoyGazeAvailable = renderer->m_weaponHand && renderer->m_pipBoyControl.initialize();
 
@@ -469,7 +474,14 @@ namespace dxvk {
     m_hudIsolated = false;
 
     applyEyePose();
+
+    if (m_skyAnchor)
+      m_skyAnchor->setEye(&m_eyePosition);
+
     g_originalSwap(main, nullptr);
+
+    if (m_skyAnchor)
+      m_skyAnchor->setEye(nullptr);
 
     // Normally restored right after the interface pass
     m_hudLayers.restore();

@@ -200,6 +200,7 @@ namespace dxvk {
     /** NiAVObject transforms: parent, local rotation (row-major 3x3) and world transform */
     constexpr uintptr_t ObjectParent          = 0x18;
     constexpr uintptr_t ObjectLocalRotation   = 0x34;
+    constexpr uintptr_t ObjectLocalTranslation = 0x58;
     constexpr uintptr_t ObjectWorldRotation   = 0x68;
     constexpr uintptr_t ObjectWorldTranslation = 0x8C;
     constexpr uintptr_t ObjectWorldScale      = 0x98;
@@ -581,6 +582,16 @@ namespace dxvk {
      * again and moves the world camera into that space.
      */
     constexpr uintptr_t FirstPersonDrawOrigin = 0x011F426C;
+
+    /**
+     * Sky placement, see findings/sky.md. DrawWorld_Init (above) moves the
+     * sky root and the weather root (NiNode* globals) to the camera root's
+     * translation at the start of the world render. Its calls in the world
+     * render and the wireframe render.
+     */
+    constexpr uintptr_t DrawWorldInitCallSites[] = { 0x00870C1E, 0x00870A56 };
+    constexpr uintptr_t SkyRoot                  = 0x011DEB34;
+    constexpr uintptr_t WeatherRoot              = 0x011DEDA4;
 
   }
 

@@ -37,6 +37,7 @@ vr_dxvk_src = files([
   'vr_pipboy_render.cpp',
   'vr_game_resolution.cpp',
   'vr_preview_window.cpp',
+  'vr_sky_anchor.cpp',
   'vr_stereo_renderer.cpp',
   'vr_weapon_hand.cpp',
 ])
