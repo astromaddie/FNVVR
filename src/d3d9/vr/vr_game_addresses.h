@@ -357,17 +357,6 @@ namespace dxvk {
     constexpr uintptr_t ProcessFurniture         = 0x140;
 
     /**
-     * Read by the furniture diagnostic: the process's sit/sleep state byte
-     * (+0x13D, read by SitOrSleep), its anim action (vtable +0x3E4, -1 when
-     * none), whether the process is alert (vtable +0x31C) and the actor's
-     * third-person AnimData (vtable +0x1E4).
-     */
-    constexpr uintptr_t ProcessSitSleepState     = 0x13D;
-    constexpr uintptr_t ProcessAnimActionSlot    = 0x3E4;
-    constexpr uintptr_t ProcessIsAlertSlot       = 0x31C;
-    constexpr uintptr_t ActorGetAnimationSlot    = 0x1E4;
-
-    /**
      * Main's copy of the bStaticMenuBackground:Display setting, a bool read
      * once at startup (stored at 0x0086E123). While it is set, opening most
      * menus renders the world once, blurred by an image space modifier, into

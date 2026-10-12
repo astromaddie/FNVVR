@@ -1,5 +1,4 @@
 #include "../../util/log/log.h"
-#include "../../util/util_string.h"
 
 #include "vr_game_addresses.h"
 #include "vr_game_memory.h"
@@ -13,9 +12,6 @@ namespace dxvk {
     using SetWantDrawnFn   = void (__fastcall*)(uint8_t* actor, void* unused, bool drawn);
     using GetWantDrawnFn   = bool (__fastcall*)(uint8_t* actor, void* unused);
     using SitStateFn       = int32_t (__fastcall*)(uint8_t* actor, void* unused);
-    using ProcessIntFn     = int32_t (__fastcall*)(uint8_t* process, void* unused);
-    using ProcessBoolFn    = bool (__fastcall*)(uint8_t* process, void* unused);
-    using GetAnimationFn   = uint8_t* (__fastcall*)(uint8_t* actor, void* unused);
 
     VrWeaponDrawn* g_weaponDrawn = nullptr;
 
@@ -79,8 +75,6 @@ namespace dxvk {
     if (!process)
       return;
 
-    logFurnitureState(actor, process);
-
     if (reinterpret_cast<GetWantDrawnFn>(VrGame::GetWantWeaponDrawn)(actor, nullptr))
       return;
 
@@ -104,39 +98,6 @@ namespace dxvk {
     if (!m_loggedDraw) {
       Logger::info("VR: The player's weapon is drawn again");
       m_loggedDraw = true;
-    }
-  }
-
-
-  void VrWeaponDrawn::logFurnitureState(uint8_t* actor, uint8_t* process) {
-    // Diagnostic for sitting with the weapon kept drawn: logs each change of
-    // the states MiddleHighProcess::SitOrSleep waits on
-    uint8_t* furniture = field<uint8_t*>(process, VrGame::ProcessFurniture);
-    uint8_t  sitState  = field<uint8_t>(process, VrGame::ProcessSitSleepState);
-
-    if (!furniture && !sitState) {
-      m_furnitureState.clear();
-      return;
-    }
-
-    uint8_t* animData = virtualFunction<GetAnimationFn>(actor, VrGame::ActorGetAnimationSlot)(actor, nullptr);
-
-    uint32_t weaponGroup  = animData ? field<uint16_t>(animData, VrGame::AnimDataSectionGroups + VrGame::AnimSectionWeapon * sizeof(uint16_t)) : 0xFFFFu;
-    uint32_t weaponAction = animData ? reinterpret_cast<GetGroupActionFn>(VrGame::AnimGetGroupAction)(animData, nullptr, VrGame::AnimSectionWeapon) : 0xFFFFu;
-
-    std::string state = str::format(
-      "furniture ", furniture ? "yes" : "no",
-      ", sit state ", uint32_t(sitState),
-      ", anim action ", virtualFunction<ProcessIntFn>(process, VrGame::ProcessAnimActionSlot)(process, nullptr),
-      ", weapon drawn ", uint32_t(virtualFunction<ProcessBoolFn>(process, VrGame::ProcessIsWeaponOutSlot)(process, nullptr)),
-      ", want drawn ", uint32_t(reinterpret_cast<GetWantDrawnFn>(VrGame::GetWantWeaponDrawn)(actor, nullptr)),
-      ", alert ", uint32_t(virtualFunction<ProcessBoolFn>(process, VrGame::ProcessIsAlertSlot)(process, nullptr)),
-      ", weapon group 0x", std::hex, weaponGroup, std::dec,
-      ", weapon group action ", weaponAction);
-
-    if (state != m_furnitureState) {
-      Logger::info(str::format("VR: Furniture: ", state));
-      m_furnitureState = std::move(state);
     }
   }
 
