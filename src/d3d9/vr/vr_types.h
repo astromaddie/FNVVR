@@ -135,7 +135,7 @@ namespace dxvk {
     Jump,
     Reload,
     Sneak,
-    PipBoy,
+    PauseHold,
     Vats,
     Pause,
     Grab,

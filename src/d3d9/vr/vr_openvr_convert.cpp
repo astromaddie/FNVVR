@@ -15,7 +15,7 @@ namespace dxvk {
       "/actions/game/in/jump",
       "/actions/game/in/reload",
       "/actions/game/in/sneak",
-      "/actions/game/in/pipboy",
+      "/actions/game/in/pause_hold",
       "/actions/game/in/vats",
       "/actions/game/in/pause",
       "/actions/game/in/grab",

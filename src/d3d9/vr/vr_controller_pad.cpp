@@ -26,7 +26,6 @@ namespace dxvk {
       { VrAction::Jump,     VrGameControl::Jump      },
       { VrAction::Reload,   VrGameControl::ReadyItem },
       { VrAction::Sneak,    VrGameControl::Sneak     },
-      { VrAction::PipBoy,   VrGameControl::MenuMode  },
       { VrAction::Vats,     VrGameControl::Vats      },
       { VrAction::Grab,     VrGameControl::Grab      },
     };

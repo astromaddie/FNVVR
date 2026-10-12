@@ -14,51 +14,43 @@ namespace {
     return actions;
   }
 
-  // Holds the Pip-Boy action for a duration, then releases it, and counts
+  // Holds the PauseHold action for a duration, then releases it, and counts
   // the frames that report each output
-  struct PipBoyPress {
-    uint32_t pipBoyFrames = 0;
-    uint32_t pauseFrames  = 0;
+  struct HoldPress {
+    uint32_t holdFrames  = 0;
+    uint32_t pauseFrames = 0;
 
-    PipBoyPress(VrActionFilter& filter, float duration) {
+    HoldPress(VrActionFilter& filter, float duration) {
       for (float t = 0.0f; t < duration; t += Frame)
-        count(filter.update(pressed(VrAction::PipBoy), VrInputContext::Game, Frame));
+        count(filter.update(pressed(VrAction::PauseHold), VrInputContext::Game, Frame));
 
       for (uint32_t i = 0; i < 30; i++)
         count(filter.update(VrActionState(), VrInputContext::Game, Frame));
     }
 
     void count(const VrActionState& actions) {
-      pipBoyFrames += actions.isPressed(VrAction::PipBoy) ? 1 : 0;
-      pauseFrames  += actions.isPressed(VrAction::Pause)  ? 1 : 0;
+      holdFrames  += actions.isPressed(VrAction::PauseHold) ? 1 : 0;
+      pauseFrames += actions.isPressed(VrAction::Pause)     ? 1 : 0;
     }
   };
 
 }
 
 
-TEST_CASE(pipboy_tap_opens_the_pipboy_on_release) {
+TEST_CASE(a_short_press_of_pause_hold_does_nothing) {
   VrActionFilter filter;
 
-  VrActionState result = filter.update(pressed(VrAction::PipBoy), VrInputContext::Game, Frame);
-  CHECK(!result.isPressed(VrAction::PipBoy));
-
-  result = filter.update(VrActionState(), VrInputContext::Game, Frame);
-  CHECK(result.isPressed(VrAction::PipBoy));
-  CHECK(!result.isPressed(VrAction::Pause));
+  HoldPress tap(filter, 0.2f);
+  CHECK(tap.holdFrames == 0);
+  CHECK(tap.pauseFrames == 0);
 }
 
 
-TEST_CASE(pipboy_tap_and_hold_are_pulses) {
+TEST_CASE(holding_pause_hold_pauses_once) {
   VrActionFilter filter;
 
-  PipBoyPress tap(filter, 0.2f);
-  CHECK(tap.pipBoyFrames > 0);
-  CHECK(tap.pipBoyFrames <= 10);
-  CHECK(tap.pauseFrames == 0);
-
-  PipBoyPress hold(filter, 2.0f);
-  CHECK(hold.pipBoyFrames == 0);
+  HoldPress hold(filter, 2.0f);
+  CHECK(hold.holdFrames == 0);
   CHECK(hold.pauseFrames > 0);
   CHECK(hold.pauseFrames <= 10);
 }
@@ -66,13 +58,13 @@ TEST_CASE(pipboy_tap_and_hold_are_pulses) {
 
 TEST_CASE(a_pulse_lasts_at_least_one_frame) {
   VrActionFilter filter;
-  filter.update(pressed(VrAction::PipBoy), VrInputContext::Game, 0.5f);
 
-  VrActionState result = filter.update(VrActionState(), VrInputContext::Game, 0.5f);
-  CHECK(result.isPressed(VrAction::PipBoy));
+  VrActionState result = filter.update(pressed(VrAction::PauseHold), VrInputContext::Game, 1.0f);
+  result = filter.update(pressed(VrAction::PauseHold), VrInputContext::Game, 1.0f);
+  CHECK(result.isPressed(VrAction::Pause));
 
   result = filter.update(VrActionState(), VrInputContext::Game, 0.5f);
-  CHECK(!result.isPressed(VrAction::PipBoy));
+  CHECK(!result.isPressed(VrAction::Pause));
 }
 
 

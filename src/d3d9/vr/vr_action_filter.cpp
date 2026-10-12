@@ -9,8 +9,7 @@ namespace dxvk {
     if (context != m_context) {
       m_context    = context;
       m_blocked    = actions.pressed;
-      m_pipBoyDown = false;
-      m_tapPulse   = 0.0f;
+      m_holdDown   = false;
       m_holdPulse  = 0.0f;
     }
 
@@ -22,20 +21,19 @@ namespace dxvk {
     if (context != VrInputContext::Game)
       return result;
 
-    updatePipBoy(result.isPressed(VrAction::PipBoy), dt);
+    updateHold(result.isPressed(VrAction::PauseHold), dt);
 
-    result.setPressed(VrAction::PipBoy, m_tapPulse > 0.0f);
-    result.setPressed(VrAction::Pause,  m_holdPulse > 0.0f || result.isPressed(VrAction::Pause));
+    result.setPressed(VrAction::PauseHold, false);
+    result.setPressed(VrAction::Pause, m_holdPulse > 0.0f || result.isPressed(VrAction::Pause));
 
-    m_tapPulse  -= dt;
     m_holdPulse -= dt;
     return result;
   }
 
 
-  void VrActionFilter::updatePipBoy(bool down, float dt) {
+  void VrActionFilter::updateHold(bool down, float dt) {
     if (down) {
-      if (m_pipBoyDown) {
+      if (m_holdDown) {
         m_heldTime += dt;
       } else {
         m_heldTime  = 0.0f;
@@ -46,11 +44,9 @@ namespace dxvk {
         m_holdFired = true;
         m_holdPulse = PulseTime;
       }
-    } else if (m_pipBoyDown && !m_holdFired) {
-      m_tapPulse = PulseTime;
     }
 
-    m_pipBoyDown = down;
+    m_holdDown = down;
   }
 
 }

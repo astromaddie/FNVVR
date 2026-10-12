@@ -71,7 +71,7 @@
       "requirement": "suggested"
     },
     {
-      "name": "/actions/game/in/pipboy",
+      "name": "/actions/game/in/pause_hold",
       "type": "boolean",
       "requirement": "suggested"
     },
@@ -167,9 +167,9 @@
       "/actions/game/in/jump": "Jump",
       "/actions/game/in/reload": "Reload",
       "/actions/game/in/sneak": "Sneak",
-      "/actions/game/in/pipboy": "Pip-Boy (hold: pause menu)",
+      "/actions/game/in/pause_hold": "Pause menu (hold)",
       "/actions/game/in/vats": "V.A.T.S.",
-      "/actions/game/in/pause": "Pause menu (also a long press of Pip-Boy)",
+      "/actions/game/in/pause": "Pause menu",
       "/actions/game/in/grab": "Grab",
       "/actions/game/out/haptic_left": "Left hand vibration",
       "/actions/game/out/haptic_right": "Right hand vibration",

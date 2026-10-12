@@ -9,11 +9,13 @@ namespace dxvk {
    *
    * Two rules apply:
    *
-   * - The Pip-Boy action has a tap and a hold. A tap opens the Pip-Boy when
-   *   the button is released, holding it for \ref HoldTime opens the pause
-   *   menu. Both menu buttons of the Quest controllers are taken by SteamVR
-   *   and the headset's system, so the pause menu has no button of its own.
-   *   The separate Pause action still works if the user binds it.
+   * - The PauseHold action opens the pause menu once it is held for
+   *   \ref HoldTime, so that a short press does nothing. Both menu buttons
+   *   of the Quest controllers are taken by SteamVR and the headset's
+   *   system, so the pause menu has no button of its own. The separate
+   *   Pause action still opens it at once if the user binds it. The
+   *   Pip-Boy has no button: it opens when the player looks at it (see
+   *   VrPipBoyGaze).
    *
    * - When the context changes, actions that are already held are ignored
    *   until they are released. The same button means something else in a
@@ -24,9 +26,9 @@ namespace dxvk {
 
   public:
 
-    /// How long the Pip-Boy action is held to open the pause menu, in seconds
+    /// How long the PauseHold action is held to open the pause menu, in seconds
     constexpr static float HoldTime  = 0.6f;
-    /// How long a tap or a hold is reported, in seconds, at least one frame
+    /// How long a hold is reported, in seconds, at least one frame
     constexpr static float PulseTime = 0.1f;
 
     /**
@@ -47,13 +49,12 @@ namespace dxvk {
     VrInputContext m_context = VrInputContext::Game;
     uint32_t       m_blocked = 0;
 
-    bool  m_pipBoyDown  = false;
+    bool  m_holdDown    = false;
     bool  m_holdFired   = false;
     float m_heldTime    = 0.0f;
-    float m_tapPulse    = 0.0f;
     float m_holdPulse   = 0.0f;
 
-    void updatePipBoy(bool down, float dt);
+    void updateHold(bool down, float dt);
 
   };
 
