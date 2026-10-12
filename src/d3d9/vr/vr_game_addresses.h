@@ -282,6 +282,8 @@ namespace dxvk {
      */
     constexpr uintptr_t InterfacePipBoyState = 0x4BC;
     constexpr uintptr_t OpenPipBoy           = 0x0070F4E0;
+    /** The game's Pip-Boy control, on release, while the state is 0 (InterfaceManager::Update) */
+    constexpr uintptr_t PipBoyControlOpenCallSite = 0x0070E913;
     constexpr uint8_t   OpenPipBoyPrologue[] = { 0x55, 0x8B, 0xEC, 0x51, 0x56, 0x89, 0x4D, 0xFC,
                                                  0x6A, 0x04, 0x8B, 0x0D, 0x3C, 0xEA, 0x1D, 0x01 };
 

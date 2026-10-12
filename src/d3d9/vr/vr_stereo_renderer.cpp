@@ -46,6 +46,10 @@ namespace dxvk {
     // standing at the origin and looking ahead
     constexpr float DefaultHeadHeight = 1.6f;
 
+    // Frames, counted once the Pip-Boy is closed, during which the game's
+    // Pip-Boy control cannot reopen it after the gaze pressed back
+    constexpr uint32_t PipBoyBackReleaseFrames = 3;
+
     /**
      * \brief Checks whether a state has no 3D scene and is shown on the panel
      */
@@ -646,6 +650,15 @@ namespace dxvk {
       case VrPipBoyRequest::None:
         break;
     }
+
+    // The back button is pressed on the next frame and released on the
+    // one after, and the game sees each change on its following update
+    if (m_closePipBoy)
+      m_pipBoyBackFrames = PipBoyBackReleaseFrames;
+    else if (m_pipBoyBackFrames && gaze.state == VrPipBoyState::Closed)
+      m_pipBoyBackFrames -= 1;
+
+    m_pipBoyControl.blockGameOpen(m_pipBoyBackFrames != 0);
   }
 
 

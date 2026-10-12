@@ -241,6 +241,9 @@ namespace dxvk {
     VrPipBoyGaze        m_pipBoyGaze;
     bool                m_pipBoyGazeAvailable = false;
     bool                m_closePipBoy = false;
+    // The game's Pip-Boy control is blocked until the back button that
+    // closed the Pip-Boy has been released and seen by the game
+    uint32_t            m_pipBoyBackFrames = 0;
     bool                m_menuOverPipBoy = false;
     bool                m_loggedPipBoyGaze = false;
     bool                m_loggedPipBoyGazeAway = false;
