@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <string>
 
 namespace dxvk {
 
@@ -53,6 +54,10 @@ namespace dxvk {
     bool m_loggedHolster   = false;
     bool m_loggedDraw      = false;
     bool m_loggedFurniture = false;
+
+    std::string m_furnitureState;
+
+    void logFurnitureState(uint8_t* actor, uint8_t* process);
 
     static uint32_t __fastcall equipWaitHook(
             uint8_t*              animData,
