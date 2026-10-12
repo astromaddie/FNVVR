@@ -166,6 +166,11 @@ namespace dxvk {
     if (!renderer->m_pipBoyAnimation)
       Logger::info("VR: The Pip-Boy animation waits were not found, the arm is raised and lowered as in the game");
 
+    renderer->m_weaponDrawn = VrWeaponDrawn::install();
+
+    if (!renderer->m_weaponDrawn)
+      Logger::info("VR: The weapon draw code was not found, the weapon is drawn and holstered as in the game");
+
     g_stereoRenderer = renderer.get();
     return renderer;
   }
@@ -277,6 +282,9 @@ namespace dxvk {
       renderPanelFrame(main, state);
       return;
     }
+
+    if (m_weaponDrawn && state == VrGameStateKind::InGame)
+      m_weaponDrawn->update();
 
     m_layer = chooseLayer(state);
     m_hudRendered  = false;

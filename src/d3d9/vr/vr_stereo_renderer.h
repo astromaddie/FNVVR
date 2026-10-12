@@ -15,6 +15,7 @@
 #include "vr_hud_layers.h"
 #include "vr_menu_scenes.h"
 #include "vr_pipboy_animation.h"
+#include "vr_weapon_drawn.h"
 #include "vr_pipboy_control.h"
 #include "vr_pipboy_gaze.h"
 #include "vr_pipboy_render.h"
@@ -230,6 +231,10 @@ namespace dxvk {
 
     // The Pip-Boy opens and closes without the arm animations
     std::unique_ptr<VrPipBoyAnimation> m_pipBoyAnimation;
+
+    // The player's weapon stays drawn, without the draw and holster animations
+    std::unique_ptr<VrWeaponDrawn> m_weaponDrawn;
+
     VrVector3           m_screenShift;
     bool                m_screenPass = false;
 
