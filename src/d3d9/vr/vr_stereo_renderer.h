@@ -6,6 +6,7 @@
 #include "../d3d9_include.h"
 
 #include "../../util/com/com_pointer.h"
+#include "../../util/util_time.h"
 
 #include "vr_backend.h"
 #include "vr_controls.h"
@@ -113,6 +114,11 @@ namespace dxvk {
      * as the main menu's, are copied to the panel here, with the interface.
      * This also catches the frames the game draws outside of its main loop
      * while it loads.
+     *
+     * The game also plays movies, such as the intro of a new game, in a
+     * loop of its own that presents every movie frame and polls the
+     * gamepad to let the player skip the movie. The controllers are read
+     * here for those frames, see \ref updateBlockedInput.
      *
      * \param [in] swapchain Swap chain being presented
      * \returns \c true if the present must be dropped
@@ -223,6 +229,15 @@ namespace dxvk {
     bool                m_loggedPipBoyGaze = false;
     bool                m_loggedPipBoyGazeAway = false;
 
+    // Thread that runs the game's main loop, and whether Main::Swap ran
+    // since the previous present. A present on that thread without a swap
+    // comes from a loop of the game that blocks the main loop.
+    DWORD  m_mainThread    = 0;
+    bool   m_swapped       = false;
+    high_resolution_clock::time_point m_blockedInputTime;
+    bool   m_blockedInput  = false;
+    bool   m_loggedBlockedInput = false;
+
     // Latest tracked head pose, used to place the panel
     VrPose m_headPose;
     bool   m_hasHeadPose   = false;
@@ -294,6 +309,8 @@ namespace dxvk {
     void renderPanelFrame(void* main, VrGameStateKind state);
 
     void trackHead(const VrInputState& input);
+
+    void updateBlockedInput();
 
     VrGameStateKind readGameState();
 

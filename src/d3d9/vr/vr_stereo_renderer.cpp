@@ -241,14 +241,23 @@ namespace dxvk {
     if (m_eye == 0)
       return true;
 
-    if (m_eye == NoEye)
+    if (m_eye == NoEye) {
+      if (!m_swapped && m_mainThread == GetCurrentThreadId())
+        updateBlockedInput();
+
+      m_swapped = false;
       updatePanel(swapchain);
+    }
 
     return false;
   }
 
 
   void VrStereoRenderer::renderFrame(void* main) {
+    m_mainThread   = GetCurrentThreadId();
+    m_swapped      = true;
+    m_blockedInput = false;
+
     disableStaticMenuBackground();
 
     VrGameStateKind state = readGameState();
@@ -378,6 +387,34 @@ namespace dxvk {
     m_backend.submitEmptyFrame(timing.predictedDisplayTime);
 
     g_originalSwap(main, nullptr);
+  }
+
+
+  void VrStereoRenderer::updateBlockedInput() {
+    // A movie (the intro of a new game) runs a loop of its own, which polls
+    // the gamepad to skip the movie but never reaches Main::Swap, so the
+    // controllers would keep the state of the last game frame. They are
+    // read here instead. The runtime is not waited on: the movie paces
+    // itself, and the panel shows its frames.
+    auto now = high_resolution_clock::now();
+
+    float dt = m_blockedInput
+      ? std::chrono::duration<float>(now - m_blockedInputTime).count()
+      : 0.0f;
+
+    if (!m_loggedBlockedInput) {
+      Logger::info("VR: The game presents outside of its main loop, the controllers are read at each present");
+      m_loggedBlockedInput = true;
+    }
+
+    m_blockedInputTime = now;
+    m_blockedInput     = true;
+
+    VrInputState input = m_backend.pollInput(0);
+    trackHead(input);
+
+    m_controls.update(input, readGameState(),
+      m_hasReference ? &m_reference : nullptr, menuPanel(), dt);
   }
 
 
