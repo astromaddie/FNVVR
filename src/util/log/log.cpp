@@ -3,11 +3,12 @@
 #include "log.h"
 
 #include "../util_env.h"
+#include "../config/config.h"
 
 namespace dxvk {
   
   Logger::Logger(const std::string& fileName)
-  : m_minLevel(getMinLogLevel()), m_fileName(fileName) {
+  : m_fileName(fileName) {
 
   }
   
@@ -45,7 +46,16 @@ namespace dxvk {
   }
   
   
+  void Logger::initialize() {
+    // The level can come from dxvk.conf, so it is resolved on first use
+    // and not in the constructor, which runs during static initialization.
+    std::call_once(m_initFlag, [this] { m_minLevel = getMinLogLevel(); });
+  }
+
+
   void Logger::emitMsg(LogLevel level, const std::string& message) {
+    initialize();
+
     if (level >= m_minLevel) {
       std::lock_guard<dxvk::mutex> lock(m_mutex);
       
@@ -127,11 +137,9 @@ namespace dxvk {
     if (path == "none")
       return std::string();
 
-#ifdef _WIN32
-    // Don't create a log file if we're writing to wine's console output
-    if (path.empty() && m_wineLogOutput)
-      return std::string();
-#endif
+    // Without an explicit path, the log goes next to the executable
+    if (path.empty())
+      path = env::getExeDirectory();
 
     if (!path.empty() && *path.rbegin() != '/')
       path += '/';
@@ -152,8 +160,16 @@ namespace dxvk {
       { "none",  LogLevel::None  },
     }};
     
-    const std::string logLevelStr = env::getEnvVar("DXVK_LOG_LEVEL");
-    
+    // The environment wins over dxvk.conf (option dxvk.logLevel)
+    std::string logLevelStr = env::getEnvVar("DXVK_LOG_LEVEL");
+
+    for (const auto& pair : logLevels) {
+      if (logLevelStr == pair.first)
+        return pair.second;
+    }
+
+    logLevelStr = Config::getUserConfig(true).getOption<std::string>("dxvk.logLevel", "");
+
     for (const auto& pair : logLevels) {
       if (logLevelStr == pair.first)
         return pair.second;

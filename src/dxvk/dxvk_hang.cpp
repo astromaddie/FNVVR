@@ -348,6 +348,9 @@ namespace dxvk {
 
     std::string path = env::getEnvVar("DXVK_LOG_PATH");
 
+    if (path.empty())
+      path = env::getExeDirectory();
+
     if (!path.empty() && *path.rbegin() != '/')
       path += '/';
 

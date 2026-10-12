@@ -66,6 +66,13 @@ namespace dxvk::env {
    * \returns Path to executable
    */
   std::string getExePath();
+
+  /**
+   * \brief Gets the directory containing the executable
+   * \returns Directory path without a trailing slash,
+   *    or an empty string if the path is unknown
+   */
+  std::string getExeDirectory();
   
   /**
    * \brief Sets name of the calling thread

@@ -85,6 +85,16 @@ namespace dxvk::env {
   }
 
 
+  std::string getExeDirectory() {
+    std::string fullPath = getExePath();
+    auto n = fullPath.find_last_of(env::PlatformDirSlash);
+
+    return (n != std::string::npos)
+      ? fullPath.substr(0, n)
+      : std::string();
+  }
+
+
   std::string getExePath() {
 #if defined(_WIN32)
     std::vector<WCHAR> exePath;

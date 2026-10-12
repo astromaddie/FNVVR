@@ -99,9 +99,11 @@ namespace dxvk {
      * 
      * Reads options from the configuration file,
      * if it can be found, or an empty option set.
+     * \param [in] quiet Do not log anything. Needed by the
+     *    logger itself, which reads its settings from here.
      * \returns User-defined configuration options
      */
-    static Config getUserConfig();
+    static Config getUserConfig(bool quiet = false);
 
     static std::string toLower(std::string str);
 

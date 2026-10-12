@@ -3,6 +3,7 @@
 #include <array>
 #include <fstream>
 #include <iostream>
+#include <mutex>
 #include <string>
 
 #include "../thread.h"
@@ -43,6 +44,7 @@ namespace dxvk {
     static void log  (LogLevel level, const std::string& message);
     
     static LogLevel logLevel() {
+      s_instance.initialize();
       return s_instance.m_minLevel;
     }
     
@@ -50,7 +52,8 @@ namespace dxvk {
     
     static Logger     s_instance;
     
-    const LogLevel    m_minLevel;
+    LogLevel          m_minLevel = LogLevel::Info;
+    std::once_flag    m_initFlag;
     const std::string m_fileName;
     
     dxvk::mutex       m_mutex;
@@ -60,6 +63,8 @@ namespace dxvk {
 #ifdef _WIN32
     PFN_wineLogOutput m_wineLogOutput = nullptr;
 #endif
+
+    void initialize();
 
     void emitMsg(LogLevel level, const std::string& message);
     

@@ -1754,7 +1754,7 @@ namespace dxvk {
   }
 
 
-  Config Config::getUserConfig() {
+  Config Config::getUserConfig(bool quiet) {
     Config config;
 
     // Load either $DXVK_CONFIG_FILE or $PWD/dxvk.conf
@@ -1777,7 +1777,8 @@ namespace dxvk {
     if (stream) {
       // Inform the user that we loaded a file, might
       // help when debugging configuration issues
-      Logger::info(str::format("Found config file: ", filePath));
+      if (!quiet)
+        Logger::info(str::format("Found config file: ", filePath));
 
       // Parse the file line by line
       std::string line;
@@ -1791,7 +1792,8 @@ namespace dxvk {
 
       // Inform the user that we parsing config from environment, might
       // help when debugging configuration issues
-      Logger::info(str::format("Found config env: ", confLine));
+      if (!quiet)
+        Logger::info(str::format("Found config env: ", confLine));
 
       for(auto l : str::split(confLine, ";"))
         parseUserConfigLine(config, ctx, std::string(l.data(), l.size()));
