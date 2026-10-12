@@ -28,7 +28,8 @@ namespace dxvk {
    * is tracked: the user looks at the speaker by turning their head.
    *
    * The game keeps control of the heading while VATS runs, while the player
-   * sits, is dead or has the look control disabled.
+   * uses furniture (from the activation to getting up), is dead or has the
+   * look control disabled.
    */
   class VrHeadLook {
 

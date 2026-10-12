@@ -320,6 +320,43 @@ namespace dxvk {
     constexpr uint8_t   AnimGroupPipBoyChild     = 0xF0;
 
     /**
+     * Drawing and holstering the weapon, see findings/weapon.md §7.
+     *
+     * Actor::PickAnimations (0x00895110) plays the Equip or Unequip group on
+     * the weapon section when the actor wants the weapon drawn and it is not,
+     * or the reverse, and sets the matching anim action (0 or 1). On a later
+     * frame it calls Animation::GetGroupAction with the weapon section at
+     * this site, and once the action is at least AGA_STOP the process marks
+     * the weapon drawn or holstered and places it (ForceWeaponDrawnSheathed).
+     * For the player this is the third-person AnimData; its actor is at +0x04.
+     *
+     * Actor::SetWantWeaponDrawn (__thiscall, bool) and GetWantWeaponDrawn
+     * (__thiscall, returns bool). PlayerCharacter::Update holsters the weapon
+     * at the second site when the ready/reload control is held long enough.
+     * PlayerCharacter::SetControlsDisabled holsters it while the fighting
+     * control (0x08) is disabled.
+     */
+    constexpr uintptr_t EquipWaitCallSite        = 0x0089606E;
+    constexpr uintptr_t HolsterInputCallSite     = 0x00940C05;
+    constexpr uintptr_t SetWantWeaponDrawn       = 0x008A6840;
+    constexpr uint8_t   SetWantWeaponDrawnPrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x10, 0x56, 0x89, 0x4D, 0xF0 };
+    constexpr uintptr_t GetWantWeaponDrawn       = 0x008A6970;
+    constexpr uint8_t   GetWantWeaponDrawnPrologue[] = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC };
+    constexpr uintptr_t AnimDataActor            = 0x04;
+    constexpr int32_t   AnimSectionWeapon        = 4;
+    constexpr uint8_t   AnimGroupEquip           = 0x18;
+    constexpr uint8_t   AnimGroupUnequip         = 0x19;
+    constexpr uint8_t   ControlFighting          = 0x8;
+
+    /**
+     * MiddleHighProcess::SitOrSleep (0x009213E0) runs while the process has
+     * a furniture (+0x140). It first holsters the weapon (call 0x00921476)
+     * and only starts sitting once it is holstered, so the sit state is
+     * still 0 while the actor walks up to the furniture.
+     */
+    constexpr uintptr_t ProcessFurniture         = 0x140;
+
+    /**
      * Main's copy of the bStaticMenuBackground:Display setting, a bool read
      * once at startup (stored at 0x0086E123). While it is set, opening most
      * menus renders the world once, blurred by an image space modifier, into

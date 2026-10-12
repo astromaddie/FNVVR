@@ -176,6 +176,13 @@ namespace dxvk {
     if (readField<uint32_t>(player, VrGame::ActorLifeState) != 0)
       return false;
 
+    // Before sitting down, the game turns the player to face the furniture
+    // and waits until the heading matches; the head would keep turning it
+    const uint8_t* process = readField<const uint8_t*>(player, VrGame::ActorProcess);
+
+    if (process && readField<const uint8_t*>(process, VrGame::ProcessFurniture))
+      return false;
+
     return virtualFunction<SitStateFn>(player, VrGame::GetSitStateSlot)(player, nullptr) == 0;
   }
 
