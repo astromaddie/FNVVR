@@ -217,3 +217,22 @@ TEST_CASE(heading_wraps_into_one_turn) {
   CHECK_NEAR(vrWrapHeading(1.0f), 1.0f, 1e-6);
   CHECK(vrWrapHeading(-1e-9f) < 6.2831853f);
 }
+
+
+TEST_CASE(turning_carries_a_point_around_the_pivot) {
+  // A point north of the pivot ends up east of it after a quarter turn
+  VrVector3 east = vrTurnAroundPivot({ 10.0f, 25.0f, 7.0f }, { 10.0f, 20.0f, 0.0f }, 0.5f * Pi);
+  CHECK_NEAR(east.x, 15.0f, 1e-5);
+  CHECK_NEAR(east.y, 20.0f, 1e-5);
+  CHECK_NEAR(east.z, 7.0f, 1e-6);
+
+  // Turning back restores the point
+  VrVector3 back = vrTurnAroundPivot(east, { 10.0f, 20.0f, 0.0f }, -0.5f * Pi);
+  CHECK_NEAR(back.x, 10.0f, 1e-5);
+  CHECK_NEAR(back.y, 25.0f, 1e-5);
+
+  // The pivot itself does not move
+  VrVector3 pivot = vrTurnAroundPivot({ 3.0f, 4.0f, 5.0f }, { 3.0f, 4.0f, 0.0f }, 1.0f);
+  CHECK_NEAR(pivot.x, 3.0f, 1e-6);
+  CHECK_NEAR(pivot.y, 4.0f, 1e-6);
+}

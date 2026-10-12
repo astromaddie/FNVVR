@@ -102,6 +102,19 @@ namespace dxvk {
   VrGameCameraPose vrComputeBodyCameraPose(float heading, const VrVector3& position);
 
   /**
+   * \brief Moves a point as if a body standing on a pivot turned
+   *
+   * The game turns the player's whole skeleton around the player's position
+   * when the heading changes. A point carried by the skeleton, such as the
+   * camera, follows by this rotation. Height is kept.
+   *
+   * \param [in] point Point in game units
+   * \param [in] pivot Position the body turns around
+   * \param [in] headingChange Turn in radians, clockwise like the heading
+   */
+  VrVector3 vrTurnAroundPivot(const VrVector3& point, const VrVector3& pivot, float headingChange);
+
+  /**
    * \brief Wraps an angle into [0, 2 pi), the range of the game's heading
    */
   float vrWrapHeading(float angle);
