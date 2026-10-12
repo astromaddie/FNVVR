@@ -58,11 +58,12 @@ namespace dxvk {
     }
 
     /**
-     * \brief Presses the menu's back button from the next frame on
+     * \brief Clicks the menu's back button from the next frame on
      *
      * Closes the Pip-Boy the way the player's back button does: the game
      * reads it while it updates its interface, so the Pip-Boy closes as
-     * it would with the gamepad. Only pressed in menus.
+     * it would with the gamepad. The button is pressed and released on
+     * alternate frames while this is set, only in menus.
      *
      * \param [in] back Whether VrPipBoyGaze wants the Pip-Boy closed
      */
@@ -93,6 +94,7 @@ namespace dxvk {
 
     bool                        m_gameAim = false;
     bool                        m_menuBack = false;
+    bool                        m_menuBackDown = false;
 
   };
 

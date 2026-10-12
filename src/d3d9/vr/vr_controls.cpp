@@ -49,7 +49,11 @@ namespace dxvk {
     // The actions were read in the context chosen on the previous frame
     VrActionState actions = m_filter.update(input.actions, m_context, dt);
 
-    if (m_menuBack && m_context == VrInputContext::Menu)
+    // Pressed and released on alternate frames: a button held down does not
+    // close the Pip-Boy until it is released
+    m_menuBackDown = m_menuBack && !m_menuBackDown && m_context == VrInputContext::Menu;
+
+    if (m_menuBackDown)
       actions.setPressed(VrAction::MenuBack, true);
 
     VrPointerState pointer = updatePointer(input, actions, menuPanel, dt);
