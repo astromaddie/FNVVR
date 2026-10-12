@@ -282,8 +282,42 @@ namespace dxvk {
      */
     constexpr uintptr_t InterfacePipBoyState = 0x4BC;
     constexpr uintptr_t OpenPipBoy           = 0x0070F4E0;
+    /** The game's Pip-Boy control, on release, while the state is 0 (InterfaceManager::Update) */
+    constexpr uintptr_t PipBoyControlOpenCallSite = 0x0070E913;
     constexpr uint8_t   OpenPipBoyPrologue[] = { 0x55, 0x8B, 0xEC, 0x51, 0x56, 0x89, 0x4D, 0xFC,
                                                  0x6A, 0x04, 0x8B, 0x0D, 0x3C, 0xEA, 0x1D, 0x01 };
+
+    /**
+     * The two waits on the arm animation in InterfaceManager::UpdatePipboy
+     * (0x0070EE80), see findings/pipboy.md §3.6.
+     *
+     * Raising (state 2): Animation::GetGroupAction (__thiscall on the
+     * first-person AnimData, section; returns the section's action from
+     * AnimData+0x5C) is called with the left arm section. At AGA_STOP the
+     * game snaps the arm to the group's stop key itself, from the current
+     * sequence's offset (NiControllerSequence+0x48), and opens the menus.
+     *
+     * Lowering (state 5): PlayerCharacter::IsPipboyActive (__thiscall on the
+     * player) stays true while the left arm section plays the PipBoy or
+     * PipBoyChild group. Animation::ClearGroup (__thiscall: section, blend
+     * time) stops that section's sequence.
+     *
+     * The AnimData holds each section's group ID (16 bits, 0xFF when none)
+     * at +0x4C and its current sequence at +0xE0.
+     */
+    constexpr uintptr_t PipBoyRaiseWaitCallSite  = 0x0070F0A4;
+    constexpr uintptr_t AnimGetGroupAction       = 0x0070F490;
+    constexpr uintptr_t PipBoyLowerWaitCallSite  = 0x0070F3DA;
+    constexpr uintptr_t IsPipBoyActive           = 0x00967AE0;
+    constexpr uintptr_t AnimClearGroup           = 0x00496080;
+    constexpr uint8_t   AnimClearGroupPrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x0C, 0x89, 0x4D, 0xF8, 0x8B, 0x45, 0x08 };
+    constexpr uintptr_t AnimDataSectionGroups    = 0x4C;
+    constexpr uintptr_t AnimDataSectionSequences = 0xE0;
+    constexpr uintptr_t SequenceOffset           = 0x48;
+    constexpr int32_t   AnimSectionLeftArm       = 2;
+    constexpr uint32_t  AnimActionStop           = 1;
+    constexpr uint8_t   AnimGroupPipBoy          = 0xE2;
+    constexpr uint8_t   AnimGroupPipBoyChild     = 0xF0;
 
     /**
      * Main's copy of the bStaticMenuBackground:Display setting, a bool read

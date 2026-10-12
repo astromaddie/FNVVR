@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 #include "vr_pipboy_gaze.h"
 
 namespace dxvk {
@@ -13,11 +15,19 @@ namespace dxvk {
    * disabled, ...). See findings/pipboy.md §1. The Pip-Boy is closed with
    * the menu's back button instead (VrControls::setMenuBack).
    *
+   * The game opens the Pip-Boy when its own Pip-Boy control is released,
+   * and that control is the menu's back button on the gamepad. Once the
+   * arm is no longer lowered (VrPipBoyAnimation), the release of the back
+   * button that closed the Pip-Boy came after it was closed, and opened it
+   * again. The game's control can be blocked for that time.
+   *
    * Only used on the game's main thread, outside InterfaceManager::Update.
    */
   class VrPipBoyControl {
 
   public:
+
+    ~VrPipBoyControl();
 
     /**
      * \brief Checks that the executable is the supported version
@@ -38,9 +48,25 @@ namespace dxvk {
      */
     void open() const;
 
+    /**
+     * \brief Blocks the game's own Pip-Boy control from opening it
+     * \param [in] blocked Whether the control's requests are dropped
+     */
+    void blockGameOpen(bool blocked) {
+      m_gameOpenBlocked = blocked;
+    }
+
   private:
 
     bool m_available = false;
+    bool m_gameOpenBlocked = false;
+    bool m_loggedBlockedOpen = false;
+
+    static void __fastcall gameOpenHook(
+            void*                 interfaceManager,
+            void*                 unused,
+            void*                 callback,
+            int32_t               menu);
 
   };
 

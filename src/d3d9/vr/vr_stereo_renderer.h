@@ -14,6 +14,7 @@
 #include "vr_game_state.h"
 #include "vr_hud_layers.h"
 #include "vr_menu_scenes.h"
+#include "vr_pipboy_animation.h"
 #include "vr_pipboy_control.h"
 #include "vr_pipboy_gaze.h"
 #include "vr_pipboy_render.h"
@@ -226,6 +227,9 @@ namespace dxvk {
     // The Pip-Boy over the live world. Its screen pass moves the camera into
     // the first-person drawing space, offset from the world by this shift.
     std::unique_ptr<VrPipBoyRender> m_pipBoyRender;
+
+    // The Pip-Boy opens and closes without the arm animations
+    std::unique_ptr<VrPipBoyAnimation> m_pipBoyAnimation;
     VrVector3           m_screenShift;
     bool                m_screenPass = false;
 
@@ -237,6 +241,9 @@ namespace dxvk {
     VrPipBoyGaze        m_pipBoyGaze;
     bool                m_pipBoyGazeAvailable = false;
     bool                m_closePipBoy = false;
+    // The game's Pip-Boy control is blocked until the back button that
+    // closed the Pip-Boy has been released and seen by the game
+    uint32_t            m_pipBoyBackFrames = 0;
     bool                m_menuOverPipBoy = false;
     bool                m_loggedPipBoyGaze = false;
     bool                m_loggedPipBoyGazeAway = false;
