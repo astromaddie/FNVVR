@@ -107,6 +107,15 @@ namespace dxvk {
      */
     void logEyeGeometry();
 
+    /**
+     * \brief Logs how many frames the compositor dropped or reprojected
+     *
+     * Called every \ref StatsPeriod seconds' worth of submitted frames at the
+     * display rate. Reprojection
+     * warps the image, which can look like a distortion of the view.
+     */
+    void logFrameStats();
+
     void readActions(VrInputState& input);
 
     /**
@@ -154,6 +163,15 @@ namespace dxvk {
     VrInputState                      m_poses;
     int64_t                           m_frameCounter = 0;
     int64_t                           m_periodNs     = 0;
+
+    /// Seconds' worth of frames at the display rate between two frame statistics logs
+    constexpr static uint32_t         StatsPeriod    = 30;
+    uint32_t                          m_statsFrames  = 0;
+    uint32_t                          m_submitted    = 0;
+    uint32_t                          m_presented    = 0;
+    uint32_t                          m_reprojected  = 0;
+    uint32_t                          m_dropped      = 0;
+    uint64_t                          m_statsStartMs = 0;
 
     // Action handles, see vr_openvr_convert.h for the paths
     struct Actions {

@@ -250,6 +250,12 @@ namespace dxvk {
       " by ", headsetString(m_runtime->system, vr::Prop_ManufacturerName_String),
       ", recommended eye size ", extent.width, "x", extent.height));
 
+    Logger::info(str::format("VR: Tracking system ", headsetString(m_runtime->system, vr::Prop_TrackingSystemName_String),
+      ", display ", m_runtime->system->GetFloatTrackedDeviceProperty(
+        vr::k_unTrackedDeviceIndex_Hmd, vr::Prop_DisplayFrequency_Float), " Hz, IPD ",
+      m_runtime->system->GetFloatTrackedDeviceProperty(
+        vr::k_unTrackedDeviceIndex_Hmd, vr::Prop_UserIpdMeters_Float) * MillimetresPerMetre, " mm"));
+
     for (uint32_t i = 0; i < VrEyeCount; i++) {
       vr::EVREye eye = i == uint32_t(VrEye::Left) ? vr::Eye_Left : vr::Eye_Right;
 
@@ -278,6 +284,38 @@ namespace dxvk {
         yaw * DegreesPerRadian, " pitch ", pitch * DegreesPerRadian,
         " roll ", roll * DegreesPerRadian, " degrees"));
     }
+  }
+
+
+  void VrOpenVrBackend::logFrameStats() {
+    vr::Compositor_CumulativeStats stats = { };
+    m_runtime->compositor->GetCumulativeStats(&stats, sizeof(stats));
+
+    vr::Compositor_FrameTiming timing = { };
+    timing.m_nSize = sizeof(timing);
+    bool hasTiming = m_runtime->compositor->GetFrameTiming(&timing, 0);
+
+    uint32_t presented   = stats.m_nNumFramePresents     - m_presented;
+    uint32_t reprojected = stats.m_nNumReprojectedFrames - m_reprojected;
+    uint32_t dropped     = stats.m_nNumDroppedFrames     - m_dropped;
+
+    m_presented   = stats.m_nNumFramePresents;
+    m_reprojected = stats.m_nNumReprojectedFrames;
+    m_dropped     = stats.m_nNumDroppedFrames;
+
+    uint64_t nowMs   = GetTickCount64();
+    uint64_t startMs = m_statsStartMs;
+    m_statsStartMs   = nowMs;
+
+    // The first call only takes the starting counts
+    if (!m_submitted)
+      return;
+
+    Logger::info(str::format("VR: ", m_statsFrames, " frames submitted in ", (nowMs - startMs) / 1000.0, " s: ",
+      presented, " presented, ", reprojected, " reprojected, ", dropped, " dropped; last frame: ",
+      hasTiming ? str::format("game interval ", timing.m_flClientFrameIntervalMs, " ms, compositor GPU ",
+        timing.m_flTotalRenderGpuMs, " ms, reprojection flags 0x", std::hex, timing.m_nReprojectionFlags, std::dec)
+        : std::string("no timing")));
   }
 
 
@@ -448,6 +486,9 @@ namespace dxvk {
       rate = FallbackRefreshRate;
 
     m_periodNs = int64_t(double(NanosecondsPerSecond) / double(rate));
+    m_statsFrames = std::max(uint32_t(rate * float(StatsPeriod)), 1u);
+    m_submitted   = 0;
+    logFrameStats();
     m_state    = VrSessionState::Running;
     return true;
   }
@@ -486,6 +527,9 @@ namespace dxvk {
         Logger::info("VR: SteamVR asked the application to quit");
         m_state = VrSessionState::Stopping;
       }
+
+      if (event.eventType == vr::VREvent_IpdChanged)
+        Logger::info(str::format("VR: The IPD changed to ", event.data.ipd.ipdMeters * 1000.0f, " mm"));
     }
   }
 
@@ -714,6 +758,9 @@ namespace dxvk {
       Logger::info("VR: First frame handed to the compositor");
       m_loggedSubmit = true;
     }
+
+    if (++m_submitted % m_statsFrames == 0)
+      logFrameStats();
 
     // Always put the images back, DXVK still owns them
     return m_transition->restore(frame.images.data(), VrEyeCount) && accepted;
