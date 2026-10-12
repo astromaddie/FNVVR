@@ -130,6 +130,20 @@ TEST_CASE(gaze_closes_after_looking_away) {
 }
 
 
+TEST_CASE(gaze_keeps_the_open_pipboy_in_a_wider_cone) {
+  // About 33 degrees below the head's forward axis, 0.8 m away
+  const VrVector3 edge = { 0.0f, 1.6f - 0.44f, -0.67f };
+
+  Gaze g;
+  g.run(Away, 0.1f);
+  CHECK(g.run(edge, 1.0f) == VrPipBoyRequest::None);
+
+  g.state = VrPipBoyState::Open;
+  CHECK(g.run(edge, 2.0f) == VrPipBoyRequest::None);
+  CHECK(g.gaze.isLooking());
+}
+
+
 TEST_CASE(gaze_keeps_the_pipboy_open_under_a_menu) {
   Gaze g;
   g.state    = VrPipBoyState::Open;

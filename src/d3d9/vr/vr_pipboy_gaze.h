@@ -73,7 +73,10 @@ namespace dxvk {
    *
    * The Pip-Boy opens once its screen has stayed in the middle of the view
    * for \ref OpenDelay, and closes once the player has looked away for
-   * \ref CloseDelay. After the Pip-Boy was open, the player must look away
+   * \ref CloseDelay. While it is open, the screen counts as looked at in a
+   * wider cone and further away (\ref KeepAngle, \ref KeepDistance), so
+   * that reading the edge of the screen or a small head movement does not
+   * close it. After the Pip-Boy was open, the player must look away
    * before the gaze opens it again, so that closing it with a menu button
    * while still looking at the wrist does not reopen it. A request is
    * repeated each frame until the game's state changes: the game may
@@ -89,8 +92,12 @@ namespace dxvk {
     constexpr static float MaxDistance = 0.7f;
     /// How long the screen is looked at before the Pip-Boy opens, in seconds
     constexpr static float OpenDelay   = 0.3f;
+    /// Largest angle that keeps the open Pip-Boy looked at, in radians (40 degrees)
+    constexpr static float KeepAngle    = 0.698132f;
+    /// Largest distance that keeps the open Pip-Boy looked at, in metres
+    constexpr static float KeepDistance = 0.9f;
     /// How long the player looks away before the Pip-Boy closes, in seconds
-    constexpr static float CloseDelay  = 0.6f;
+    constexpr static float CloseDelay  = 1.0f;
 
     VrPipBoyRequest update(const VrPipBoyGazeInput& input);
 
