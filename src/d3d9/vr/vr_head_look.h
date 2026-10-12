@@ -27,10 +27,6 @@ namespace dxvk {
    * Dialogues do not turn the player towards the speaker while the head
    * is tracked: the user looks at the speaker by turning their head.
    *
-   * While an animation moves the camera, such as getting out of bed at a
-   * new game, the head neither turns nor tilts the player, see
-   * \ref headBlendHook.
-   *
    * The game keeps control of the heading while VATS runs, while the player
    * sits, is dead or has the look control disabled.
    */
@@ -87,11 +83,7 @@ namespace dxvk {
     float        m_writtenPitch   = 0.0f;
     float        m_bodyHeading    = 0.0f;
 
-    // Set by the camera update when an animation moves the head
-    bool         m_cameraAnimated = false;
-
     bool         m_loggedActive   = false;
-    bool         m_loggedAnimated = false;
 
     static uint32_t __fastcall lookHook(
             uint8_t*              player,
@@ -107,11 +99,6 @@ namespace dxvk {
             void*                 actor,
             float                 blend,
             uint32_t              skipTurn);
-
-    static float __fastcall headBlendHook(
-            void*                 animation,
-            void*                 unused,
-            void*                 bone);
 
     void applyLook(uint8_t* player);
 
