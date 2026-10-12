@@ -4,6 +4,7 @@
 
 #include "vr_game_addresses.h"
 #include "vr_game_memory.h"
+#include "vr_menu_scenes.h"
 #include "vr_pipboy_render.h"
 #include "vr_sky_anchor.h"
 #include "vr_weapon_aim.h"
@@ -184,6 +185,11 @@ namespace dxvk {
           void*                 unused,
           void*                 screen,
           void*                 renderer) {
+    // Other rendered menus, such as the character creation, are drawn on
+    // the menu panel
+    if (VrMenuScenes::movesRenderedMenu())
+      return;
+
     VrVector3 shift;
 
     if (!g_pipBoyRender || !g_pipBoyRender->m_screenPass || !firstPersonShift(shift)) {

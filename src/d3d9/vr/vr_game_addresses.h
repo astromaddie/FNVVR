@@ -353,6 +353,16 @@ namespace dxvk {
     constexpr uintptr_t GetCurrentRenderedMenu     = 0x00707AD0;
     constexpr uintptr_t GetPipBoy                  = 0x00705990;
 
+    /**
+     * The rendered-menu render then draws the menu's screen, such as the
+     * Reflectron's with the menu and the face, through RenderPipBoy (see
+     * PipBoyScreenCallSite), with the same camera. Its arguments are the
+     * menu's screen geometry (FORenderedMenu::GetScreenGeometry, __thiscall
+     * on the menu without arguments) and the renderer held at Renderer.
+     */
+    constexpr uintptr_t GetScreenGeometry          = 0x007FA950;
+    constexpr uintptr_t Renderer                   = 0x011F4748;
+
     constexpr uint32_t  LockPickMenuId    = 0x3F6;
     constexpr uintptr_t LockPickSceneRoot = 0x011DA24C;
     constexpr char      LockPickBackdrop[] = "shadow";

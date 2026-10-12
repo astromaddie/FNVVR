@@ -17,8 +17,9 @@ namespace dxvk {
    * Rendered menus other than the Pip-Boy, such as the Reflectron of the
    * character creation, are drawn by the game with a camera of their own
    * that ignores the head, so they would stick to the face in both eyes.
-   * Their draw in the eye images is skipped and they are drawn with the
-   * menu scenes instead.
+   * Their draw in the eye images is skipped, the model and then its screen
+   * with the menu and the face, and they are drawn with the menu scenes
+   * instead.
    *
    * Only used on the game's main thread, while the game draws a frame.
    */
@@ -49,6 +50,13 @@ namespace dxvk {
      * render target with the menu's own camera.
      */
     void render() const;
+
+    /**
+     * \brief Checks whether the open rendered menu is drawn with the scenes
+     *
+     * Its screen is then left out of the eye images as well.
+     */
+    static bool movesRenderedMenu();
 
   private:
 

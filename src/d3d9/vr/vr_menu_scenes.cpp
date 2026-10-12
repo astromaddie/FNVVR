@@ -13,6 +13,11 @@ namespace dxvk {
     using IsMenuActiveFn    = bool (__cdecl*)(uint32_t menuId, uint32_t unused);
     using RenderMenuSceneFn = void (__cdecl*)();
     using PointerFn         = void* (__cdecl*)();
+    using ObjectPointerFn   = void* (__fastcall*)(void* object, void* unused);
+
+    // RenderPipBoy, __thiscall on Main with the screen and the renderer
+    using ScreenFn          = void (__fastcall*)(void* main, void* unused,
+      void* screen, void* renderer);
 
     // __thiscall on Main without arguments, called as __fastcall with an
     // unused second argument
@@ -85,7 +90,9 @@ namespace dxvk {
 
   bool VrMenuScenes::initialize() {
     m_available = !g_renderedMenuMoved
-      && VrGameMemory::readable(VrGame::MainSingleton, sizeof(uintptr_t));
+      && VrGameMemory::readable(VrGame::MainSingleton, sizeof(uintptr_t))
+      && VrGameMemory::readable(VrGame::Renderer, sizeof(uintptr_t))
+      && VrGameMemory::callsTo(VrGame::PipBoyScreenCallSite, VrGame::RenderPipBoy);
 
     for (const auto& scene : VrGame::MenuScenes)
       m_available = m_available && matchesScene(scene);
@@ -141,8 +148,23 @@ namespace dxvk {
 
     auto main = readField<void*>(VrGame::MainSingleton, 0);
 
-    if (main && isRenderedMenuOpen())
-      reinterpret_cast<MainFn>(VrGame::DrawRenderedMenuParent)(main, nullptr);
+    if (!main || !isRenderedMenuOpen())
+      return;
+
+    reinterpret_cast<MainFn>(VrGame::DrawRenderedMenuParent)(main, nullptr);
+
+    // The screen comes last, blended over the model, as in the game
+    void* menu     = reinterpret_cast<PointerFn>(VrGame::GetCurrentRenderedMenu)();
+    void* screen   = reinterpret_cast<ObjectPointerFn>(VrGame::GetScreenGeometry)(menu, nullptr);
+    void* renderer = readField<void*>(VrGame::Renderer, 0);
+
+    if (screen && renderer)
+      reinterpret_cast<ScreenFn>(VrGame::RenderPipBoy)(main, nullptr, screen, renderer);
+  }
+
+
+  bool VrMenuScenes::movesRenderedMenu() {
+    return g_renderedMenuMoved && isRenderedMenuOpen();
   }
 
 
