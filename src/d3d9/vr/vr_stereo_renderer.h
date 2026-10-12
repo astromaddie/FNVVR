@@ -13,6 +13,8 @@
 #include "vr_game_state.h"
 #include "vr_hud_layers.h"
 #include "vr_menu_scenes.h"
+#include "vr_pipboy_control.h"
+#include "vr_pipboy_gaze.h"
 #include "vr_pipboy_render.h"
 #include "vr_preview_window.h"
 #include "vr_weapon_hand.h"
@@ -208,6 +210,15 @@ namespace dxvk {
     VrVector3           m_screenShift;
     bool                m_screenPass = false;
 
+    // The Pip-Boy opens when the player looks at the left forearm. A menu
+    // drawn over it on the previous frame keeps it open.
+    VrPipBoyControl     m_pipBoyControl;
+    VrPipBoyGaze        m_pipBoyGaze;
+    bool                m_pipBoyGazeAvailable = false;
+    bool                m_menuOverPipBoy = false;
+    bool                m_loggedPipBoyGaze = false;
+    bool                m_loggedPipBoyGazeAway = false;
+
     // Latest tracked head pose, used to place the panel
     VrPose m_headPose;
     bool   m_hasHeadPose   = false;
@@ -286,6 +297,11 @@ namespace dxvk {
       const VrGameCameraPose& gameCamera);
 
     VrGameCameraPose handInGame(const VrControllerState& controller) const;
+
+    void updatePipBoyGaze(
+      const VrInputState&         input,
+            VrGameStateKind       state,
+            float                 dt);
 
     void captureEye();
 

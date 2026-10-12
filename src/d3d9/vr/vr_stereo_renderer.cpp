@@ -142,6 +142,12 @@ namespace dxvk {
     if (weaponInHand)
       renderer->m_weaponHand = VrWeaponHand::install();
 
+    // The gaze finds the Pip-Boy's screen through the free left hand's pose
+    renderer->m_pipBoyGazeAvailable = renderer->m_weaponHand && renderer->m_pipBoyControl.initialize();
+
+    if (!renderer->m_pipBoyGazeAvailable)
+      Logger::info("VR: The Pip-Boy does not open when the left forearm is looked at");
+
     VrStereoRenderer* self = renderer.get();
     renderer->m_pipBoyRender = VrPipBoyRender::install(
       [self] (const VrVector3* shift) { self->setScreenPass(shift); });
@@ -291,8 +297,9 @@ namespace dxvk {
     if (m_weaponHand)
       m_controls.setGameAim(m_weaponHand->wantsGameAim());
 
-    m_controls.update(input, state, m_hasReference ? &m_reference : nullptr,
-      menuPanel(), float(timing.predictedPeriod) * 1e-9f);
+    float dt = float(timing.predictedPeriod) * 1e-9f;
+
+    m_controls.update(input, state, m_hasReference ? &m_reference : nullptr, menuPanel(), dt);
 
     auto views = m_backend.locateViews(timing.predictedDisplayTime);
 
@@ -305,6 +312,7 @@ namespace dxvk {
     // The game turned its camera with the head already
     m_controls.adjustCamera(m_gameCameraPose);
     updateWeaponHand(input, state, modelCamera);
+    updatePipBoyGaze(input, state, dt);
 
     for (uint32_t eye = 0; eye < VrEyeCount; eye++) {
       m_eyeCopied[eye] = false;
@@ -342,6 +350,8 @@ namespace dxvk {
       submitMenu();
     else if (m_overPipBoy)
       hidePanel();
+
+    m_menuOverPipBoy = m_overPipBoy && m_menuRendered;
 
     if (m_preview)
       m_preview->present(eyes);
@@ -522,6 +532,57 @@ namespace dxvk {
 
     m_weaponHand->beginFrame(gameCamera, &hand, left.isActive ? &otherHand : nullptr,
       input.hasActions && input.actions.isPressed(VrAction::TwoHandGrip), false);
+  }
+
+
+  void VrStereoRenderer::updatePipBoyGaze(
+    const VrInputState&         input,
+          VrGameStateKind       state,
+          float                 dt) {
+    if (!m_pipBoyGazeAvailable)
+      return;
+
+    const VrControllerState& left = input.controllers[uint32_t(VrHand::Left)];
+    const VrVector3* offset = m_weaponHand->pipBoyScreen();
+
+    VrVector3 screen;
+
+    if (left.isActive && offset)
+      screen = vrComputeControllerPoint(left, *offset);
+
+    // The left hand holding the weapon is not where the screen would be
+    bool gripped = input.hasActions && input.actions.isPressed(VrAction::TwoHandGrip);
+
+    VrPipBoyGazeInput gaze;
+    gaze.head     = input.isHeadTracked ? &input.headPose : nullptr;
+    gaze.screen   = left.isActive && offset ? &screen : nullptr;
+    gaze.state    = m_pipBoyControl.state();
+    gaze.canOpen  = state == VrGameStateKind::InGame && !gripped;
+    gaze.canClose = state == VrGameStateKind::PipBoy && !m_menuOverPipBoy;
+    gaze.dt       = dt;
+
+    switch (m_pipBoyGaze.update(gaze)) {
+      case VrPipBoyRequest::Open:
+        m_pipBoyControl.open();
+
+        if (!m_loggedPipBoyGaze) {
+          Logger::info("VR: The left forearm is looked at, the Pip-Boy opens");
+          m_loggedPipBoyGaze = true;
+        }
+        break;
+
+      case VrPipBoyRequest::Close:
+        m_pipBoyControl.close();
+
+        if (!m_loggedPipBoyGazeAway) {
+          Logger::info("VR: The left forearm is no longer looked at, the Pip-Boy closes");
+          m_loggedPipBoyGazeAway = true;
+        }
+        break;
+
+      case VrPipBoyRequest::None:
+        break;
+    }
   }
 
 

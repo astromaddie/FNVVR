@@ -284,11 +284,14 @@ namespace dxvk {
       { 0.0934869f, -0.481991f,  0.871174f },
       { 0.0793239f, -0.868619f,  -0.48909f } }};
 
+    const VrGameRotation FreeHandTwist = {{
+      {       1.0f,       0.0f,       0.0f },
+      {       0.0f,  0.850957f,  0.525236f },
+      {       0.0f, -0.525236f,  0.850957f } }};
+
     const FreeHandBone FreeHandBones[] = {
       { VrGame::LeftHandNodeName, FreeHandWrist },
-      { "Bip01 L ForeTwist", {{ {       1.0f,       0.0f,       0.0f },
-                                {       0.0f,  0.850957f,  0.525236f },
-                                {       0.0f, -0.525236f,  0.850957f } }} },
+      { VrGame::LeftForeTwistNodeName, FreeHandTwist },
       { "Bip01 L Thumb1", {{ {  0.818252f,  0.384053f,  0.427746f },
                              {  0.366491f,  0.224751f, -0.902869f },
                              { -0.442886f,  0.895539f, 0.0431507f } }} },
@@ -587,6 +590,8 @@ namespace dxvk {
       m_loggedFrame = true;
     }
 
+    measurePipBoyScreen(root);
+
     // The game places its camera at its own eye
     if (uint8_t* camera = field<uint8_t*>(main, VrGame::MainFirstPersonCamera))
       writeVector(camera, VrGame::CameraWorldTranslation, m_eyePosition - shift);
@@ -689,6 +694,54 @@ namespace dxvk {
     // The game animates the right hand in front of its camera, so it is
     // hidden with the weapon until it has a pose of its own
     hideArms(root, true);
+  }
+
+
+  void VrWeaponHand::measurePipBoyScreen(uint8_t* root) {
+    // Offsets between the bones and from the twist bone to the screen do
+    // not depend on the pose the game animates, only the rotations that
+    // the free pose replaces do
+    uint8_t* hand    = findObject(root, VrGame::LeftHandNodeName);
+    uint8_t* forearm = hand ? field<uint8_t*>(hand, VrGame::ObjectParent) : nullptr;
+    uint8_t* twist   = forearm ? findObject(forearm, VrGame::LeftForeTwistNodeName) : nullptr;
+    uint8_t* screen  = twist ? findObject(twist, VrGame::PipBoyScreenNodeName) : nullptr;
+
+    if (twist && !screen)
+      screen = findObject(twist, VrGame::PipBoyScreenNodeAltName);
+
+    if (!screen || field<uint8_t*>(twist, VrGame::ObjectParent) != forearm) {
+      if (!m_loggedScreen)
+        Logger::warn("VR: The Pip-Boy screen was not found on the left forearm, looking at it does not open the Pip-Boy");
+
+      m_hasPipBoyScreen = false;
+      m_loggedScreen    = true;
+      return;
+    }
+
+    VrGameRotation forearmRotation = readRotation(forearm, VrGame::ObjectWorldRotation);
+    VrVector3 forearmPosition      = readVector(forearm, VrGame::ObjectWorldTranslation);
+    VrGameRotation twistRotation   = readRotation(twist, VrGame::ObjectWorldRotation);
+    VrVector3 twistPosition        = readVector(twist, VrGame::ObjectWorldTranslation);
+
+    // The screen geometry's origin need not be its centre, its bound's is
+    VrVector3 centre = readVector(screen, VrGame::ObjectWorldTranslation);
+
+    if (auto bound = field<const uint8_t*>(screen, VrGame::ObjectWorldBound))
+      centre = readVector(bound, 0);
+
+    VrVector3 wristOffset = vrTranspose(forearmRotation) * (readVector(hand, VrGame::ObjectWorldTranslation) - forearmPosition);
+    VrVector3 twistOffset = vrTranspose(forearmRotation) * (twistPosition - forearmPosition);
+    VrVector3 point       = vrTranspose(twistRotation) * (centre - twistPosition);
+
+    m_pipBoyScreen = vrComputeForearmPoint(FreeHandPose, FreeHandWrist, FreeHandTwist,
+      wristOffset, twistOffset, point) * (1.0f / VrGameUnitsPerMetre);
+    m_hasPipBoyScreen = true;
+
+    if (!m_loggedScreen) {
+      Logger::info(str::format("VR: The Pip-Boy screen is ", m_pipBoyScreen.x, " m forward, ",
+        m_pipBoyScreen.y, " m up and ", m_pipBoyScreen.z, " m right of the left controller"));
+      m_loggedScreen = true;
+    }
   }
 
 

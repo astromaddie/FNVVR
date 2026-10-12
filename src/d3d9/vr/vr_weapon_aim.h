@@ -95,6 +95,30 @@ namespace dxvk {
     const VrGameTransform&      local);
 
   /**
+   * \brief Places a point carried by the forearm of a hand in a fixed pose
+   *
+   * The free hand takes a fixed pose in its controller's frame, and the
+   * hand bone and the forearm's twist bone take fixed rotations in the
+   * forearm. The bones' offsets in the forearm are the model's own and do
+   * not depend on those rotations.
+   *
+   * \param [in] hand Hand bone's transform in the controller's frame
+   * \param [in] wrist Hand bone's rotation in the forearm
+   * \param [in] twist Twist bone's rotation in the forearm
+   * \param [in] wristOffset Hand bone's position in the forearm
+   * \param [in] twistOffset Twist bone's position in the forearm
+   * \param [in] point Point in the twist bone's frame
+   * \returns The point in the controller's frame (forward, up and right)
+   */
+  VrVector3 vrComputeForearmPoint(
+    const VrGameTransform&      hand,
+    const VrGameRotation&       wrist,
+    const VrGameRotation&       twist,
+    const VrVector3&            wristOffset,
+    const VrVector3&            twistOffset,
+    const VrVector3&            point);
+
+  /**
    * \brief Heading and pitch of a direction in the game's convention
    *
    * Heading 0 faces north (+Y) and grows clockwise, pitch is positive

@@ -174,6 +174,18 @@ namespace dxvk {
     constexpr char RightHandNodeName[]        = "Bip01 R Hand";
 
     /**
+     * The left forearm's twist bone, which carries the Pip-Boy, and the
+     * Pip-Boy's screen geometry below it (FOPipboyManager::Initialize looks
+     * for both names), see findings/weapon.md §6.3 and findings/pipboy.md.
+     * A geometry's world bound is a pointer at NiAVObject+0x20 to its centre
+     * and radius.
+     */
+    constexpr char LeftForeTwistNodeName[]    = "Bip01 L ForeTwist";
+    constexpr char PipBoyScreenNodeName[]     = "pipboyscreen";
+    constexpr char PipBoyScreenNodeAltName[]  = "pipboyscreen:0";
+    constexpr uintptr_t ObjectWorldBound      = 0x20;
+
+    /**
      * Skinned geometry: GetAsNiGeometry vtable slot (0x00E68810 returns this
      * in the NiTriShape vtable 0x0109D454, null for nodes), NiGeometry skin
      * instance, and the skin instance's data and bone array. The bone count
@@ -255,6 +267,24 @@ namespace dxvk {
      */
     constexpr uintptr_t IsPipBoyShown = 0x00705A00;
     constexpr uint8_t   IsPipBoyShownPrologue[] = { 0x55, 0x8B, 0xEC, 0x51, 0xE8, 0x07, 0x18, 0xDB, 0xFF, 0x85, 0xC0, 0x74, 0x42 };
+
+    /**
+     * The Pip-Boy's state machine, InterfaceManager+0x4BC: 0 closed, 1 open
+     * requested, 2 raising the arm, 3 open, 4 close requested, 5 lowering
+     * the arm. InterfaceManager::OpenPipboy (__thiscall: callback, menu to
+     * open, 0 keeps the last tab) checks that the player may open it and
+     * moves 0 to 1; InterfaceManager::ClosePipboy (__thiscall: callback)
+     * moves 3 to 4. InterfaceManager::Update steps the machine. Names from
+     * the Xbox 360 build in IDA, see findings/pipboy.md §1. Both are checked
+     * against their first bytes before they are called.
+     */
+    constexpr uintptr_t InterfacePipBoyState = 0x4BC;
+    constexpr uintptr_t OpenPipBoy           = 0x0070F4E0;
+    constexpr uint8_t   OpenPipBoyPrologue[] = { 0x55, 0x8B, 0xEC, 0x51, 0x56, 0x89, 0x4D, 0xFC,
+                                                 0x6A, 0x04, 0x8B, 0x0D, 0x3C, 0xEA, 0x1D, 0x01 };
+    constexpr uintptr_t ClosePipBoy          = 0x0070F690;
+    constexpr uint8_t   ClosePipBoyPrologue[] = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x8B, 0x45, 0xFC,
+                                                  0x83, 0xB8, 0xBC, 0x04, 0x00, 0x00, 0x00 };
 
     /**
      * Main's copy of the bStaticMenuBackground:Display setting, a bool read

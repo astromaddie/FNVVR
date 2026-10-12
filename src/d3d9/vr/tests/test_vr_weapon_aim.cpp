@@ -142,6 +142,34 @@ TEST_CASE(held_transform_follows_its_controller) {
 }
 
 
+TEST_CASE(forearm_point_follows_the_hand) {
+  VrGameTransform hand;
+  hand.translate = { 1.0f, 2.0f, 3.0f };
+
+  VrGameRotation identity;
+  checkVector(vrComputeForearmPoint(hand, identity, identity,
+    { 18.0f, 0.0f, 0.0f }, { 9.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f }), -8.0f, 3.0f, 3.0f);
+
+  // Whatever the rotations, the hand bone's own position lands on the hand
+  hand.rotate = vrCameraRotation(eastFacing({ }));
+
+  VrGameRotation wrist;
+  wrist.m[0][0] = 0.0f; wrist.m[0][1] = -1.0f;
+  wrist.m[1][0] = 1.0f; wrist.m[1][1] =  0.0f;
+
+  VrGameRotation twist;
+  twist.m[1][1] = 0.0f; twist.m[1][2] = -1.0f;
+  twist.m[2][1] = 1.0f; twist.m[2][2] =  0.0f;
+
+  VrVector3 wristOffset = { 18.0f, 1.0f, 0.0f };
+  VrVector3 twistOffset = {  9.0f, 0.0f, 0.0f };
+
+  // twistOffset + twist * point == wristOffset
+  VrVector3 point = vrTranspose(twist) * (wristOffset - twistOffset);
+  checkVector(vrComputeForearmPoint(hand, wrist, twist, wristOffset, twistOffset, point), 1.0f, 2.0f, 3.0f);
+}
+
+
 TEST_CASE(inverse_undoes_a_transform) {
   VrGameTransform t;
   t.rotate    = vrCameraRotation(eastFacing({ }));

@@ -93,6 +93,21 @@ namespace dxvk {
       return m_braced;
     }
 
+    /**
+     * \brief Where the Pip-Boy's screen is relative to the left controller
+     *
+     * The centre of the screen when the left forearm takes its free pose
+     * around the controller, as it does while the Pip-Boy is shown. Read
+     * from the model each time it is drawn, so it is known before the
+     * Pip-Boy is first opened.
+     *
+     * \returns The point in metres along the controller's forward, up and
+     *    right axes, or \c nullptr if the screen was not found
+     */
+    const VrVector3* pipBoyScreen() const {
+      return m_hasPipBoyScreen ? &m_pipBoyScreen : nullptr;
+    }
+
   private:
 
     enum class GripKind {
@@ -132,6 +147,10 @@ namespace dxvk {
     VrVector3        m_pipBoyShift;
     bool             m_pipBoyPlaced = false;
 
+    // Centre of the Pip-Boy's screen in the left controller's frame
+    VrVector3        m_pipBoyScreen;
+    bool             m_hasPipBoyScreen = false;
+
     // Muzzle relative to the first-person root, and the direction the
     // hand pointed, when the weapon was last drawn in the hand
     VrVector3        m_muzzleOffset;
@@ -147,6 +166,7 @@ namespace dxvk {
     bool             m_loggedSnapAim = false;
     bool             m_loggedPipBoy = false;
     bool             m_loggedRightHand = false;
+    bool             m_loggedScreen = false;
 
     // Objects culled by the VR layer, compared but not dereferenced until
     // they are found in the model again, and whether the right hand and the
@@ -180,6 +200,8 @@ namespace dxvk {
     void placeModel(uint8_t* root, void* updateData);
 
     void placePipBoyArm(uint8_t* root, const VrVector3& shift, void* updateData);
+
+    void measurePipBoyScreen(uint8_t* root);
 
     void updateGrip(GripKind kind, bool canHold, const VrVector3& support);
 

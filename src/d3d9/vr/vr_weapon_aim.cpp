@@ -129,6 +129,20 @@ namespace dxvk {
   }
 
 
+  VrVector3 vrComputeForearmPoint(
+    const VrGameTransform&      hand,
+    const VrGameRotation&       wrist,
+    const VrGameRotation&       twist,
+    const VrVector3&            wristOffset,
+    const VrVector3&            twistOffset,
+    const VrVector3&            point) {
+    // The forearm is placed so that the hand, at its rotation in the
+    // forearm, lands on its pose
+    VrGameRotation forearm = hand.rotate * vrTranspose(wrist);
+    return hand.translate + forearm * (twistOffset + twist * point - wristOffset);
+  }
+
+
   VrHeadAngles vrComputeAimAngles(const VrVector3& direction) {
     VrHeadAngles angles;
     float length = vrLength(direction);
