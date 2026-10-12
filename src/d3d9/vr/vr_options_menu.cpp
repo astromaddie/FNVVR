@@ -16,9 +16,11 @@ namespace dxvk {
     // confirmation lists.
     constexpr uint32_t PageMask = 0x4000;
 
-    // UserOption types: 0 toggles and wraps around from the last value
+    // UserOption types: 0 toggles and wraps around from the last value,
+    // 2 is a slider with a position per value
     constexpr int32_t  ToggleType   = 0;
     constexpr uint32_t ToggleValues = 2;
+    constexpr int32_t  SliderType   = 2;
 
     // Space between the arrows of a toggle, the same as the game's toggles
     // with long value names
@@ -29,6 +31,7 @@ namespace dxvk {
     constexpr char TurnText[]       = "Turning";
     constexpr char TurnSnapText[]   = "Snap";
     constexpr char TurnSmoothText[] = "Smooth";
+    constexpr char SpeedText[]      = "Smooth turn speed";
 
     using AppendFn   = int   (__fastcall*)(void* array, void* unused, void** option);
     using HeapFn     = void* (__cdecl*)(size_t size);
@@ -76,32 +79,82 @@ namespace dxvk {
     }
 
 
-    // Called by the game with the option twice: when the options are
-    // initialised from their settings, and when the player changes one
-    void __cdecl onTurnChanged(void* option) {
+    // The callbacks of the options are called by the game twice: when the
+    // options are initialised from their settings, which is when they
+    // set their value, and when the player changes one
+    bool optionsInitialised() {
       uint8_t* menu = startMenu();
-      uint8_t* object = static_cast<uint8_t*>(option);
-      uint32_t& value        = *reinterpret_cast<uint32_t*>(object + VrGame::UserOptionValue);
-      uint32_t& defaultValue = *reinterpret_cast<uint32_t*>(object + VrGame::UserOptionDefaultValue);
 
-      bool initialised = menu
+      return menu
         && (*reinterpret_cast<const uint32_t*>(menu + VrGame::StartMenuFlags) & VrGame::StartMenuOptionsInitialised);
+    }
 
-      if (!initialised) {
-        value        = g_options.smoothTurn ? 1u : 0u;
-        defaultValue = 0u;
+
+    uint32_t& optionValue(void* option) {
+      return *reinterpret_cast<uint32_t*>(static_cast<uint8_t*>(option) + VrGame::UserOptionValue);
+    }
+
+
+    uint32_t& optionDefault(void* option) {
+      return *reinterpret_cast<uint32_t*>(static_cast<uint8_t*>(option) + VrGame::UserOptionDefaultValue);
+    }
+
+
+    void notifyChanged() {
+      if (g_onChanged)
+        g_onChanged(g_options);
+    }
+
+
+    void __cdecl onTurnChanged(void* option) {
+      if (!optionsInitialised()) {
+        optionValue(option)   = g_options.smoothTurn ? 1u : 0u;
+        optionDefault(option) = 0u;
         return;
       }
 
-      bool smooth = value != 0;
+      bool smooth = optionValue(option) != 0;
 
       if (smooth == g_options.smoothTurn)
         return;
 
       g_options.smoothTurn = smooth;
+      notifyChanged();
+    }
 
-      if (g_onChanged)
-        g_onChanged(g_options);
+
+    void __cdecl onSpeedChanged(void* option) {
+      if (!optionsInitialised()) {
+        optionValue(option)   = vrSmoothTurnSpeedToStep(g_options.smoothTurnSpeed);
+        optionDefault(option) = vrSmoothTurnSpeedToStep(VrOptions::DefaultSmoothTurnSpeed);
+        return;
+      }
+
+      float speed = vrSmoothTurnStepToSpeed(optionValue(option));
+
+      // The options can hold a speed between two positions, which stays
+      // until the player moves the slider
+      if (vrSmoothTurnSpeedToStep(g_options.smoothTurnSpeed) == optionValue(option))
+        return;
+
+      g_options.smoothTurnSpeed = speed;
+      notifyChanged();
+    }
+
+
+    // Creates a user option and adds it to the game's list
+    void appendUserOption(const char* text, UserOptionCallback callback, int32_t type,
+        uint32_t count, uint32_t spacing, const char* name0, const char* name1) {
+      void* memory = reinterpret_cast<HeapFn>(VrGame::HeapAllocate)(VrGame::UserOptionSize);
+
+      if (!memory)
+        return;
+
+      void* option = reinterpret_cast<UserOptionCtorFn>(VrGame::UserOptionConstruct)(
+        memory, text, callback, PageMask, type, count, spacing, name0, name1);
+
+      reinterpret_cast<AppendFn>(VrGame::OptionArrayAppend)(
+        reinterpret_cast<void*>(VrGame::UserOptionArray), nullptr, &option);
     }
 
 
@@ -110,20 +163,19 @@ namespace dxvk {
       auto allocate = reinterpret_cast<HeapFn>(VrGame::HeapAllocate);
 
       void* optionMemory = allocate(VrGame::OptionSize);
-      void* userMemory   = allocate(VrGame::UserOptionSize);
 
-      if (!optionMemory || !userMemory)
+      if (!optionMemory)
         return;
 
       void* option = reinterpret_cast<OptionCtorFn>(VrGame::OptionConstruct)(
         optionMemory, PageText, &choosePage, VrGame::OptionMaskSettingsList);
 
-      void* turn = reinterpret_cast<UserOptionCtorFn>(VrGame::UserOptionConstruct)(
-        userMemory, TurnText, &onTurnChanged, PageMask, ToggleType, ToggleValues, ArrowSpacing,
-        TurnSnapText, TurnSmoothText);
-
       append(optionArray, nullptr, &option);
-      append(reinterpret_cast<void*>(VrGame::UserOptionArray), nullptr, &turn);
+
+      appendUserOption(TurnText, &onTurnChanged, ToggleType, ToggleValues, ArrowSpacing,
+        TurnSnapText, TurnSmoothText);
+      appendUserOption(SpeedText, &onSpeedChanged, SliderType, VrSmoothTurnSpeedSteps, 0,
+        nullptr, nullptr);
     }
 
 

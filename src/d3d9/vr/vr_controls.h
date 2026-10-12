@@ -32,9 +32,9 @@ namespace dxvk {
     void setHeadLook(std::unique_ptr<VrHeadLook> headLook);
 
     /**
-     * \brief Switches between snap and smooth turning
+     * \brief Changes how the turning stick turns
      */
-    void setSmoothTurn(bool smooth);
+    void setTurnConfig(const VrTurnConfig& turn);
 
     /**
      * \brief Processes the input sampled for a frame

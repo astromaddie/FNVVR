@@ -40,9 +40,9 @@ namespace dxvk {
   }
 
 
-  void VrControls::setSmoothTurn(bool smooth) {
+  void VrControls::setTurnConfig(const VrTurnConfig& turn) {
     if (m_headLook)
-      m_headLook->setSmoothTurn(smooth);
+      m_headLook->setTurnConfig(turn);
   }
 
 

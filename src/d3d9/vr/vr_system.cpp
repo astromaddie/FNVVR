@@ -139,9 +139,11 @@ namespace dxvk {
 
     // What the player picked on the options page overrides dxvk.conf
     VrOptions options;
-    options.smoothTurn = turn.smooth;
+    options.smoothTurn      = turn.smooth;
+    options.smoothTurnSpeed = turn.smoothSpeed;
     VrOptionsFile::load(options);
-    turn.smooth = options.smoothTurn;
+    turn.smooth      = options.smoothTurn;
+    turn.smoothSpeed = options.smoothTurnSpeed;
 
     if (auto* emulator = dynamic_cast<VrEmulatorBackend*>(backend.get())) {
       VrEmulatorKeyboard keyboard;
@@ -213,10 +215,11 @@ namespace dxvk {
 
 
   void VrSystem::applyOptions(const VrOptions& options) {
-    m_turnConfig.smooth = options.smoothTurn;
+    m_turnConfig.smooth      = options.smoothTurn;
+    m_turnConfig.smoothSpeed = options.smoothTurnSpeed;
 
     if (m_stereoRenderer)
-      m_stereoRenderer->setSmoothTurn(options.smoothTurn);
+      m_stereoRenderer->setTurnConfig(m_turnConfig);
 
     VrOptionsFile::save(options);
   }

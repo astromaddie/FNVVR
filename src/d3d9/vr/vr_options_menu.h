@@ -16,7 +16,8 @@ namespace dxvk {
    * looks and works like the game's own pages, including the cursor
    * driven by the controllers' lasers. See findings/options-menu.md.
    *
-   * For now the page has one option: snap turning or smooth turning.
+   * For now the page has two options: snap or smooth turning, and the
+   * speed of smooth turning.
    *
    * Only used on the game's main thread.
    */

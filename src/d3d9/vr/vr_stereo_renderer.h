@@ -126,12 +126,12 @@ namespace dxvk {
     bool onPresent(IDirect3DSwapChain9* swapchain);
 
     /**
-     * \brief Switches between snap and smooth turning
+     * \brief Changes how the turning stick turns
      *
      * Called from the game's options page, on the game's thread.
      */
-    void setSmoothTurn(bool smooth) {
-      m_controls.setSmoothTurn(smooth);
+    void setTurnConfig(const VrTurnConfig& turn) {
+      m_controls.setTurnConfig(turn);
     }
 
   private:

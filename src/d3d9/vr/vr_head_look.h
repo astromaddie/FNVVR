@@ -57,10 +57,10 @@ namespace dxvk {
     void update(const VrPose* headInReference, float turnStick, float dt);
 
     /**
-     * \brief Switches between snap and smooth turning
+     * \brief Changes how the turning stick turns
      */
-    void setSmoothTurn(bool smooth) {
-      m_turn.setSmooth(smooth);
+    void setTurnConfig(const VrTurnConfig& turn) {
+      m_turn.setConfig(turn);
     }
 
     /**

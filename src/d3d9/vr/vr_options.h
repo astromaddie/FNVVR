@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 namespace dxvk {
@@ -12,9 +13,36 @@ namespace dxvk {
    * them for the options it contains.
    */
   struct VrOptions {
+    /// Speed of smooth turning when none is configured, in degrees per second
+    static constexpr float DefaultSmoothTurnSpeed = 120.0f;
+
     /// Turn continuously instead of by steps
-    bool smoothTurn = false;
+    bool  smoothTurn      = false;
+    /// Speed of smooth turning at full deflection, in degrees per second
+    float smoothTurnSpeed = DefaultSmoothTurnSpeed;
   };
+
+  /// Slowest smooth turning speed of the options page, in degrees per second
+  constexpr float    VrSmoothTurnSpeedMin   = 30.0f;
+  /// Difference between two positions of the options page's slider
+  constexpr float    VrSmoothTurnSpeedStep  = 30.0f;
+  /// Number of positions of the options page's slider
+  constexpr uint32_t VrSmoothTurnSpeedSteps = 12;
+
+  /**
+   * \brief Returns the slider position that is closest to a speed
+   *
+   * \param [in] speed Speed in degrees per second, which does not have
+   *    to be one of the slider's positions
+   */
+  uint32_t vrSmoothTurnSpeedToStep(float speed);
+
+  /**
+   * \brief Returns the speed of a slider position
+   *
+   * \param [in] step Position, at most \c VrSmoothTurnSpeedSteps - 1
+   */
+  float vrSmoothTurnStepToSpeed(uint32_t step);
 
   /**
    * \brief Reads the options from the content of an options file

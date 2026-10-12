@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <cstdlib>
 
 #include "vr_options.h"
@@ -8,7 +9,8 @@ namespace dxvk {
 
   namespace {
 
-    constexpr char SmoothTurnName[] = "smoothturn";
+    constexpr char SmoothTurnName[]      = "smoothturn";
+    constexpr char SmoothTurnSpeedName[] = "smoothturnspeed";
 
     std::string trim(const std::string& text) {
       size_t begin = 0;
@@ -45,6 +47,38 @@ namespace dxvk {
       return true;
     }
 
+
+    bool parseFloat(const std::string& text, float& value) {
+      if (text.empty())
+        return false;
+
+      char* end = nullptr;
+      double number = std::strtod(text.c_str(), &end);
+
+      if (*end || !(number > 0.0))
+        return false;
+
+      float low  = VrSmoothTurnSpeedMin;
+      float high = vrSmoothTurnStepToSpeed(VrSmoothTurnSpeedSteps - 1);
+      value = std::min(std::max(float(number), low), high);
+      return true;
+    }
+
+  }
+
+
+  uint32_t vrSmoothTurnSpeedToStep(float speed) {
+    float step = (speed - VrSmoothTurnSpeedMin) / VrSmoothTurnSpeedStep + 0.5f;
+
+    if (!(step > 0.0f))
+      return 0;
+
+    return std::min(uint32_t(step), VrSmoothTurnSpeedSteps - 1);
+  }
+
+
+  float vrSmoothTurnStepToSpeed(uint32_t step) {
+    return VrSmoothTurnSpeedMin + float(std::min(step, VrSmoothTurnSpeedSteps - 1)) * VrSmoothTurnSpeedStep;
   }
 
 
@@ -73,6 +107,8 @@ namespace dxvk {
 
       if (name == SmoothTurnName)
         parseBool(value, options.smoothTurn);
+      else if (name == SmoothTurnSpeedName)
+        parseFloat(value, options.smoothTurnSpeed);
     }
   }
 
@@ -81,6 +117,12 @@ namespace dxvk {
     std::string text = "; Written by the VR options page in the game's Settings menu.\n[VR]\n";
     text += "SmoothTurn=";
     text += options.smoothTurn ? "1" : "0";
+    text += "\n";
+
+    char speed[32];
+    std::snprintf(speed, sizeof(speed), "%g", options.smoothTurnSpeed);
+    text += "SmoothTurnSpeed=";
+    text += speed;
     text += "\n";
     return text;
   }

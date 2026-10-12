@@ -58,12 +58,12 @@ namespace dxvk {
     void reset();
 
     /**
-     * \brief Switches between snap and smooth turning
+     * \brief Replaces the configuration, for example from the options page
      *
-     * The stick has to come back near the centre before the next snap
-     * turn.
+     * When the mode changes, the stick has to come back near the centre
+     * before the next snap turn.
      */
-    void setSmooth(bool smooth);
+    void setConfig(const VrTurnConfig& config);
 
   private:
 
