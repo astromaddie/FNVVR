@@ -7,7 +7,9 @@ namespace dxvk {
    *
    * Set by \c d3d9.vrSmoothTurn, \c d3d9.vrSnapTurnAngle and
    * \c d3d9.vrSmoothTurnSpeed in dxvk.conf. Snap turning is the default
-   * because it is more comfortable for most people.
+   * because it is more comfortable for most people. The player can switch
+   * between snap and smooth turning from the VR options page (see
+   * \ref VrOptions).
    */
   struct VrTurnConfig {
     /// Turn continuously instead of by steps
@@ -54,6 +56,14 @@ namespace dxvk {
      * released.
      */
     void reset();
+
+    /**
+     * \brief Switches between snap and smooth turning
+     *
+     * The stick has to come back near the centre before the next snap
+     * turn.
+     */
+    void setSmooth(bool smooth);
 
   private:
 

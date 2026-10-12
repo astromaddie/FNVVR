@@ -50,3 +50,18 @@ TEST_CASE(smooth_turn_scales_with_deflection_and_time) {
   CHECK(turn.update(0.5f, 1.0f) > 0.0f);
   CHECK(turn.update(0.5f, 1.0f) < 90.0f * 0.017453293f);
 }
+
+
+TEST_CASE(switching_to_smooth_turn_takes_effect_at_once) {
+  VrTurnInput turn = VrTurnInput(VrTurnConfig());
+  turn.update(0.0f, 0.01f);
+
+  turn.setSmooth(true);
+  CHECK(turn.update(1.0f, 1.0f) > StepRadians);
+  CHECK(turn.update(1.0f, 0.01f) > 0.0f);
+
+  turn.setSmooth(false);
+  CHECK_NEAR(turn.update(1.0f, 0.01f), 0.0f, 1e-6);
+  CHECK_NEAR(turn.update(0.0f, 0.01f), 0.0f, 1e-6);
+  CHECK_NEAR(turn.update(1.0f, 0.01f), StepRadians, 1e-6);
+}

@@ -32,6 +32,11 @@ namespace dxvk {
     void setHeadLook(std::unique_ptr<VrHeadLook> headLook);
 
     /**
+     * \brief Switches between snap and smooth turning
+     */
+    void setSmoothTurn(bool smooth);
+
+    /**
      * \brief Processes the input sampled for a frame
      *
      * \param [in] input Input returned by the backend

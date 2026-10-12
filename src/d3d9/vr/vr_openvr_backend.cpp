@@ -16,6 +16,7 @@
 
 #include "vr_eye_transition.h"
 #include "vr_math.h"
+#include "vr_module_path.h"
 #include "vr_openvr_backend.h"
 #include "vr_openvr_convert.h"
 
@@ -320,23 +321,11 @@ namespace dxvk {
 
 
   std::string VrOpenVrBackend::manifestPath() {
-    HMODULE module = nullptr;
+    std::wstring path = vrModuleDirectory();
 
-    if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-        reinterpret_cast<LPCWSTR>(&VrOpenVrBackend::manifestPath), &module))
+    if (path.empty())
       return std::string();
 
-    std::vector<WCHAR> buffer(MAX_PATH);
-    DWORD length = 0;
-
-    while ((length = GetModuleFileNameW(module, buffer.data(), DWORD(buffer.size()))) == buffer.size())
-      buffer.resize(buffer.size() * 2);
-
-    if (!length)
-      return std::string();
-
-    std::wstring path(buffer.data(), length);
-    path.resize(path.find_last_of(L"\\/") + 1);
     path += L"fnvvr\\actions.json";
 
     if (GetFileAttributesW(path.c_str()) == INVALID_FILE_ATTRIBUTES) {

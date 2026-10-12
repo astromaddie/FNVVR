@@ -40,6 +40,12 @@ namespace dxvk {
   }
 
 
+  void VrControls::setSmoothTurn(bool smooth) {
+    if (m_headLook)
+      m_headLook->setSmoothTurn(smooth);
+  }
+
+
   void VrControls::update(
     const VrInputState&         input,
           VrGameStateKind       state,

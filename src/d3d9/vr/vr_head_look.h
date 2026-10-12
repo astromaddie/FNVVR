@@ -57,6 +57,13 @@ namespace dxvk {
     void update(const VrPose* headInReference, float turnStick, float dt);
 
     /**
+     * \brief Switches between snap and smooth turning
+     */
+    void setSmoothTurn(bool smooth) {
+      m_turn.setSmooth(smooth);
+    }
+
+    /**
      * \brief Replaces the game's camera rotation by the body's
      *
      * Only while the heading and look angle are still the ones written

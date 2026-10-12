@@ -69,7 +69,7 @@ Settings are read from `dxvk.conf` next to the executable. The main VR options a
 | `d3d9.vrHudDistance`, `d3d9.vrHudWidth`, `d3d9.vrHudHeight` | 1, 1.5, -0.15 | Head-anchored HUD and menu panel, in metres. |
 | `d3d9.vrHudMessagesOffset` | 0.25 | Moves messages and objectives towards the panel centre, in metres. |
 | `d3d9.vrControllers` | on | VR controllers act as an Xbox gamepad while tracked. |
-| `d3d9.vrSmoothTurn` | off | Smooth turning instead of snap turning. |
+| `d3d9.vrSmoothTurn` | off | Smooth turning instead of snap turning. Can be changed in the game, in Settings > VR; that choice is saved in `fnvvr/vr_options.ini` and overrides this option. |
 | `d3d9.vrSnapTurnAngle` | 30 | Snap turn step, in degrees. |
 | `d3d9.vrSmoothTurnSpeed` | 120 | Smooth turn speed, in degrees per second. |
 | `d3d9.vrWeaponInHand` | on | Draws the first-person weapon in the right hand and shoots along it. |
