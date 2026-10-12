@@ -593,6 +593,17 @@ namespace dxvk {
     constexpr uintptr_t SkyRoot                  = 0x011DEB34;
     constexpr uintptr_t WeatherRoot              = 0x011DEDA4;
 
+    /**
+     * Sun glare, see findings/sky.md. DrawWorld_Init returns the Sun; its
+     * glare billboard (NiBillboardNode*) is at SunGlareNode. The billboard
+     * face mode is stored in the low bits of the 16-bit flags at
+     * BillboardFlags (NiBillboardNode::SetMode 0x0051D000).
+     */
+    constexpr uintptr_t SunGlareNode             = 0x0C;
+    constexpr uintptr_t BillboardFlags           = 0xAC;
+    constexpr uint16_t  BillboardModeMask        = 0x7;
+    constexpr uint16_t  BillboardAlwaysFaceCenter = 3;
+
   }
 
 }

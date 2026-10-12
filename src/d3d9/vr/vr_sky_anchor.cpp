@@ -38,6 +38,23 @@ namespace dxvk {
       reinterpret_cast<ObjectUpdateFn>(VrGame::ObjectUpdate)(object, nullptr, &updateData);
     }
 
+    // The game turns the sun glare with the camera (RIGID_FACE_CAMERA), so
+    // its rays rolled with the head. Facing the eye's position instead keeps
+    // its orientation fixed in the world.
+    void faceGlareToEye(void* sun) {
+      if (!sun)
+        return;
+
+      uint8_t* glare = *reinterpret_cast<uint8_t**>(
+        reinterpret_cast<uint8_t*>(sun) + VrGame::SunGlareNode);
+
+      if (!glare)
+        return;
+
+      uint16_t& flags = *reinterpret_cast<uint16_t*>(glare + VrGame::BillboardFlags);
+      flags = uint16_t((flags & ~VrGame::BillboardModeMask) | VrGame::BillboardAlwaysFaceCenter);
+    }
+
   }
 
 
@@ -73,8 +90,10 @@ namespace dxvk {
           void*                 unused) {
     void* sun = reinterpret_cast<DrawWorldInitFn>(VrGame::DrawWorldInit)(main, nullptr);
 
-    if (g_skyAnchor)
+    if (g_skyAnchor) {
+      faceGlareToEye(sun);
       g_skyAnchor->moveRoots();
+    }
 
     return sun;
   }

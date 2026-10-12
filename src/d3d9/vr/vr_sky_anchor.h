@@ -19,7 +19,9 @@ namespace dxvk {
    *
    * Right after the game has placed both roots, they are moved to the
    * position of the eye being drawn. Both eyes then see the sky in the same
-   * directions, as for objects at infinity.
+   * directions, as for objects at infinity. The sun glare billboard is also
+   * turned towards the eye's position instead of copying the camera's
+   * rotation, so that it no longer rolls with the head.
    *
    * Only used on the game's main thread.
    */
