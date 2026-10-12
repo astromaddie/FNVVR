@@ -14,14 +14,26 @@ namespace dxvk {
    * menus that are open. The dark disc the lock model has around it, meant
    * for the frozen background, is hidden. See findings/menu-scenes.md.
    *
+   * Rendered menus other than the Pip-Boy, such as the Reflectron of the
+   * character creation, are drawn by the game with a camera of their own
+   * that ignores the head, so they would stick to the face in both eyes.
+   * Their draw in the eye images is skipped, the model and then its screen
+   * with the menu and the face, and they are drawn with the menu scenes
+   * instead.
+   *
    * Only used on the game's main thread, while the game draws a frame.
    */
   class VrMenuScenes {
 
   public:
 
+    ~VrMenuScenes();
+
     /**
      * \brief Checks that the executable is the supported version
+     *
+     * Also moves the rendered menus' draw out of the eye images.
+     *
      * \returns \c false if the scene functions were not found
      */
     bool initialize();
@@ -39,9 +51,23 @@ namespace dxvk {
      */
     void render() const;
 
+    /**
+     * \brief Checks whether the open rendered menu is drawn with the scenes
+     *
+     * Its screen is then left out of the eye images as well.
+     */
+    static bool movesRenderedMenu();
+
   private:
 
-    bool m_available = false;
+    bool m_available         = false;
+    bool m_renderedMenuMoved = false;
+
+    static void __fastcall renderedMenuHook(
+            void*                 main,
+            void*                 unused);
+
+    static bool isRenderedMenuOpen();
 
   };
 

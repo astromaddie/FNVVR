@@ -4,6 +4,7 @@
 
 #include "vr_game_addresses.h"
 #include "vr_game_memory.h"
+#include "vr_menu_scenes.h"
 #include "vr_pipboy_render.h"
 #include "vr_sky_anchor.h"
 #include "vr_weapon_aim.h"
@@ -78,6 +79,7 @@ namespace dxvk {
 
     const Redirect redirects[] = {
       { VrGame::PipBoyBackgroundCallSite,       VrGame::PipBoyBackground,   reinterpret_cast<const void*>(&backgroundHook) },
+      { VrGame::RaceSexBackgroundCallSite,      VrGame::PipBoyBackground,   reinterpret_cast<const void*>(&backgroundHook) },
       { VrGame::WorldRenderCallSite,            VrGame::Render,             reinterpret_cast<const void*>(&worldRenderHook) },
       { VrGame::RenderedMenuTargetCallSite,     VrGame::InitRenderTexture,  reinterpret_cast<const void*>(&targetHook) },
       { VrGame::RenderedMenuBackgroundCallSite, VrGame::CopyMenuBackground, reinterpret_cast<const void*>(&copyBackgroundHook) },
@@ -108,7 +110,7 @@ namespace dxvk {
           void*                 main,
           void*                 unused) {
     // Without the frozen background, its flag stays clear and the world
-    // branch below draws the Pip-Boy
+    // branch below draws the Pip-Boy or the character creation
     if (!g_pipBoyRender)
       game<MainFn>(VrGame::PipBoyBackground)(main, nullptr);
   }
@@ -153,7 +155,11 @@ namespace dxvk {
           void*                 renderer,
           uint32_t              multisampling,
           void*                 destination) {
-    if (!g_pipBoyRender || !g_pipBoyRender->m_target || !returnsTrue(VrGame::IsPipBoyShown)) {
+    // Without a frozen background there is nothing to copy: the world
+    // branch draws the rendered menu, and the world is drawn behind it
+    bool frozen = read<uint8_t>(VrGame::MenuBackgroundReady) && !returnsTrue(VrGame::IsPipBoyShown);
+
+    if (!g_pipBoyRender || !g_pipBoyRender->m_target || frozen) {
       game<CopyBackgroundFn>(VrGame::CopyMenuBackground)(
         main, nullptr, imageSpaceManager, renderer, multisampling, destination);
       return;
@@ -179,6 +185,11 @@ namespace dxvk {
           void*                 unused,
           void*                 screen,
           void*                 renderer) {
+    // Other rendered menus, such as the character creation, are drawn on
+    // the menu panel
+    if (VrMenuScenes::movesRenderedMenu())
+      return;
+
     VrVector3 shift;
 
     if (!g_pipBoyRender || !g_pipBoyRender->m_screenPass || !firstPersonShift(shift)) {
@@ -211,7 +222,7 @@ namespace dxvk {
       return;
 
     if (!m_loggedWorld) {
-      Logger::info("VR: The live world is drawn behind the Pip-Boy");
+      Logger::info("VR: The live world is drawn behind the Pip-Boy and the character creation");
       m_loggedWorld = true;
     }
 
