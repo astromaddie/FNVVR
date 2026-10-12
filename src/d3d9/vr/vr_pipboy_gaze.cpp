@@ -31,12 +31,8 @@ namespace dxvk {
 
 
   VrPipBoyRequest VrPipBoyGaze::update(const VrPipBoyGazeInput& input) {
-    bool open = input.state == VrPipBoyState::Open;
-
     m_looking = input.head && input.screen
-      && vrIsLookingAt(*input.head, *input.screen,
-        open ? KeepAngle    : MaxAngle,
-        open ? KeepDistance : MaxDistance);
+      && vrIsLookingAt(*input.head, *input.screen, MaxAngle, MaxDistance);
 
     if (m_looking) {
       m_lookTime += input.dt;
