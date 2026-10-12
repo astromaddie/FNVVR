@@ -12,6 +12,14 @@ namespace dxvk {
 
     using IsMenuActiveFn    = bool (__cdecl*)(uint32_t menuId, uint32_t unused);
     using RenderMenuSceneFn = void (__cdecl*)();
+    using PointerFn         = void* (__cdecl*)();
+
+    // __thiscall on Main without arguments, called as __fastcall with an
+    // unused second argument
+    using MainFn            = void (__fastcall*)(void* main, void* unused);
+
+    // Set while the hook below keeps the rendered menu out of the eye images
+    bool g_renderedMenuMoved = false;
 
     constexpr uint8_t PushZero[] = { 0x6A, 0x00 };
     constexpr uint8_t PushImm32  = 0x68;
@@ -68,12 +76,25 @@ namespace dxvk {
   }
 
 
+  VrMenuScenes::~VrMenuScenes() {
+    // The patched call stays in place and falls through to the game's function
+    if (m_renderedMenuMoved)
+      g_renderedMenuMoved = false;
+  }
+
+
   bool VrMenuScenes::initialize() {
-    m_available = true;
+    m_available = !g_renderedMenuMoved
+      && VrGameMemory::readable(VrGame::MainSingleton, sizeof(uintptr_t));
 
     for (const auto& scene : VrGame::MenuScenes)
       m_available = m_available && matchesScene(scene);
 
+    m_available = m_available && VrGameMemory::redirectCall(VrGame::RenderedMenuParentCallSite,
+      VrGame::DrawRenderedMenuParent, reinterpret_cast<const void*>(&renderedMenuHook));
+
+    m_renderedMenuMoved = m_available;
+    g_renderedMenuMoved = m_available;
     return m_available;
   }
 
@@ -81,6 +102,9 @@ namespace dxvk {
   bool VrMenuScenes::isAnyOpen() const {
     if (!m_available)
       return false;
+
+    if (isRenderedMenuOpen())
+      return true;
 
     for (const auto& scene : VrGame::MenuScenes) {
       if (isMenuActive(scene.menuId))
@@ -114,6 +138,27 @@ namespace dxvk {
 
     for (uint32_t* flags : hidden)
       *flags &= ~VrGame::ObjectFlagAppCulled;
+
+    auto main = readField<void*>(VrGame::MainSingleton, 0);
+
+    if (main && isRenderedMenuOpen())
+      reinterpret_cast<MainFn>(VrGame::DrawRenderedMenuParent)(main, nullptr);
+  }
+
+
+  void __fastcall VrMenuScenes::renderedMenuHook(
+          void*                 main,
+          void*                 unused) {
+    // In the eye images, the menu's camera would put the model at the same
+    // place in both eyes, stuck to the face
+    if (!g_renderedMenuMoved)
+      reinterpret_cast<MainFn>(VrGame::DrawRenderedMenuParent)(main, nullptr);
+  }
+
+
+  bool VrMenuScenes::isRenderedMenuOpen() {
+    void* menu = reinterpret_cast<PointerFn>(VrGame::GetCurrentRenderedMenu)();
+    return menu && menu != reinterpret_cast<PointerFn>(VrGame::GetPipBoy)();
   }
 
 }

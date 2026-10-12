@@ -337,6 +337,22 @@ namespace dxvk {
      * lock model has a soft dark disc under its frame, a NiTriStrips named
      * "shadow", that darkens the frozen menu background around the lock.
      */
+    /**
+     * Rendered menus other than the Pip-Boy (character creation, see
+     * findings/menu-scenes.md). The rendered-menu render (0x008707C0) draws
+     * the current rendered menu's model, such as the Reflectron of the
+     * character creation, with the menu's own camera through
+     * DrawWorld_DrawRenderedMenuParent (__thiscall on Main, no arguments,
+     * returns at once for the Pip-Boy or without a rendered menu). Main is
+     * the object held at MainSingleton. GetCurrentRenderedMenu and GetPipBoy
+     * are __cdecl without arguments and return a FORenderedMenu*.
+     */
+    constexpr uintptr_t MainSingleton              = 0x011DEA0C;
+    constexpr uintptr_t RenderedMenuParentCallSite = 0x00870967;
+    constexpr uintptr_t DrawRenderedMenuParent     = 0x00875BF0;
+    constexpr uintptr_t GetCurrentRenderedMenu     = 0x00707AD0;
+    constexpr uintptr_t GetPipBoy                  = 0x00705990;
+
     constexpr uint32_t  LockPickMenuId    = 0x3F6;
     constexpr uintptr_t LockPickSceneRoot = 0x011DA24C;
     constexpr char      LockPickBackdrop[] = "shadow";
@@ -513,6 +529,14 @@ namespace dxvk {
      * Main: screen geometry, renderer).
      */
     constexpr uintptr_t PipBoyBackgroundCallSite   = 0x0087000F;
+    constexpr uintptr_t MenuBackgroundReady        = 0x011DEA29;
+
+    /**
+     * FORenderedMenuRaceSex::OnMenuOpen (0x007FD6C0) captures the same
+     * frozen background, with Main in ECX, as soon as the character
+     * creation opens. See findings/menu-scenes.md.
+     */
+    constexpr uintptr_t RaceSexBackgroundCallSite  = 0x007FD6F6;
     constexpr uintptr_t PipBoyBackground           = 0x00871DC0;
     constexpr uintptr_t WorldRenderCallSite        = 0x00870244;
     constexpr uintptr_t Render                     = 0x008706B0;

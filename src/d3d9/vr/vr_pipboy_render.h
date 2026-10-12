@@ -16,13 +16,15 @@ namespace dxvk {
    * the headset is a flat picture stuck to the head. Several calls of the
    * game are redirected, see findings/pipboy.md §3:
    *
-   * - The background capture is skipped, so the game's flag for it stays
-   *   clear and its world branch keeps running.
-   * - That branch draws the rendered-menu path while the Pip-Boy is open,
-   *   as the game's own menu branch would.
+   * - The background capture is skipped, when the Pip-Boy opens and when
+   *   the character creation opens, so the game's flag for it stays clear
+   *   and its world branch keeps running.
+   * - That branch draws the rendered-menu path while a rendered menu is
+   *   open, as the game's own menu branch would.
    * - In the rendered-menu path, the frozen background is replaced with
    *   the live world, drawn with the pieces of the game's normal world
-   *   render (the recipe of the Real-Time Menus plugin).
+   *   render (the recipe of the Real-Time Menus plugin), whenever the game
+   *   has no frozen background to show.
    * - The Pip-Boy screen pass moves the world camera into the space the
    *   first-person model is drawn in. The callback given to \c install
    *   is called around that pass with the offset between both spaces, so
