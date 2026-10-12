@@ -17,6 +17,7 @@
 #include "vr_pipboy_gaze.h"
 #include "vr_pipboy_render.h"
 #include "vr_preview_window.h"
+#include "vr_sky_anchor.h"
 #include "vr_weapon_hand.h"
 
 namespace dxvk {
@@ -203,6 +204,9 @@ namespace dxvk {
     // The first-person weapon, drawn in the hand when it is installed
     std::unique_ptr<VrWeaponHand> m_weaponHand;
     VrVector3           m_eyePosition;
+
+    // The sky, centred on the eye being drawn when it is installed
+    std::unique_ptr<VrSkyAnchor> m_skyAnchor;
 
     // The Pip-Boy over the live world. Its screen pass moves the camera into
     // the first-person drawing space, offset from the world by this shift.

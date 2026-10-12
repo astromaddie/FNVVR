@@ -5,6 +5,7 @@
 #include "vr_game_addresses.h"
 #include "vr_game_memory.h"
 #include "vr_pipboy_render.h"
+#include "vr_sky_anchor.h"
 #include "vr_weapon_aim.h"
 
 namespace dxvk {
@@ -14,7 +15,6 @@ namespace dxvk {
     // __thiscall functions on Main are called as __fastcall with an unused
     // second argument, which passes this in ECX and nothing in EDX
     using MainFn          = void  (__fastcall*)(void* main, void* unused);
-    using MainInitFn      = void* (__fastcall*)(void* main, void* unused);
     using RenderFn        = void  (__fastcall*)(void* main, void* unused,
       void* target, uint32_t renderedMenu, uint32_t flag);
     using InitTargetFn    = void* (__fastcall*)(void* main, void* unused,
@@ -215,7 +215,7 @@ namespace dxvk {
       m_loggedWorld = true;
     }
 
-    game<MainInitFn>(VrGame::DrawWorldInit)(main, nullptr);
+    VrSkyAnchor::drawWorldInit(main);
     game<MainFn>(VrGame::DrawWorldUpdateWater)(main, nullptr);
     game<RestartTargetFn>(VrGame::DrawWorldRestartTarget)(main, nullptr, target, multisampling, VrGame::ClearBackAndDepth);
 
