@@ -307,9 +307,12 @@ namespace dxvk {
       m_hasReference = true;
     }
 
-    // The weapon hand decided on the previous frame whether the game aims
+    // The weapon hand decided on the previous frame whether the game aims,
+    // and the gaze whether the Pip-Boy closes
     if (m_weaponHand)
       m_controls.setGameAim(m_weaponHand->wantsGameAim());
+
+    m_controls.setMenuBack(m_closePipBoy);
 
     float dt = float(timing.predictedPeriod) * 1e-9f;
 
@@ -589,6 +592,8 @@ namespace dxvk {
     const VrInputState&         input,
           VrGameStateKind       state,
           float                 dt) {
+    m_closePipBoy = false;
+
     if (!m_pipBoyGazeAvailable)
       return;
 
@@ -622,7 +627,10 @@ namespace dxvk {
         break;
 
       case VrPipBoyRequest::Close:
-        m_pipBoyControl.close();
+        // ClosePipboy called here, between the game's updates, left the
+        // first-person model invisible once the Pip-Boy had closed: the
+        // back button closes it from the game's own interface update
+        m_closePipBoy = true;
 
         if (!m_loggedPipBoyGazeAway) {
           Logger::info("VR: The left forearm is no longer looked at, the Pip-Boy closes");

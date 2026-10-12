@@ -275,18 +275,15 @@ namespace dxvk {
      * requested, 2 raising the arm, 3 open, 4 close requested, 5 lowering
      * the arm. InterfaceManager::OpenPipboy (__thiscall: callback, menu to
      * open, 0 keeps the last tab) checks that the player may open it and
-     * moves 0 to 1; InterfaceManager::ClosePipboy (__thiscall: callback)
-     * moves 3 to 4. InterfaceManager::Update steps the machine. Names from
-     * the Xbox 360 build in IDA, see findings/pipboy.md §1. Both are checked
-     * against their first bytes before they are called.
+     * moves 0 to 1. InterfaceManager::Update steps the machine. Names from
+     * the Xbox 360 build in IDA, see findings/pipboy.md §1. OpenPipboy is
+     * checked against its first bytes before it is called. The VR layer
+     * does not call ClosePipboy (0x0070F690): see findings/pipboy.md §3.5.
      */
     constexpr uintptr_t InterfacePipBoyState = 0x4BC;
     constexpr uintptr_t OpenPipBoy           = 0x0070F4E0;
     constexpr uint8_t   OpenPipBoyPrologue[] = { 0x55, 0x8B, 0xEC, 0x51, 0x56, 0x89, 0x4D, 0xFC,
                                                  0x6A, 0x04, 0x8B, 0x0D, 0x3C, 0xEA, 0x1D, 0x01 };
-    constexpr uintptr_t ClosePipBoy          = 0x0070F690;
-    constexpr uint8_t   ClosePipBoyPrologue[] = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x8B, 0x45, 0xFC,
-                                                  0x83, 0xB8, 0xBC, 0x04, 0x00, 0x00, 0x00 };
 
     /**
      * Main's copy of the bStaticMenuBackground:Display setting, a bool read

@@ -220,11 +220,14 @@ namespace dxvk {
     VrVector3           m_screenShift;
     bool                m_screenPass = false;
 
-    // The Pip-Boy opens when the player looks at the left forearm. A menu
-    // drawn over it on the previous frame keeps it open.
+    // The Pip-Boy opens when the player looks at the left forearm, and
+    // closes through the menu's back button on the next frame when the
+    // player looks away. A menu drawn over it on the previous frame keeps
+    // it open.
     VrPipBoyControl     m_pipBoyControl;
     VrPipBoyGaze        m_pipBoyGaze;
     bool                m_pipBoyGazeAvailable = false;
+    bool                m_closePipBoy = false;
     bool                m_menuOverPipBoy = false;
     bool                m_loggedPipBoyGaze = false;
     bool                m_loggedPipBoyGazeAway = false;

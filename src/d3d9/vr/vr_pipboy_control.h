@@ -5,12 +5,13 @@
 namespace dxvk {
 
   /**
-   * \brief Opens and closes the game's Pip-Boy
+   * \brief Opens the game's Pip-Boy and reads its state
    *
-   * Reads the Pip-Boy's state machine and makes the same requests as the
+   * Reads the Pip-Boy's state machine and makes the same request as the
    * game's Pip-Boy control, so the game raises the arm, enters menu mode
    * and checks whether the player may open it (V.A.T.S., controls
-   * disabled, ...). See findings/pipboy.md §1.
+   * disabled, ...). See findings/pipboy.md §1. The Pip-Boy is closed with
+   * the menu's back button instead (VrControls::setMenuBack).
    *
    * Only used on the game's main thread, outside InterfaceManager::Update.
    */
@@ -36,11 +37,6 @@ namespace dxvk {
      * \brief Asks the game to open the Pip-Boy on its last tab
      */
     void open() const;
-
-    /**
-     * \brief Asks the game to close the Pip-Boy, if it is open
-     */
-    void close() const;
 
   private:
 

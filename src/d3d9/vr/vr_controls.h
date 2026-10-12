@@ -58,6 +58,19 @@ namespace dxvk {
     }
 
     /**
+     * \brief Presses the menu's back button from the next frame on
+     *
+     * Closes the Pip-Boy the way the player's back button does: the game
+     * reads it while it updates its interface, so the Pip-Boy closes as
+     * it would with the gamepad. Only pressed in menus.
+     *
+     * \param [in] back Whether VrPipBoyGaze wants the Pip-Boy closed
+     */
+    void setMenuBack(bool back) {
+      m_menuBack = back;
+    }
+
+    /**
      * \brief See VrHeadLook::adjustCamera
      */
     bool adjustCamera(VrGameCameraPose& pose) const;
@@ -79,6 +92,7 @@ namespace dxvk {
     VrInputContext              m_context = VrInputContext::Game;
 
     bool                        m_gameAim = false;
+    bool                        m_menuBack = false;
 
   };
 

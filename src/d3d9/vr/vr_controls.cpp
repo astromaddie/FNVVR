@@ -49,6 +49,9 @@ namespace dxvk {
     // The actions were read in the context chosen on the previous frame
     VrActionState actions = m_filter.update(input.actions, m_context, dt);
 
+    if (m_menuBack && m_context == VrInputContext::Menu)
+      actions.setPressed(VrAction::MenuBack, true);
+
     VrPointerState pointer = updatePointer(input, actions, menuPanel, dt);
     VrGamepadHook::setCursorMode(pointer.cursorActive);
     VrMenuCursor::update(pointer);
