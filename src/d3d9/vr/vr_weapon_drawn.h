@@ -15,6 +15,8 @@ namespace dxvk {
    * - The draw and holster animations are skipped: the game's wait on the
    *   weapon section's Equip or Unequip group is reported as finished as
    *   soon as the group has started, so the game places the weapon itself.
+   *   The holster animation still plays before sitting or sleeping, which
+   *   wait for it to end.
    * - Holding the ready/reload control no longer holsters the weapon.
    * - Every frame in game, the player wants the weapon drawn again unless
    *   the game holsters it on purpose: using furniture (sitting, sleeping,
@@ -47,9 +49,10 @@ namespace dxvk {
 
     VrWeaponDrawn() = default;
 
-    bool m_loggedEquip   = false;
-    bool m_loggedHolster = false;
-    bool m_loggedDraw    = false;
+    bool m_loggedEquip     = false;
+    bool m_loggedHolster   = false;
+    bool m_loggedDraw      = false;
+    bool m_loggedFurniture = false;
 
     static uint32_t __fastcall equipWaitHook(
             uint8_t*              animData,

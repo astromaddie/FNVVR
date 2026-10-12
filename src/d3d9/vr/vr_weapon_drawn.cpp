@@ -122,6 +122,19 @@ namespace dxvk {
     if (group != VrGame::AnimGroupEquip && group != VrGame::AnimGroupUnequip)
       return action;
 
+    // Sitting and sleeping wait for the actor's holster action to end, which
+    // only happens once the holster sequence has really finished
+    uint8_t* process = field<uint8_t*>(player(), VrGame::ActorProcess);
+
+    if (group == VrGame::AnimGroupUnequip && process && field<uint8_t*>(process, VrGame::ProcessFurniture)) {
+      if (!g_weaponDrawn->m_loggedFurniture) {
+        Logger::info("VR: The weapon is holstered with its animation before using furniture");
+        g_weaponDrawn->m_loggedFurniture = true;
+      }
+
+      return action;
+    }
+
     if (!g_weaponDrawn->m_loggedEquip) {
       Logger::info("VR: The weapon is drawn and holstered without animation");
       g_weaponDrawn->m_loggedEquip = true;
