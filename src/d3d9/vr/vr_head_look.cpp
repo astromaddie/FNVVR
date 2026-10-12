@@ -121,7 +121,16 @@ namespace dxvk {
      || std::abs(readField<float>(object, VrGame::RefPitch) - m_writtenPitch) > AngleTolerance)
       return false;
 
-    pose = vrComputeBodyCameraPose(m_bodyHeading, pose.position);
+    // The game turned the whole skeleton, and the camera with it, around
+    // the player's position. While an animation moves the head away from
+    // that position, such as getting out of bed, turning the head would
+    // swing the view around it.
+    const float* location = reinterpret_cast<const float*>(object + VrGame::RefLocation);
+    VrVector3 position = vrTurnAroundPivot(pose.position,
+      { location[0], location[1], location[2] },
+      angleDifference(m_bodyHeading, m_writtenHeading));
+
+    pose = vrComputeBodyCameraPose(m_bodyHeading, position);
     return true;
   }
 

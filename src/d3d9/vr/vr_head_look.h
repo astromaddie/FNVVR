@@ -60,7 +60,8 @@ namespace dxvk {
      * \brief Replaces the game's camera rotation by the body's
      *
      * Only while the heading and look angle are still the ones written
-     * from the head. The position is kept.
+     * from the head. The position is turned back around the player's
+     * position by the head's yaw, as the game turned it with the body.
      *
      * \param [in,out] pose Camera pose the game computed
      * \returns \c true if the pose was changed

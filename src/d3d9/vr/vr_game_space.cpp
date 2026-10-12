@@ -64,6 +64,18 @@ namespace dxvk {
   }
 
 
+  VrVector3 vrTurnAroundPivot(const VrVector3& point, const VrVector3& pivot, float headingChange) {
+    float s = std::sin(headingChange);
+    float c = std::cos(headingChange);
+
+    float x = point.x - pivot.x;
+    float y = point.y - pivot.y;
+
+    // Clockwise seen from above: north (+Y) turns towards east (+X)
+    return { pivot.x + x * c + y * s, pivot.y - x * s + y * c, point.z };
+  }
+
+
   float vrWrapHeading(float angle) {
     constexpr float FullTurn = 6.2831853f;
 

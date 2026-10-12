@@ -86,9 +86,10 @@ namespace dxvk {
     constexpr uintptr_t SetHeadingSlot    = 0x2C4;
     constexpr uintptr_t GetSitStateSlot   = 0x214;
 
-    /** Fields of the player: pitch and heading in radians, life state, disabled controls */
+    /** Fields of the player: pitch and heading in radians, position, life state, disabled controls */
     constexpr uintptr_t RefPitch          = 0x24;
     constexpr uintptr_t RefHeading        = 0x2C;
+    constexpr uintptr_t RefLocation       = 0x30;
     constexpr uintptr_t ActorLifeState    = 0x108;
     constexpr uintptr_t PlayerDisabledControls = 0x680;
     constexpr uint8_t   ControlLook       = 0x2;
