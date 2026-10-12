@@ -70,7 +70,9 @@ namespace dxvk {
   void VrWeaponDrawn::update() {
     uint8_t* actor = player();
 
-    if (!actor || !field<uint8_t*>(actor, VrGame::ActorProcess))
+    uint8_t* process = actor ? field<uint8_t*>(actor, VrGame::ActorProcess) : nullptr;
+
+    if (!process)
       return;
 
     if (reinterpret_cast<GetWantDrawnFn>(VrGame::GetWantWeaponDrawn)(actor, nullptr))
@@ -81,6 +83,11 @@ namespace dxvk {
       return;
 
     if (field<uint32_t>(actor, VrGame::ActorLifeState) != 0)
+      return;
+
+    // The game holsters the weapon before it starts sitting down, while the
+    // sit state is still 0
+    if (field<uint8_t*>(process, VrGame::ProcessFurniture))
       return;
 
     if (virtualFunction<SitStateFn>(actor, VrGame::GetSitStateSlot)(actor, nullptr) != 0)

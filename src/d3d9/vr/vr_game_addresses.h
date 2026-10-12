@@ -349,6 +349,14 @@ namespace dxvk {
     constexpr uint8_t   ControlFighting          = 0x8;
 
     /**
+     * MiddleHighProcess::SitOrSleep (0x009213E0) runs while the process has
+     * a furniture (+0x140). It first holsters the weapon (call 0x00921476)
+     * and only starts sitting once it is holstered, so the sit state is
+     * still 0 while the actor walks up to the furniture.
+     */
+    constexpr uintptr_t ProcessFurniture         = 0x140;
+
+    /**
      * Main's copy of the bStaticMenuBackground:Display setting, a bool read
      * once at startup (stored at 0x0086E123). While it is set, opening most
      * menus renders the world once, blurred by an image space modifier, into

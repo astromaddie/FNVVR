@@ -17,9 +17,10 @@ namespace dxvk {
    *   soon as the group has started, so the game places the weapon itself.
    * - Holding the ready/reload control no longer holsters the weapon.
    * - Every frame in game, the player wants the weapon drawn again unless
-   *   the game holsters it on purpose: sitting or sleeping, fighting
-   *   controls disabled by a script, dead. The game itself refuses to draw
-   *   while swimming or aiming down the sights.
+   *   the game holsters it on purpose: using furniture (sitting, sleeping,
+   *   including the walk up to it), fighting controls disabled by a script,
+   *   dead. The game itself refuses to draw while swimming or aiming down
+   *   the sights.
    *
    * Only used on the game's main thread.
    */
