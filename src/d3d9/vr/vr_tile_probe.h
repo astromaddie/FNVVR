@@ -26,9 +26,8 @@ namespace dxvk {
 
     /**
      * \brief Logs the icons whose state changed since the last sample
-     * \param [in] phase Label of the point in the frame
      */
-    void sample(const char* phase);
+    void sample();
 
   private:
 
@@ -38,9 +37,9 @@ namespace dxvk {
 
     std::unordered_map<uintptr_t, std::string> m_states;
 
-    void walk(uintptr_t tile, uint32_t menuId, const char* phase, uint32_t depth);
+    void walk(uintptr_t tile, uint32_t menuId, uint32_t depth);
 
-    void probeIcon(uintptr_t tile, uint32_t menuId, const char* filename, const char* phase);
+    void probeIcon(uintptr_t tile, uint32_t menuId);
 
   };
 

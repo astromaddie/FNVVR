@@ -287,6 +287,8 @@ namespace dxvk {
 
     disableStaticMenuBackground();
 
+    m_tileProbe.sample();
+
     VrGameStateKind state = readGameState();
 
     if (showsPanel(state)) {
@@ -305,8 +307,6 @@ namespace dxvk {
     m_overPipBoy   = state == VrGameStateKind::PipBoy;
     m_menuDrawn    = !m_overPipBoy;
 
-    if (m_overPipBoy)
-      m_tileProbe.sample("frame");
     m_dialogueSpeaker = m_controls.takeDialogueSpeaker();
 
     // The panel is placed again when it switches from the whole frame to a
@@ -556,9 +556,6 @@ namespace dxvk {
       m_skyAnchor->setEye(&m_eyePosition);
 
     g_originalSwap(main, nullptr);
-
-    if (m_overPipBoy)
-      m_tileProbe.sample(eye == 0 ? "after eye 0" : "after eye 1");
 
     if (m_skyAnchor)
       m_skyAnchor->setEye(nullptr);

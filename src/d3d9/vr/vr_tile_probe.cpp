@@ -16,7 +16,7 @@ namespace dxvk {
     using GetValueFn    = uintptr_t (__fastcall*)(uintptr_t tile, void* unused, uint32_t trait);
     using GetPropertyFn = uintptr_t (__fastcall*)(uintptr_t object, void* unused, int32_t type);
 
-    constexpr uint32_t MaxLines = 400;
+    constexpr uint32_t MaxLines = 2000;
     constexpr uint32_t MaxDepth = 32;
 
     template<typename T>
@@ -68,7 +68,7 @@ namespace dxvk {
   }
 
 
-  void VrTileProbe::sample(const char* phase) {
+  void VrTileProbe::sample() {
     if (!m_available || m_lines >= MaxLines)
       return;
 
@@ -87,32 +87,32 @@ namespace dxvk {
       uintptr_t menu = readField<uintptr_t>(tiles, i * sizeof(uintptr_t));
 
       if (menu)
-        walk(menu, VrGame::FirstMenuId + i, phase, 0);
+        walk(menu, VrGame::FirstMenuId + i, 0);
     }
 
     LeaveCriticalSection(lock);
   }
 
 
-  void VrTileProbe::walk(uintptr_t tile, uint32_t menuId, const char* phase, uint32_t depth) {
+  void VrTileProbe::walk(uintptr_t tile, uint32_t menuId, uint32_t depth) {
     if (depth > MaxDepth)
       return;
 
-    const char* filename = getString(tile, VrGame::TraitFilename);
+    const char* name = readField<const char*>(tile, VrGame::TileName);
 
-    if (filename && std::strstr(filename, "general_button"))
-      probeIcon(tile, menuId, filename, phase);
+    if (name && !std::strcmp(name, "xbox_button"))
+      probeIcon(tile, menuId);
 
     for (uintptr_t node = readField<uintptr_t>(tile, VrGame::TileChildren); node; node = readField<uintptr_t>(node, 0)) {
       uintptr_t child = readField<uintptr_t>(node, 8);
 
       if (child)
-        walk(child, menuId, phase, depth + 1);
+        walk(child, menuId, depth + 1);
     }
   }
 
 
-  void VrTileProbe::probeIcon(uintptr_t tile, uint32_t menuId, const char* filename, const char* phase) {
+  void VrTileProbe::probeIcon(uintptr_t tile, uint32_t menuId) {
     uintptr_t node    = readField<uintptr_t>(tile, VrGame::TileNode);
     uint32_t  flags   = readField<uint32_t>(tile, VrGame::TileFlags);
     uintptr_t texture = 0;
@@ -127,9 +127,10 @@ namespace dxvk {
         texture = readField<uintptr_t>(shader, VrGame::TileShaderTexture);
     }
 
-    const char* name = readField<const char*>(tile, VrGame::TileName);
+    const char* filename = getString(tile, VrGame::TraitFilename);
 
-    std::string state = str::format("flags 0x", std::hex, flags, std::dec,
+    std::string state = str::format("file ", filename && *filename ? filename : "(none)",
+      " flags 0x", std::hex, flags, std::dec,
       " visible ", getNumber(tile, VrGame::TraitVisible),
       " menuVisible ", getNumber(tile, VrGame::TraitMenuVisible),
       " culled ", culledChain(node),
@@ -142,8 +143,7 @@ namespace dxvk {
 
     m_states[tile] = state;
 
-    Logger::info(str::format("VR: Icon [", phase, "] menu 0x", std::hex, menuId, " tile 0x", tile, std::dec,
-      " ", name ? name : "?", " ", filename, ": ", state,
+    Logger::info(str::format("VR: Icon menu 0x", std::hex, menuId, " tile 0x", tile, std::dec, ": ", state,
       " hibernateCheck ", uint32_t(readField<uint8_t>(VrGame::TileNeedsHibernateCheck, 0))));
 
     m_lines++;
