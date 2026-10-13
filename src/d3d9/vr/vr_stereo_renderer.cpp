@@ -588,12 +588,21 @@ namespace dxvk {
 
     if (state == VrGameStateKind::PipBoy && m_hasReference && left.isActive) {
       VrGameCameraPose otherHand = handInGame(left);
-      m_weaponHand->beginFrame(gameCamera, nullptr, &otherHand, false, true);
+      m_weaponHand->beginFrame(gameCamera, nullptr, &otherHand, false, VrFirstPersonMode::PipBoy);
+      return;
+    }
+
+    // Menus are pointed at with the lasers, and the game animates the arms
+    // in front of its camera meanwhile. V.A.T.S. is driven by the sticks
+    // and shows the weapon as the game does.
+    if (state == VrGameStateKind::Menu && input.hasActions
+     && !*reinterpret_cast<const uint32_t*>(VrGame::VatsCameraState)) {
+      m_weaponHand->beginFrame(gameCamera, nullptr, nullptr, false, VrFirstPersonMode::Hidden);
       return;
     }
 
     if (state != VrGameStateKind::InGame || !m_hasReference || !right.isActive) {
-      m_weaponHand->beginFrame(gameCamera, nullptr, nullptr, false, false);
+      m_weaponHand->beginFrame(gameCamera, nullptr, nullptr, false, VrFirstPersonMode::Hands);
       return;
     }
 
@@ -601,7 +610,7 @@ namespace dxvk {
     VrGameCameraPose otherHand = handInGame(left);
 
     m_weaponHand->beginFrame(gameCamera, &hand, left.isActive ? &otherHand : nullptr,
-      input.hasActions && input.actions.isPressed(VrAction::TwoHandGrip), false);
+      input.hasActions && input.actions.isPressed(VrAction::TwoHandGrip), VrFirstPersonMode::Hands);
   }
 
 
