@@ -53,6 +53,23 @@ namespace dxvk {
   VrPose vrComputePanelPose(const VrPose& head, float distance);
 
   /**
+   * \brief Places a flat panel between a viewer and a point
+   *
+   * The panel's centre is \c distance metres from the head on the line to
+   * the target, and the panel faces the head without rolling: its +Z axis
+   * points back at the viewer and its X axis stays level. The line's slope
+   * is limited to \c maxPitch up or down. A target right above or below
+   * the head gives the panel of vrComputePanelPose.
+   *
+   * \param [in] head Head pose in tracking space
+   * \param [in] target Point to look at through the panel, in tracking space
+   * \param [in] distance Distance from the head, in metres
+   * \param [in] maxPitch Steepest slope of the line, in radians
+   */
+  VrPose vrComputePanelPoseTowards(const VrPose& head, const VrVector3& target,
+    float distance, float maxPitch);
+
+  /**
    * \brief Composes two poses
    *
    * The result applies \c child first, then \c parent,

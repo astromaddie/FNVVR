@@ -73,6 +73,22 @@ namespace dxvk {
           float             unitsPerMetre);
 
   /**
+   * \brief Brings a point of the game world into the recenter reference
+   *
+   * The inverse of the position part of vrComputeEyeCameraPose: an eye
+   * placed at the result is drawn at \c point.
+   *
+   * \param [in] base Pose the game computed for its camera this frame
+   * \param [in] point Point in the game world, in game units
+   * \param [in] unitsPerMetre Scale from metres to game units
+   * \returns The point relative to the reference, in metres
+   */
+  VrVector3 vrComputeGamePointInReference(
+    const VrGameCameraPose& base,
+    const VrVector3&        point,
+          float             unitsPerMetre);
+
+  /**
    * \brief Heading and pitch of the head in the game's convention
    *
    * The yaw is clockwise seen from above, like the game's heading, and the

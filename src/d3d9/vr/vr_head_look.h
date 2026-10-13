@@ -76,6 +76,21 @@ namespace dxvk {
      */
     bool adjustCamera(VrGameCameraPose& pose) const;
 
+    /**
+     * \brief Actor the dialogue focused on since the last call
+     *
+     * The dialogue menu focuses on its speaker at each of its updates,
+     * which run before the frame is drawn.
+     *
+     * \returns The game's actor (MobileObject*), or \c nullptr if no
+     *    dialogue was updated since the last call
+     */
+    void* takeDialogueSpeaker() {
+      void* speaker = m_dialogueSpeaker;
+      m_dialogueSpeaker = nullptr;
+      return speaker;
+    }
+
   private:
 
     explicit VrHeadLook(const VrTurnConfig& turn);
@@ -92,6 +107,8 @@ namespace dxvk {
     float        m_bodyHeading    = 0.0f;
 
     bool         m_loggedActive   = false;
+
+    void*        m_dialogueSpeaker = nullptr;
 
     static uint32_t __fastcall lookHook(
             uint8_t*              player,

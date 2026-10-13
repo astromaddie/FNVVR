@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+#include "vr_types.h"
+
 namespace dxvk {
 
   /**
@@ -20,5 +22,14 @@ namespace dxvk {
    * \returns The first object found depth first, or 0
    */
   uintptr_t vrFindGameObject(uintptr_t root, const char* name, uint32_t maxDepth);
+
+  /**
+   * \brief Finds where an actor's head is, the way the dialogue camera does
+   *
+   * \param [in] actor The game's actor (TESObjectREFR*)
+   * \param [out] position World position of its head bone, in game units
+   * \returns \c false if the actor is not loaded or has no head bone
+   */
+  bool vrFindActorHead(uintptr_t actor, VrVector3& position);
 
 }

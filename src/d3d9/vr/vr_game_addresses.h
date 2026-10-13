@@ -220,6 +220,17 @@ namespace dxvk {
     constexpr uintptr_t FocusOnActor             = 0x00953060;
 
     /**
+     * TESObjectREFR::Get3D, virtual, __thiscall without arguments, returns
+     * the reference's NiAVObject* or null when it is not loaded. FocusOnActor
+     * calls it on the speaker (call [vtable+0x1D0] at 0x009531F5) and looks
+     * for the head under it by these names, see findings/hud.md, dialogue
+     * panel.
+     */
+    constexpr uintptr_t RefGet3DSlot = 0x1D0;
+    constexpr char HeadNodeName[]        = "Bip01 Head";
+    constexpr char SpeakerNodeName[]     = "Bip01 Speaker";
+
+    /**
      * The other calls to the same thunk. The interface keeps its own gamepad
      * flag, which hides the menu cursor: InterfaceManager::Update and the
      * InterfaceManager setup set it, and the start menu builds its entries
