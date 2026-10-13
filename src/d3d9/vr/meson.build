@@ -24,6 +24,7 @@ vr_dxvk_src = files([
   'vr_extension_provider.cpp',
   'vr_gamepad_hook.cpp',
   'vr_controls.cpp',
+  'vr_culling_camera.cpp',
   'vr_menu_cursor.cpp',
   'vr_head_look.cpp',
   'vr_d3d9_bridge.cpp',

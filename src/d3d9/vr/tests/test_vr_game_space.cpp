@@ -236,3 +236,27 @@ TEST_CASE(turning_carries_a_point_around_the_pivot) {
   CHECK_NEAR(pivot.x, 3.0f, 1e-6);
   CHECK_NEAR(pivot.y, 4.0f, 1e-6);
 }
+
+
+TEST_CASE(culling_fov_covers_both_eyes_with_a_margin) {
+  // Canted eyes: each one sees further on its own side
+  VrFov left  = { -0.9f, 0.7f, 0.8f, -0.85f };
+  VrFov right = { -0.7f, 0.9f, 0.75f, -0.9f };
+
+  VrFov fov = vrComputeCullingFov(left, right, 0.1f);
+  CHECK_NEAR(fov.angleLeft,  -1.0f,  1e-6);
+  CHECK_NEAR(fov.angleRight,  1.0f,  1e-6);
+  CHECK_NEAR(fov.angleUp,     0.9f,  1e-6);
+  CHECK_NEAR(fov.angleDown,  -1.0f,  1e-6);
+}
+
+
+TEST_CASE(culling_fov_stays_below_a_right_angle) {
+  VrFov wide = { -1.5f, 1.5f, 1.4f, -1.4f };
+
+  VrFov fov = vrComputeCullingFov(wide, wide, 0.2f);
+  CHECK_NEAR(fov.angleLeft,  -VrMaxCullingAngle, 1e-6);
+  CHECK_NEAR(fov.angleRight,  VrMaxCullingAngle, 1e-6);
+  CHECK_NEAR(fov.angleUp,     VrMaxCullingAngle, 1e-6);
+  CHECK_NEAR(fov.angleDown,  -VrMaxCullingAngle, 1e-6);
+}

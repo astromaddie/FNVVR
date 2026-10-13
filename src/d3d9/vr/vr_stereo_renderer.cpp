@@ -46,6 +46,10 @@ namespace dxvk {
     // standing at the origin and looking ahead
     constexpr float DefaultHeadHeight = 1.6f;
 
+    // Head rotation the culling view allows for on every side, in radians:
+    // the game culls with the head pose of the previous frame
+    constexpr float CullingMargin = 0.1745329f;
+
     // Frames, counted once the Pip-Boy is closed, during which the game's
     // Pip-Boy control cannot reopen it after the gaze pressed back
     constexpr uint32_t PipBoyBackReleaseFrames = 3;
@@ -151,13 +155,16 @@ namespace dxvk {
     if (!renderer->m_skyAnchor)
       Logger::warn("VR: The sky placement was not found, the sky is drawn around the camera instead of each eye");
 
+    VrStereoRenderer* self = renderer.get();
+    renderer->m_cullingCamera = VrCullingCamera::install(
+      [self] (VrGameCameraPose& pose, VrGameFrustum& frustum) { return self->cullingView(pose, frustum); });
+
     // The gaze finds the Pip-Boy's screen through the free left hand's pose
     renderer->m_pipBoyGazeAvailable = renderer->m_weaponHand && renderer->m_pipBoyControl.initialize();
 
     if (!renderer->m_pipBoyGazeAvailable)
       Logger::info("VR: The Pip-Boy does not open when the left forearm is looked at");
 
-    VrStereoRenderer* self = renderer.get();
     renderer->m_pipBoyRender = VrPipBoyRender::install(
       [self] (const VrVector3* shift) { self->setScreenPass(shift); });
 
@@ -336,6 +343,9 @@ namespace dxvk {
     m_controls.update(input, state, m_hasReference ? &m_reference : nullptr, menuPanel(), dt);
 
     auto views = m_backend.locateViews(timing.predictedDisplayTime);
+
+    m_cullingFov    = vrComputeCullingFov(views[0].fov, views[1].fov, CullingMargin);
+    m_hasCullingFov = true;
 
     m_gameCamera     = m_renderCamera.save();
     logGameFrustum();
@@ -686,6 +696,20 @@ namespace dxvk {
     hand.position = vrComputeEyeCameraPose(m_gameCameraPose,
       vrComputeEyeInReference(m_reference, controller.gripPose), VrGameUnitsPerMetre).position;
     return hand;
+  }
+
+
+  bool VrStereoRenderer::cullingView(VrGameCameraPose& pose, VrGameFrustum& frustum) {
+    // The eyes are drawn on the same camera, see renderFrame
+    if (!m_hasReference || !m_hasHeadPose || !m_hasCullingFov)
+      return false;
+
+    m_controls.adjustCamera(pose);
+
+    pose = vrComputeEyeCameraPose(pose,
+      vrComputeEyeInReference(m_reference, m_headPose), VrGameUnitsPerMetre);
+    frustum = vrComputeGameFrustum(m_cullingFov);
+    return true;
   }
 
 

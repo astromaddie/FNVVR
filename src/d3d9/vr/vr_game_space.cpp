@@ -99,6 +99,17 @@ namespace dxvk {
   }
 
 
+  VrFov vrComputeCullingFov(const VrFov& left, const VrFov& right, float margin) {
+    // Left and down are negative angles
+    VrFov fov;
+    fov.angleLeft  = std::max(std::min(left.angleLeft,  right.angleLeft)  - margin, -VrMaxCullingAngle);
+    fov.angleRight = std::min(std::max(left.angleRight, right.angleRight) + margin,  VrMaxCullingAngle);
+    fov.angleUp    = std::min(std::max(left.angleUp,    right.angleUp)    + margin,  VrMaxCullingAngle);
+    fov.angleDown  = std::max(std::min(left.angleDown,  right.angleDown)  - margin, -VrMaxCullingAngle);
+    return fov;
+  }
+
+
   VrExtent vrComputeGameResolution(const VrExtent& eye, float minAspect) {
     // The tolerance keeps an exact ratio such as 1920 * 4/3 from being
     // rounded up by the float error of minAspect

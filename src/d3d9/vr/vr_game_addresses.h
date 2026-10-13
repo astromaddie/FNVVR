@@ -210,6 +210,20 @@ namespace dxvk {
     constexpr uintptr_t VatsCameraState = 0x011F2258;
 
     /**
+     * Visibility pre-pass of Main::OnIdle, before Main::Swap ("Multibound
+     * Culling and Occlusion" in the Xbox build): calls to
+     * ShadowSceneNode::UpdateOcclusionPlaneVisibility and
+     * TES::UpdateMultiBoundVisibility, both __thiscall with the world camera
+     * as their only stack argument. They cull the multibound groups of
+     * objects, the terrain and the interior rooms against that camera for the
+     * whole frame, see findings/render.md.
+     */
+    constexpr uintptr_t OcclusionPlaneVisibilityCallSite = 0x0086EBF5;
+    constexpr uintptr_t OcclusionPlaneVisibility         = 0x00B5AC90;
+    constexpr uintptr_t MultiBoundVisibilityCallSite     = 0x0086EC18;
+    constexpr uintptr_t MultiBoundVisibility             = 0x0045B070;
+
+    /**
      * Call to PlayerCharacter::FocusOnActor in the dialogue menu's update,
      * and the function: __thiscall (actor, float blend, bool skipTurn). It
      * zooms on the speaker and, unless skipTurn is set, turns the player
