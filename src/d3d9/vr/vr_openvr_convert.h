@@ -25,9 +25,13 @@ namespace dxvk {
   /**
    * \brief Converts the tangents from IVRSystem::GetProjectionRaw to angles
    *
-   * Assumes OpenVR's convention that the vertical values are negated
-   * compared to the usual one, so that \c top is the negative tangent of the
-   * upward angle. This is not verified with a headset.
+   * OpenVR's \c top is the tangent of the downward angle (negative) and its
+   * \c bottom the tangent of the upward angle, which is how SteamVR's own
+   * OpenXR runtime converts them. Headsets with more field of view below
+   * the eye than above (Quest 2 over Link, Quest 3) report \c -top larger
+   * than \c bottom; reading \c top as the upward angle shifts the image
+   * vertically, which looks like a pitch-dependent stretch and a shear
+   * towards the edges.
    */
   VrFov vrFovFromProjectionRaw(float left, float right, float top, float bottom);
 

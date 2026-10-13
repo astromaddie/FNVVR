@@ -64,13 +64,15 @@ TEST_CASE(forward_is_minus_z_after_a_left_turn) {
 }
 
 
-TEST_CASE(projection_raw_is_converted_with_negated_vertical_values) {
-  VrFov fov = vrFovFromProjectionRaw(-1.0f, 1.2f, -1.5f, 1.4f);
+TEST_CASE(projection_raw_top_is_the_downward_tangent) {
+  // Left eye of a Quest 3 as reported by SteamVR: more field of view below
+  // the eye than above
+  VrFov fov = vrFovFromProjectionRaw(-1.31903f, 0.804137f, -1.36467f, 0.922769f);
 
-  CHECK_NEAR(fov.angleLeft, -std::atan(1.0), 1e-6);
-  CHECK_NEAR(fov.angleRight, std::atan(1.2), 1e-6);
-  CHECK_NEAR(fov.angleUp, std::atan(1.5), 1e-6);
-  CHECK_NEAR(fov.angleDown, -std::atan(1.4), 1e-6);
+  CHECK_NEAR(fov.angleLeft, -std::atan(1.31903), 1e-6);
+  CHECK_NEAR(fov.angleRight, std::atan(0.804137), 1e-6);
+  CHECK_NEAR(fov.angleUp, std::atan(0.922769), 1e-6);
+  CHECK_NEAR(fov.angleDown, -std::atan(1.36467), 1e-6);
 }
 
 

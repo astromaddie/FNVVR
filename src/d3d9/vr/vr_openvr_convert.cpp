@@ -95,8 +95,10 @@ namespace dxvk {
     VrFov fov;
     fov.angleLeft  = std::atan(left);
     fov.angleRight = std::atan(right);
-    fov.angleUp    = std::atan(-top);
-    fov.angleDown  = std::atan(-bottom);
+    // OpenVR's top and bottom are swapped compared to their names, see the
+    // header. Swapping them only matters for an off-centre vertical view.
+    fov.angleUp    = std::atan(bottom);
+    fov.angleDown  = std::atan(top);
     return fov;
   }
 
