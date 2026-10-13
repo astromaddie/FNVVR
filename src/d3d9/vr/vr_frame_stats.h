@@ -14,17 +14,21 @@ namespace dxvk {
   enum class VrFrameStep : uint32_t {
     /// Whole cycle
     Interval,
-    /// Eye rendering, until the frame reaches the backend: the game's draw
-    /// calls for both eyes, the flush and the drain of DXVK's queue
+    /// Eye rendering: the game's draw calls for both eyes
     Render,
+    /// Getting the eye rendering to the queue: DXVK's flush, the wait for
+    /// its worker thread and the drain of its submission queue
+    Sync,
     /// Waiting for the GPU to finish the eye images
     GpuWait,
     /// Handing the eye images to the runtime
     Submit,
-    /// From the submission to the next wait: panels, then the game logic
-    /// of the next frame
+    /// Telling the runtime the frame is complete
+    HandOff,
+    /// From the hand-off to the next wait: panels, then the game logic of
+    /// the next frame
     After,
-    /// Part of After spent submitting panels, the GPU wait included
+    /// Part of After spent submitting panels, their sync and GPU wait included
     Panels,
     /// Blocked until the runtime wants the next frame
     Wait,
@@ -82,6 +86,10 @@ namespace dxvk {
       return m_late;
     }
 
+    uint32_t busyFrames() const {
+      return m_busy;
+    }
+
     /**
      * \brief Time covered by the window's cycles, in seconds
      */
@@ -101,9 +109,10 @@ namespace dxvk {
   private:
 
     uint32_t m_windowFrames;
-    double   m_lateMs;
+    double   m_periodMs;
     uint32_t m_frames = 0;
     uint32_t m_late   = 0;
+    uint32_t m_busy   = 0;
 
     std::array<VrFrameStepStats, VrFrameStepCount> m_steps = { };
 

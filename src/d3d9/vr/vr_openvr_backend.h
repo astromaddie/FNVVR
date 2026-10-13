@@ -209,7 +209,9 @@ namespace dxvk {
       high_resolution_clock::time_point posesReady;
       high_resolution_clock::time_point submitStart;
       high_resolution_clock::time_point imagesReady;
+      high_resolution_clock::time_point eyesSubmitted;
       high_resolution_clock::time_point submitted;
+      double                            syncMs      = 0.0;
       double                            panelMs     = 0.0;
       bool                              isSubmitted = false;
     };

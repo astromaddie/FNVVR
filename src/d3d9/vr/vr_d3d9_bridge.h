@@ -108,6 +108,13 @@ namespace dxvk {
             Com<ID3D9VkInteropTexture>& interop,
             VrEyeImage&           image);
 
+    /**
+     * \brief Gets all rendering so far to the queue and locks it
+     * \returns Milliseconds spent waiting for DXVK's threads
+     */
+    static double flushAndLock(
+            ID3D9VkInteropDevice* interop);
+
   };
 
 }

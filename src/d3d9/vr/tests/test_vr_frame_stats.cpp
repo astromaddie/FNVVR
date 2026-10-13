@@ -50,6 +50,25 @@ TEST_CASE(frameStatsCountsLateFrames) {
   CHECK(stats.lateFrames() == 2);
 }
 
+TEST_CASE(frameStatsCountsBusyFrames) {
+  VrFrameStats stats(3, PeriodMs);
+
+  // Busy for less than a period then waiting, busy for longer than a
+  // period with no wait, and late only because of the wait
+  VrFrameCycle cycles[3] = { cycle(PeriodMs, 8.0), cycle(2.0 * PeriodMs, 12.0), cycle(2.0 * PeriodMs, 4.0) };
+  cycles[0][uint32_t(VrFrameStep::Wait)] = PeriodMs - 8.0;
+  cycles[2][uint32_t(VrFrameStep::Wait)] = 2.0 * PeriodMs - 4.0;
+
+  for (const VrFrameCycle& c : cycles)
+    stats.add(c);
+
+  CHECK(stats.lateFrames() == 2);
+  CHECK(stats.busyFrames() == 1);
+
+  stats.reset();
+  CHECK(stats.busyFrames() == 0);
+}
+
 TEST_CASE(frameStatsNeedsOneFrame) {
   VrFrameStats stats(0, PeriodMs);
   CHECK(stats.add(cycle(PeriodMs, 0.0)));

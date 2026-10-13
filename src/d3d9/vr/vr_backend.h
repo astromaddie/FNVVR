@@ -59,6 +59,9 @@ namespace dxvk {
     std::array<VrEyeImage, VrEyeCount>    images;
     std::array<VrEyeView, VrEyeCount>     views;
     int64_t                               displayTime = 0;
+    /// Milliseconds the caller spent getting the rendering to the queue
+    /// just before the call, for the backend's frame statistics
+    double                                syncMs      = 0.0;
   };
 
   /**
@@ -97,6 +100,8 @@ namespace dxvk {
     VrPose        pose;
     float         width  = 0.0f;
     VrPanelAnchor anchor = VrPanelAnchor::Room;
+    /// See VrFrameSubmission::syncMs
+    double        syncMs = 0.0;
   };
 
   /**

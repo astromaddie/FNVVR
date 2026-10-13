@@ -5,7 +5,7 @@
 namespace dxvk {
 
   VrFrameStats::VrFrameStats(uint32_t windowFrames, double periodMs)
-  : m_windowFrames(std::max(windowFrames, 1u)), m_lateMs(periodMs * 1.5) { }
+  : m_windowFrames(std::max(windowFrames, 1u)), m_periodMs(periodMs) { }
 
 
   bool VrFrameStats::add(const VrFrameCycle& cycle) {
@@ -17,8 +17,13 @@ namespace dxvk {
       m_steps[i].max  = std::max(m_steps[i].max, cycle[i]);
     }
 
-    if (cycle[uint32_t(VrFrameStep::Interval)] >= m_lateMs)
+    double interval = cycle[uint32_t(VrFrameStep::Interval)];
+
+    if (interval >= m_periodMs * 1.5)
       m_late++;
+
+    if (interval - cycle[uint32_t(VrFrameStep::Wait)] > m_periodMs)
+      m_busy++;
 
     return ++m_frames >= m_windowFrames;
   }
@@ -27,6 +32,7 @@ namespace dxvk {
   void VrFrameStats::reset() {
     m_frames = 0;
     m_late   = 0;
+    m_busy   = 0;
     m_steps  = { };
   }
 

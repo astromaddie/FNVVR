@@ -3,6 +3,7 @@
 
 #include "../../util/com/com_pointer.h"
 #include "../../util/log/log.h"
+#include "../../util/util_time.h"
 
 #include "vr_d3d9_bridge.h"
 
@@ -89,8 +90,7 @@ namespace dxvk {
     // Rendering has to reach the queue before the backend reads the images.
     // Locking the submission queue waits for DXVK's submission thread to
     // drain, so everything issued so far is already queued ahead of us.
-    interop->FlushRenderingCommands();
-    interop->LockSubmissionQueue();
+    frame.syncMs = flushAndLock(interop.ptr());
     bool result = backend.submitFrame(frame);
     interop->ReleaseSubmissionQueue();
     return result;
@@ -122,8 +122,7 @@ namespace dxvk {
       return false;
 
     // See submitStereoFrame
-    interop->FlushRenderingCommands();
-    interop->LockSubmissionQueue();
+    panel.syncMs = flushAndLock(interop.ptr());
     bool result = backend.submitPanel(id, panel);
     interop->ReleaseSubmissionQueue();
     return result;
@@ -147,6 +146,17 @@ namespace dxvk {
     image.extent     = { info.extent.width, info.extent.height };
     image.arrayLayer = 0;
     return true;
+  }
+
+
+  double VrD3D9Bridge::flushAndLock(
+          ID3D9VkInteropDevice* interop) {
+    auto start = high_resolution_clock::now();
+
+    interop->FlushRenderingCommands();
+    interop->LockSubmissionQueue();
+
+    return std::chrono::duration<double, std::milli>(high_resolution_clock::now() - start).count();
   }
 
 }
