@@ -19,6 +19,7 @@ namespace dxvk {
       "/actions/game/in/vats",
       "/actions/game/in/pause",
       "/actions/game/in/grab",
+      "/actions/game/in/wait",
       "/actions/menu/in/select",
       "/actions/menu/in/back",
       "/actions/menu/in/alternate",

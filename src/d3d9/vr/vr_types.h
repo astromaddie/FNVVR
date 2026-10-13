@@ -139,6 +139,7 @@ namespace dxvk {
     Vats,
     Pause,
     Grab,
+    Wait,
     MenuSelect,
     MenuBack,
     MenuAlternate,
@@ -149,7 +150,7 @@ namespace dxvk {
     MenuRightTrigger,
   };
 
-  constexpr uint32_t VrActionCount = 18;
+  constexpr uint32_t VrActionCount = 19;
 
   /**
    * \brief State of the actions for one frame

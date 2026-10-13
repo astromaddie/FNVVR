@@ -19,6 +19,7 @@ namespace {
   struct HoldPress {
     uint32_t holdFrames  = 0;
     uint32_t pauseFrames = 0;
+    uint32_t waitFrames  = 0;
 
     HoldPress(VrActionFilter& filter, float duration) {
       for (float t = 0.0f; t < duration; t += Frame)
@@ -31,18 +32,21 @@ namespace {
     void count(const VrActionState& actions) {
       holdFrames  += actions.isPressed(VrAction::PauseHold) ? 1 : 0;
       pauseFrames += actions.isPressed(VrAction::Pause)     ? 1 : 0;
+      waitFrames  += actions.isPressed(VrAction::Wait)      ? 1 : 0;
     }
   };
 
 }
 
 
-TEST_CASE(a_short_press_of_pause_hold_does_nothing) {
+TEST_CASE(a_short_press_of_pause_hold_waits_once) {
   VrActionFilter filter;
 
   HoldPress tap(filter, 0.2f);
   CHECK(tap.holdFrames == 0);
   CHECK(tap.pauseFrames == 0);
+  CHECK(tap.waitFrames > 0);
+  CHECK(tap.waitFrames <= 10);
 }
 
 
@@ -53,6 +57,7 @@ TEST_CASE(holding_pause_hold_pauses_once) {
   CHECK(hold.holdFrames == 0);
   CHECK(hold.pauseFrames > 0);
   CHECK(hold.pauseFrames <= 10);
+  CHECK(hold.waitFrames == 0);
 }
 
 
@@ -65,6 +70,15 @@ TEST_CASE(a_pulse_lasts_at_least_one_frame) {
 
   result = filter.update(VrActionState(), VrInputContext::Game, 0.5f);
   CHECK(!result.isPressed(VrAction::Pause));
+}
+
+
+TEST_CASE(a_press_interrupted_by_a_menu_does_not_wait) {
+  VrActionFilter filter;
+  filter.update(pressed(VrAction::PauseHold), VrInputContext::Game, Frame);
+  filter.update(pressed(VrAction::PauseHold), VrInputContext::Menu, Frame);
+  filter.update(VrActionState(), VrInputContext::Menu, Frame);
+  CHECK(!filter.update(VrActionState(), VrInputContext::Game, Frame).isPressed(VrAction::Wait));
 }
 
 
