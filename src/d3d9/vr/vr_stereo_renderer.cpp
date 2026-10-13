@@ -134,7 +134,6 @@ namespace dxvk {
       Logger::info("VR: The game state flags were not found, game state changes are not logged");
 
     renderer->m_hudAvailable = renderer->m_hudLayers.initialize();
-    renderer->m_tileProbe.initialize();
     renderer->m_tileTextureRetry.initialize();
 
     if (!renderer->m_hudAvailable)
@@ -288,7 +287,6 @@ namespace dxvk {
 
     disableStaticMenuBackground();
 
-    m_tileProbe.sample();
     m_tileTextureRetry.update();
 
     VrGameStateKind state = readGameState();
@@ -308,7 +306,6 @@ namespace dxvk {
     m_menuRendered = false;
     m_overPipBoy   = state == VrGameStateKind::PipBoy;
     m_menuDrawn    = !m_overPipBoy;
-
     m_dialogueSpeaker = m_controls.takeDialogueSpeaker();
 
     // The panel is placed again when it switches from the whole frame to a

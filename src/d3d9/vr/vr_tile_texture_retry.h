@@ -14,7 +14,9 @@ namespace dxvk {
    * the image later only updates its culling (Tile::UpdateTile). The image
    * is then drawn without a texture, so the tile shader samples the last
    * texture bound, a font page: the gamepad button icons of the Pip-Boy
-   * showed glyph fragments this way. Each time such an image is visible,
+   * showed glyph fragments this way: their menus are built at the main
+   * menu, before the VR controllers act as a gamepad, while the icons are
+   * hidden. Each time such an image is visible,
    * its texture update is requested once more. Only images cut from a
    * texture atlas are concerned: other images, such as the map, may have
    * their texture set and cleared by the game's code.

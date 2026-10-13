@@ -22,7 +22,6 @@
 #include "vr_pipboy_render.h"
 #include "vr_preview_window.h"
 #include "vr_sky_anchor.h"
-#include "vr_tile_probe.h"
 #include "vr_tile_texture_retry.h"
 #include "vr_weapon_hand.h"
 
@@ -187,7 +186,6 @@ namespace dxvk {
     // left eye's interface pass. While a menu is open, the right eye's pass
     // draws the HUD elements the game still shows.
     VrHudLayers            m_hudLayers;
-    VrTileProbe            m_tileProbe;
     VrTileTextureRetry     m_tileTextureRetry;
     Com<IDirect3DTexture9> m_hudTexture;
     Com<IDirect3DTexture9> m_hudPanelTexture;

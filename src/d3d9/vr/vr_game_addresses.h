@@ -823,16 +823,6 @@ namespace dxvk {
     constexpr uintptr_t TileUpdateLock      = 0x011F3330;
     constexpr uint32_t  TraitTextureAtlas   = 0xFF9;
 
-    /**
-     * Button icon diagnostic only (VrTileProbe): the flag asking the game
-     * to check its hibernating tiles, and the visible, filename and menu
-     * visibility traits.
-     */
-    constexpr uintptr_t TileNeedsHibernateCheck = 0x011F32C9;
-    constexpr uint32_t  TraitVisible        = 0xFA3;
-    constexpr uint32_t  TraitFilename       = 0xFCC;
-    constexpr uint32_t  TraitMenuVisible    = 0x1779;
-
   }
 
 }
