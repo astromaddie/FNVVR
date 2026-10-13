@@ -134,6 +134,7 @@ namespace dxvk {
       Logger::info("VR: The game state flags were not found, game state changes are not logged");
 
     renderer->m_hudAvailable = renderer->m_hudLayers.initialize();
+    renderer->m_tileProbe.initialize();
 
     if (!renderer->m_hudAvailable)
       Logger::info("VR: The HUD layout was not found, the HUD is not shown in the headset");
@@ -303,6 +304,9 @@ namespace dxvk {
     m_menuRendered = false;
     m_overPipBoy   = state == VrGameStateKind::PipBoy;
     m_menuDrawn    = !m_overPipBoy;
+
+    if (m_overPipBoy)
+      m_tileProbe.sample("frame");
     m_dialogueSpeaker = m_controls.takeDialogueSpeaker();
 
     // The panel is placed again when it switches from the whole frame to a
@@ -552,6 +556,9 @@ namespace dxvk {
       m_skyAnchor->setEye(&m_eyePosition);
 
     g_originalSwap(main, nullptr);
+
+    if (m_overPipBoy)
+      m_tileProbe.sample(eye == 0 ? "after eye 0" : "after eye 1");
 
     if (m_skyAnchor)
       m_skyAnchor->setEye(nullptr);

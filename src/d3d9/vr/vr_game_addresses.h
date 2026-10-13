@@ -793,6 +793,30 @@ namespace dxvk {
     constexpr uint8_t   HeapAllocatePrologue[]        = { 0x55, 0x8B, 0xEC, 0x8B, 0x45, 0x08, 0x50, 0xE8 };
     constexpr uint8_t   SetListEnabledPrologue[]      = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x4E, 0xEA };
 
+    /**
+     * Tile internals for the button icon diagnostic (VrTileProbe), see
+     * findings/pipboy.md. Tile: children list head at +0x04 (node: next at
+     * +0, Tile* at +8), name (char*) at +0x20, flags at +0x30 (0x3FF update
+     * bits, 0x20 texture, 0x10 coordinates, 0x800 hibernating, 0x1000
+     * promoted). Tile::GetValue (__thiscall, trait id) returns a Value*
+     * with the number at +8 and the string at +0xC. NiAVObject::GetProperty
+     * (__thiscall, type, 3 = shade) returns the TileShaderProperty, whose
+     * texture is at +0x60. The tile update lock is a CRITICAL_SECTION.
+     */
+    constexpr uintptr_t TileChildren        = 0x04;
+    constexpr uintptr_t TileName            = 0x20;
+    constexpr uintptr_t TileFlags           = 0x30;
+    constexpr uintptr_t TileGetValue        = 0x00A00F30;
+    constexpr uint8_t   TileGetValuePrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x10, 0x89, 0x4D, 0xF0 };
+    constexpr uintptr_t ObjectGetProperty   = 0x00A59D30;
+    constexpr uint8_t   ObjectGetPropertyPrologue[] = { 0x53, 0x8B, 0x5C, 0x24, 0x08, 0x83, 0xFB, 0x07 };
+    constexpr uintptr_t TileShaderTexture   = 0x60;
+    constexpr uintptr_t TileUpdateLock      = 0x011F3330;
+    constexpr uintptr_t TileNeedsHibernateCheck = 0x011F32C9;
+    constexpr uint32_t  TraitVisible        = 0xFA3;
+    constexpr uint32_t  TraitFilename       = 0xFCC;
+    constexpr uint32_t  TraitMenuVisible    = 0x1779;
+
   }
 
 }

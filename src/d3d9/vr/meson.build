@@ -45,6 +45,7 @@ vr_dxvk_src = files([
   'vr_preview_window.cpp',
   'vr_sky_anchor.cpp',
   'vr_stereo_renderer.cpp',
+  'vr_tile_probe.cpp',
   'vr_weapon_drawn.cpp',
   'vr_weapon_hand.cpp',
 ])
