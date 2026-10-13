@@ -134,6 +134,7 @@ namespace dxvk {
       Logger::info("VR: The game state flags were not found, game state changes are not logged");
 
     renderer->m_hudAvailable = renderer->m_hudLayers.initialize();
+    renderer->m_tileTextureRetry.initialize();
 
     if (!renderer->m_hudAvailable)
       Logger::info("VR: The HUD layout was not found, the HUD is not shown in the headset");
@@ -285,6 +286,8 @@ namespace dxvk {
     m_blockedInput = false;
 
     disableStaticMenuBackground();
+
+    m_tileTextureRetry.update();
 
     VrGameStateKind state = readGameState();
 

@@ -793,6 +793,36 @@ namespace dxvk {
     constexpr uint8_t   HeapAllocatePrologue[]        = { 0x55, 0x8B, 0xEC, 0x8B, 0x45, 0x08, 0x50, 0xE8 };
     constexpr uint8_t   SetListEnabledPrologue[]      = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x4E, 0xEA };
 
+    /**
+     * Menu tile internals (VrTileTextureRetry), see findings/pipboy.md §3.7.
+     * Tile: vtable slot 3 (+0x0C) is GetType (__thiscall, 0x386 = image),
+     * children list head at +0x04 (node: next at +0, Tile* at +8), name
+     * (char*) at +0x20, flags at +0x30 (0x3FF update bits, 0x20 texture).
+     * Tile::GetValue (__thiscall, trait id) returns a Value* (number at +8,
+     * string at +0xC) or null when the tile has no such trait.
+     * Tile::AddNeedsUpdate (__thiscall, update bits) marks the tile dirty.
+     * NiAVObject::GetProperty (__thiscall, type, 3 = shade) returns the
+     * image's TileShaderProperty, whose texture is at +0x60. The tile update
+     * lock is a CRITICAL_SECTION.
+     */
+    constexpr uintptr_t TileChildren        = 0x04;
+    constexpr uintptr_t TileName            = 0x20;
+    constexpr uintptr_t TileFlags           = 0x30;
+    constexpr uintptr_t TileGetTypeSlot     = 0x0C;
+    constexpr uint32_t  TileTypeImage       = 0x386;
+    constexpr uint32_t  TileUpdateTexture   = 0x20;
+    constexpr uintptr_t TileGetValue        = 0x00A00F30;
+    constexpr uint8_t   TileGetValuePrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x10, 0x89, 0x4D, 0xF0 };
+    constexpr uintptr_t TileAddNeedsUpdate  = 0x00A07530;
+    constexpr uint8_t   TileAddNeedsUpdatePrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x08, 0x89, 0x4D, 0xF8,
+                                                          0x81, 0x7D, 0x08, 0xFF, 0x03, 0x00, 0x00 };
+    constexpr uintptr_t ObjectGetProperty   = 0x00A59D30;
+    constexpr uint8_t   ObjectGetPropertyPrologue[] = { 0x53, 0x8B, 0x5C, 0x24, 0x08, 0x83, 0xFB, 0x07 };
+    constexpr int32_t   PropertyTypeShade   = 3;
+    constexpr uintptr_t TileShaderTexture   = 0x60;
+    constexpr uintptr_t TileUpdateLock      = 0x011F3330;
+    constexpr uint32_t  TraitTextureAtlas   = 0xFF9;
+
   }
 
 }
