@@ -749,7 +749,8 @@ namespace dxvk {
     // The game may set its own field of view while it draws the frame
     VrGameFrustum written = vrComputeGameFrustum(m_eyeView->fov);
     const float expected[4] = { written.left, written.right, written.top, written.bottom };
-    const float* used = m_renderCamera.save().frustum;
+    VrGameCameraState camera = m_renderCamera.save();
+    const float* used = camera.frustum;
 
     for (uint32_t i = 0; i < 4; i++) {
       if (std::abs(used[i] - expected[i]) > 1e-4f) {
