@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
+#include <iomanip>
 #include <sstream>
 
 #include "../../util/log/log.h"
@@ -35,6 +37,9 @@ namespace dxvk {
 
     // Used when the headset does not report its refresh rate
     constexpr float FallbackRefreshRate = 90.0f;
+
+    // Recent frames whose compositor timing is logged with each window
+    constexpr uint32_t CompositorHistory = 90;
 
     // Identifies the panel overlay within SteamVR, and names it in its UI
     // Overlay key and name of each panel, indexed by VrPanelId. The sort
@@ -142,6 +147,9 @@ namespace dxvk {
     vr::IVROverlay*    overlay    = nullptr;
     vr::IVRInput*      input      = nullptr;
     bool               initialized = false;
+
+    /// Buffer for the compositor's recent frame timings
+    std::vector<vr::Compositor_FrameTiming> timings;
   };
 
 
@@ -288,35 +296,138 @@ namespace dxvk {
   }
 
 
-  void VrOpenVrBackend::logFrameStats() {
+  void VrOpenVrBackend::measureFrame(
+          high_resolution_clock::time_point waitStart,
+          high_resolution_clock::time_point posesReady) {
+    const FrameClock& frame = m_frameClock;
+
+    if (frame.isSubmitted && m_statsRunning) {
+      auto ms = [] (high_resolution_clock::time_point from, high_resolution_clock::time_point to) {
+        return std::chrono::duration<double, std::milli>(to - from).count();
+      };
+
+      VrFrameCycle cycle = { };
+      cycle[uint32_t(VrFrameStep::Interval)] = ms(frame.posesReady,  posesReady);
+      cycle[uint32_t(VrFrameStep::Render)]   = ms(frame.posesReady,  frame.submitStart);
+      cycle[uint32_t(VrFrameStep::GpuWait)]  = ms(frame.submitStart, frame.imagesReady);
+      cycle[uint32_t(VrFrameStep::Submit)]   = ms(frame.imagesReady, frame.submitted);
+      cycle[uint32_t(VrFrameStep::After)]    = ms(frame.submitted,   waitStart);
+      cycle[uint32_t(VrFrameStep::Panels)]   = frame.panelMs;
+      cycle[uint32_t(VrFrameStep::Wait)]     = ms(waitStart,         posesReady);
+
+      if (m_stats.add(cycle))
+        logFrameStats();
+    } else if (frame.isSubmitted) {
+      startStatsWindow();
+    } else {
+      m_statsRunning = false;
+    }
+
+    m_frameClock = FrameClock();
+    m_frameClock.posesReady = posesReady;
+  }
+
+
+  void VrOpenVrBackend::startStatsWindow() {
     vr::Compositor_CumulativeStats stats = { };
     m_runtime->compositor->GetCumulativeStats(&stats, sizeof(stats));
 
-    vr::Compositor_FrameTiming timing = { };
-    timing.m_nSize = sizeof(timing);
-    bool hasTiming = m_runtime->compositor->GetFrameTiming(&timing, 0);
+    m_statsPid     = stats.m_nPid;
+    m_presented    = stats.m_nNumFramePresents;
+    m_reprojected  = stats.m_nNumReprojectedFrames;
+    m_dropped      = stats.m_nNumDroppedFrames;
+    m_statsRunning = true;
+    m_stats.reset();
+  }
 
-    uint32_t presented   = stats.m_nNumFramePresents     - m_presented;
-    uint32_t reprojected = stats.m_nNumReprojectedFrames - m_reprojected;
-    uint32_t dropped     = stats.m_nNumDroppedFrames     - m_dropped;
 
-    m_presented   = stats.m_nNumFramePresents;
-    m_reprojected = stats.m_nNumReprojectedFrames;
-    m_dropped     = stats.m_nNumDroppedFrames;
+  void VrOpenVrBackend::logFrameStats() {
+    auto fixed = [] (double value) {
+      std::ostringstream stream;
+      stream << std::fixed << std::setprecision(2) << value;
+      return stream.str();
+    };
 
-    uint64_t nowMs   = GetTickCount64();
-    uint64_t startMs = m_statsStartMs;
-    m_statsStartMs   = nowMs;
+    auto pair = [&] (double average, double max) {
+      return fixed(average) + "/" + fixed(max);
+    };
 
-    // The first call only takes the starting counts
-    if (!m_submitted)
-      return;
+    auto step = [&] (VrFrameStep step) {
+      return pair(m_stats.average(step), m_stats.step(step).max);
+    };
 
-    Logger::info(str::format("VR: ", m_statsFrames, " frames submitted in ", (nowMs - startMs) / 1000.0, " s: ",
-      presented, " presented, ", reprojected, " reprojected, ", dropped, " dropped; last frame: ",
-      hasTiming ? str::format("game interval ", timing.m_flClientFrameIntervalMs, " ms, compositor GPU ",
-        timing.m_flTotalRenderGpuMs, " ms, reprojection flags 0x", std::hex, timing.m_nReprojectionFlags, std::dec)
-        : std::string("no timing")));
+    double seconds = m_stats.seconds();
+
+    Logger::info(str::format("VR: ", m_stats.frames(), " frames in ", fixed(seconds),
+      " s, ", seconds > 0.0 ? std::lround(double(m_stats.frames()) / seconds) : 0, " fps, ",
+      m_stats.lateFrames(), " late by a display period or more. Average/longest ms: frame ", step(VrFrameStep::Interval),
+      ", eye rendering ", step(VrFrameStep::Render), ", GPU wait ", step(VrFrameStep::GpuWait),
+      ", submission ", step(VrFrameStep::Submit), ", after submission ", step(VrFrameStep::After),
+      " (panels ", step(VrFrameStep::Panels), "), waiting for the runtime ", step(VrFrameStep::Wait)));
+
+    // What the compositor did over the window. Its counts restart when
+    // another process connects, so they are only compared within one.
+    vr::Compositor_CumulativeStats stats = { };
+    m_runtime->compositor->GetCumulativeStats(&stats, sizeof(stats));
+
+    std::string counts = "counts restarted by the runtime";
+
+    if (stats.m_nPid == m_statsPid
+     && stats.m_nNumFramePresents     >= m_presented
+     && stats.m_nNumReprojectedFrames >= m_reprojected
+     && stats.m_nNumDroppedFrames     >= m_dropped) {
+      counts = str::format(stats.m_nNumFramePresents - m_presented, " presents, ",
+        stats.m_nNumReprojectedFrames - m_reprojected, " reprojected, ",
+        stats.m_nNumDroppedFrames - m_dropped, " dropped");
+    }
+
+    // The most recent frames in detail
+    std::vector<vr::Compositor_FrameTiming>& timings = m_runtime->timings;
+    timings.assign(CompositorHistory, vr::Compositor_FrameTiming());
+    timings[0].m_nSize = sizeof(vr::Compositor_FrameTiming);
+
+    uint32_t count = m_runtime->compositor->GetFrameTimings(timings.data(), CompositorHistory);
+    count = std::min(count, CompositorHistory);
+
+    std::string recent = "no frame timing";
+
+    if (count) {
+      uint32_t repeated = 0, misPresented = 0, reprojected = 0, dropped = 0;
+      VrFrameStepStats sceneGpu, totalGpu, frameReady, idle;
+
+      auto add = [] (VrFrameStepStats& stats, float value) {
+        stats.sum += value;
+        stats.max  = std::max(stats.max, double(value));
+      };
+
+      for (uint32_t i = 0; i < count; i++) {
+        const vr::Compositor_FrameTiming& timing = timings[i];
+        repeated     += timing.m_nNumFramePresents > 1 ? 1 : 0;
+        misPresented += timing.m_nNumMisPresented ? 1 : 0;
+        dropped      += timing.m_nNumDroppedFrames;
+        reprojected  += (timing.m_nReprojectionFlags
+          & (vr::VRCompositor_ReprojectionReason_Cpu | vr::VRCompositor_ReprojectionReason_Gpu)) ? 1 : 0;
+
+        add(sceneGpu,   timing.m_flPreSubmitGpuMs);
+        add(totalGpu,   timing.m_flTotalRenderGpuMs);
+        add(frameReady, timing.m_flNewFrameReadyMs);
+        add(idle,       timing.m_flCompositorIdleCpuMs);
+      }
+
+      auto stat = [&] (const VrFrameStepStats& stats) {
+        return pair(stats.sum / double(count), stats.max);
+      };
+
+      recent = str::format("last ", count, " frames: ", repeated, " shown more than once, ",
+        misPresented, " on another vsync than predicted, ", reprojected, " reprojected, ", dropped,
+        " repeats of the previous frame; average/longest ms: scene GPU ", stat(sceneGpu),
+        ", total GPU ", stat(totalGpu), ", second eye submitted ", stat(frameReady),
+        " after vsync, compositor idle ", stat(idle));
+    }
+
+    Logger::info(str::format("VR: Compositor: ", counts, " in the window; ", recent));
+
+    startStatsWindow();
   }
 
 
@@ -480,9 +591,9 @@ namespace dxvk {
       rate = FallbackRefreshRate;
 
     m_periodNs = int64_t(double(NanosecondsPerSecond) / double(rate));
-    m_statsFrames = std::max(uint32_t(rate * float(StatsPeriod)), 1u);
-    m_submitted   = 0;
-    logFrameStats();
+    m_stats        = VrFrameStats(uint32_t(rate * float(StatsPeriod)), double(m_periodNs) * 1e-6);
+    m_statsRunning = false;
+    m_frameClock   = FrameClock();
     m_state    = VrSessionState::Running;
     return true;
   }
@@ -543,6 +654,8 @@ namespace dxvk {
 
     pollEvents();
 
+    auto waitStart = high_resolution_clock::now();
+
     // Blocks until the compositor wants the next frame. The poses are
     // converted here and handed out by pollInput. In the explicit timing
     // mode the call does not use the queue, so it needs no lock.
@@ -556,9 +669,12 @@ namespace dxvk {
         m_loggedWait = true;
       }
 
+      m_frameClock   = FrameClock();
+      m_statsRunning = false;
       return timing;
     }
 
+    measureFrame(waitStart, high_resolution_clock::now());
     m_frameStarted = true;
     m_poses = VrInputState();
 
@@ -747,8 +863,12 @@ namespace dxvk {
         ", format ", uint32_t(frame.images[0].format), ", layout ", uint32_t(frame.images[0].layout)));
     }
 
+    m_frameClock.submitStart = high_resolution_clock::now();
+
     if (!m_transition->toTransferSource(frame.images.data(), VrEyeCount))
       return false;
+
+    m_frameClock.imagesReady = high_resolution_clock::now();
 
     if (!m_loggedSubmit)
       Logger::info("VR: Eye images ready for the compositor");
@@ -774,13 +894,13 @@ namespace dxvk {
     // Both eyes are in, the compositor may start on the frame
     handOffFrame();
 
+    m_frameClock.submitted   = high_resolution_clock::now();
+    m_frameClock.isSubmitted = true;
+
     if (!m_loggedSubmit) {
       Logger::info("VR: First frame handed to the compositor");
       m_loggedSubmit = true;
     }
-
-    if (++m_submitted % m_statsFrames == 0)
-      logFrameStats();
 
     // Always put the images back, DXVK still owns them
     return m_transition->restore(frame.images.data(), VrEyeCount) && accepted;
@@ -806,6 +926,8 @@ namespace dxvk {
     // or not, and the explicit mode does the same here
     if (m_state == VrSessionState::Running && m_frameStarted)
       handOffFrame();
+
+    m_frameClock.isSubmitted = false;
   }
 
 
@@ -829,6 +951,8 @@ namespace dxvk {
 
     overlay->SetOverlayWidthInMeters(state.handle, panel.width);
 
+    auto start = high_resolution_clock::now();
+
     if (!m_transition->toTransferSource(&panel.image, 1))
       return false;
 
@@ -837,6 +961,8 @@ namespace dxvk {
 
     vr::Texture_t texture = { &data, vr::TextureType_Vulkan, vr::ColorSpace_Gamma };
     vr::EVROverlayError error = overlay->SetOverlayTexture(state.handle, &texture);
+
+    m_frameClock.panelMs += std::chrono::duration<double, std::milli>(high_resolution_clock::now() - start).count();
 
     if (error == vr::VROverlayError_None && !state.visible) {
       error = overlay->ShowOverlay(state.handle);

@@ -4,7 +4,10 @@
 #include <memory>
 #include <vector>
 
+#include "../../util/util_time.h"
+
 #include "vr_backend.h"
+#include "vr_frame_stats.h"
 
 namespace vr {
   class IVRCompositor;
@@ -117,11 +120,28 @@ namespace dxvk {
     void logEyeGeometry();
 
     /**
-     * \brief Logs how many frames the compositor dropped or reprojected
+     * \brief Measures the frame cycle that ends now
      *
-     * Called every \ref StatsPeriod seconds' worth of submitted frames at the
-     * display rate. Reprojection
-     * warps the image, which can look like a distortion of the view.
+     * Called when WaitGetPoses returns. The cycle is only counted if the
+     * previous frame was rendered: frames of the menus and loading screens,
+     * drawn on a panel, restart the window.
+     */
+    void measureFrame(high_resolution_clock::time_point waitStart, high_resolution_clock::time_point posesReady);
+
+    /**
+     * \brief Starts a window of frame statistics
+     *
+     * Takes the compositor's counts the window's are computed from.
+     */
+    void startStatsWindow();
+
+    /**
+     * \brief Logs the frame timing of a full window, then starts the next one
+     *
+     * Logs where the time of a frame went, how many frames were late, and
+     * what the compositor did with them. Reprojection warps the image, which
+     * can look like a distortion of the view, and late frames look like
+     * stutter.
      */
     void logFrameStats();
 
@@ -181,14 +201,29 @@ namespace dxvk {
     /// WaitGetPoses started a frame that is not handed off yet
     bool                              m_frameStarted = false;
 
-    /// Seconds' worth of frames at the display rate between two frame statistics logs
-    constexpr static uint32_t         StatsPeriod    = 30;
-    uint32_t                          m_statsFrames  = 0;
-    uint32_t                          m_submitted    = 0;
+    /// Seconds' worth of frames at the display rate in a window of frame statistics
+    constexpr static uint32_t         StatsPeriod    = 10;
+
+    /// Times of the frame being measured, see VrFrameStep
+    struct FrameClock {
+      high_resolution_clock::time_point posesReady;
+      high_resolution_clock::time_point submitStart;
+      high_resolution_clock::time_point imagesReady;
+      high_resolution_clock::time_point submitted;
+      double                            panelMs     = 0.0;
+      bool                              isSubmitted = false;
+    };
+
+    FrameClock                        m_frameClock;
+    VrFrameStats                      m_stats        = VrFrameStats(1, 0.0);
+    bool                              m_statsRunning = false;
+
+    // The compositor's cumulative counts when the window started. They
+    // belong to one process and restart when another one connects.
+    uint32_t                          m_statsPid     = 0;
     uint32_t                          m_presented    = 0;
     uint32_t                          m_reprojected  = 0;
     uint32_t                          m_dropped      = 0;
-    uint64_t                          m_statsStartMs = 0;
 
     // Action handles, see vr_openvr_convert.h for the paths
     struct Actions {
