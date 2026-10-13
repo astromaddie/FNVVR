@@ -10,6 +10,7 @@
 
 #include "vr_backend.h"
 #include "vr_controls.h"
+#include "vr_culling_camera.h"
 #include "vr_game_camera.h"
 #include "vr_game_state.h"
 #include "vr_hud_layers.h"
@@ -225,6 +226,12 @@ namespace dxvk {
     // The sky, centred on the eye being drawn when it is installed
     std::unique_ptr<VrSkyAnchor> m_skyAnchor;
 
+    // The game's visibility pass, which runs before the frame is drawn,
+    // culls for the latest head pose and both eyes' field of view
+    std::unique_ptr<VrCullingCamera> m_cullingCamera;
+    VrFov               m_cullingFov;
+    bool                m_hasCullingFov = false;
+
     // The Pip-Boy over the live world. Its screen pass moves the camera into
     // the first-person drawing space, offset from the world by this shift.
     std::unique_ptr<VrPipBoyRender> m_pipBoyRender;
@@ -353,6 +360,8 @@ namespace dxvk {
       const VrGameCameraPose& gameCamera);
 
     VrGameCameraPose handInGame(const VrControllerState& controller) const;
+
+    bool cullingView(VrGameCameraPose& pose, VrGameFrustum& frustum);
 
     void updatePipBoyGaze(
       const VrInputState&         input,

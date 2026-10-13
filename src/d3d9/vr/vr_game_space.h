@@ -127,6 +127,23 @@ namespace dxvk {
   VrGameFrustum vrComputeGameFrustum(const VrFov& fov);
 
   /**
+   * \brief Field of view that covers both eyes, widened by a margin
+   *
+   * Each side takes the wider of the two eyes and the margin, and is
+   * limited to \ref VrMaxCullingAngle so that its tangent stays finite.
+   *
+   * \param [in] left Field of view of the left eye
+   * \param [in] right Field of view of the right eye
+   * \param [in] margin Angle added on every side, in radians
+   */
+  VrFov vrComputeCullingFov(const VrFov& left, const VrFov& right, float margin);
+
+  /**
+   * \brief Widest angle from the view direction a culling side may reach, in radians
+   */
+  constexpr float VrMaxCullingAngle = 1.3962634f;
+
+  /**
    * \brief Narrowest width to height ratio the game's interface is laid out for
    *
    * The interface is designed for 4:3 and wider screens. A headset eye is
