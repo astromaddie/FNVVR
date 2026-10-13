@@ -121,10 +121,13 @@ namespace dxvk {
    *  1. queryVulkanRequirements, before creating the Vulkan instance
    *  2. queryDeviceExtensions for each adapter, and selectPhysicalDevice
    *  3. beginSession, once the device exists
-   *  4. per frame: waitFrame, pollInput, locateViews, submitFrame
+   *  4. per frame: waitFrame, beginFrame, pollInput, locateViews, then
+   *     submitFrame or submitEmptyFrame
    *  5. endSession
    *
    * submitPanel and hidePanel may be called at any time during the session.
+   * beginFrame, submitFrame, submitEmptyFrame and submitPanel are called with
+   * the device queue locked, so they may use it.
    *
    * Methods are called from the render/game thread only.
    */
@@ -184,6 +187,14 @@ namespace dxvk {
     virtual VrFrameTiming waitFrame() = 0;
 
     /**
+     * \brief Marks the start of the frame's GPU work
+     *
+     * Called once after each waitFrame, before any rendering of the frame
+     * reaches the queue.
+     */
+    virtual void beginFrame() = 0;
+
+    /**
      * \brief Samples head and controller state for a display time
      *
      * \param [in] displayTime Predicted display time from waitFrame
@@ -211,6 +222,7 @@ namespace dxvk {
      * Only valid for frames where waitFrame returned shouldRender.
      * Frames that are not rendered must still be closed with
      * submitEmptyFrame so the runtime can keep its frame loop in sync.
+     * Either call tells the runtime that the frame's rendering is done.
      */
     virtual bool submitFrame(const VrFrameSubmission& frame) = 0;
 

@@ -167,6 +167,11 @@ namespace dxvk {
   }
 
 
+  void VrEmulatorBackend::beginFrame() {
+    // Simulated frames have no GPU timing to mark
+  }
+
+
   void VrEmulatorBackend::submitEmptyFrame(int64_t displayTime) {
     m_emptyFrames++;
   }

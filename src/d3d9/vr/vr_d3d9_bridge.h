@@ -32,6 +32,32 @@ namespace dxvk {
             VrGraphicsBinding&    binding);
 
     /**
+     * \brief Calls IVRBackend::beginFrame with the queue locked
+     *
+     * The submission queue is locked without a flush: the frame's
+     * rendering, issued afterwards, reaches the queue after the backend's
+     * work.
+     *
+     * \param [in] device D3D9 device the frame is rendered with
+     * \param [in] backend Backend to notify
+     */
+    static void beginFrame(
+            IDirect3DDevice9*     device,
+            IVRBackend&           backend);
+
+    /**
+     * \brief Calls IVRBackend::submitEmptyFrame with the queue locked
+     *
+     * \param [in] device D3D9 device the frame is rendered with
+     * \param [in] backend Backend to notify
+     * \param [in] displayTime Predicted display time from IVRBackend::waitFrame
+     */
+    static void submitEmptyFrame(
+            IDirect3DDevice9*     device,
+            IVRBackend&           backend,
+            int64_t               displayTime);
+
+    /**
      * \brief Hands two rendered eye textures to the backend
      *
      * Flushes all pending rendering, waits until it has been submitted to the

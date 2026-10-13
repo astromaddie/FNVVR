@@ -83,6 +83,8 @@ namespace dxvk {
 
     VrFrameTiming waitFrame() override;
 
+    void beginFrame() override;
+
     VrInputState pollInput(int64_t displayTime) override;
 
     void setInputContext(VrInputContext context) override;

@@ -468,6 +468,11 @@ namespace dxvk {
     // room set-up of the user puts it
     m_runtime->compositor->SetTrackingSpace(vr::TrackingUniverseStanding);
 
+    // See the class description: frames are handed off by handOffFrame
+    m_runtime->compositor->SetExplicitTimingMode(
+      vr::VRCompositorTimingMode_Explicit_ApplicationPerformsPostPresentHandoff);
+    m_frameStarted = false;
+
     float rate = m_runtime->system->GetFloatTrackedDeviceProperty(
       vr::k_unTrackedDeviceIndex_Hmd, vr::Prop_DisplayFrequency_Float);
 
@@ -539,7 +544,8 @@ namespace dxvk {
     pollEvents();
 
     // Blocks until the compositor wants the next frame. The poses are
-    // converted here and handed out by pollInput
+    // converted here and handed out by pollInput. In the explicit timing
+    // mode the call does not use the queue, so it needs no lock.
     std::vector<vr::TrackedDevicePose_t> poses(vr::k_unMaxTrackedDeviceCount);
     vr::EVRCompositorError error = m_runtime->compositor->WaitGetPoses(
       poses.data(), uint32_t(poses.size()), nullptr, 0);
@@ -553,6 +559,7 @@ namespace dxvk {
       return timing;
     }
 
+    m_frameStarted = true;
     m_poses = VrInputState();
 
     const vr::TrackedDevicePose_t& head = poses[vr::k_unTrackedDeviceIndex_Hmd];
@@ -584,6 +591,27 @@ namespace dxvk {
     timing.shouldRender         = m_runtime->compositor->CanRenderScene();
     timing.predictedDisplayTime = ++m_frameCounter;
     return timing;
+  }
+
+
+  void VrOpenVrBackend::beginFrame() {
+    if (m_state != VrSessionState::Running || !m_frameStarted)
+      return;
+
+    // Records the GPU time the frame starts at, which the compositor's
+    // timing and its choice to reproject rely on
+    vr::EVRCompositorError error = m_runtime->compositor->SubmitExplicitTimingData();
+
+    if (error != vr::VRCompositorError_None && !m_loggedTiming) {
+      Logger::err(str::format("VR: SubmitExplicitTimingData failed, error ", int32_t(error)));
+      m_loggedTiming = true;
+    }
+  }
+
+
+  void VrOpenVrBackend::handOffFrame() {
+    m_runtime->compositor->PostPresentHandoff();
+    m_frameStarted = false;
   }
 
 
@@ -743,6 +771,9 @@ namespace dxvk {
       }
     }
 
+    // Both eyes are in, the compositor may start on the frame
+    handOffFrame();
+
     if (!m_loggedSubmit) {
       Logger::info("VR: First frame handed to the compositor");
       m_loggedSubmit = true;
@@ -771,7 +802,10 @@ namespace dxvk {
 
 
   void VrOpenVrBackend::submitEmptyFrame(int64_t displayTime) {
-    // OpenVR has no frame to close: the next WaitGetPoses starts the next one
+    // The implicit mode hands off every frame in WaitGetPoses, submitted
+    // or not, and the explicit mode does the same here
+    if (m_state == VrSessionState::Running && m_frameStarted)
+      handOffFrame();
   }
 
 

@@ -30,6 +30,37 @@ namespace dxvk {
   }
 
 
+  void VrD3D9Bridge::beginFrame(
+          IDirect3DDevice9*     device,
+          IVRBackend&           backend) {
+    Com<ID3D9VkInteropDevice> interop;
+
+    if (FAILED(device->QueryInterface(__uuidof(ID3D9VkInteropDevice),
+        reinterpret_cast<void**>(&interop))))
+      return;
+
+    interop->LockSubmissionQueue();
+    backend.beginFrame();
+    interop->ReleaseSubmissionQueue();
+  }
+
+
+  void VrD3D9Bridge::submitEmptyFrame(
+          IDirect3DDevice9*     device,
+          IVRBackend&           backend,
+          int64_t               displayTime) {
+    Com<ID3D9VkInteropDevice> interop;
+
+    if (FAILED(device->QueryInterface(__uuidof(ID3D9VkInteropDevice),
+        reinterpret_cast<void**>(&interop))))
+      return;
+
+    interop->LockSubmissionQueue();
+    backend.submitEmptyFrame(displayTime);
+    interop->ReleaseSubmissionQueue();
+  }
+
+
   bool VrD3D9Bridge::submitStereoFrame(
           IDirect3DDevice9*     device,
           IVRBackend&           backend,

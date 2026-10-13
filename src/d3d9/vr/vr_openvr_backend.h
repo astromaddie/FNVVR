@@ -39,6 +39,13 @@ namespace dxvk {
    * Each panel is an IVROverlay, placed in the standing tracking space or
    * relative to the headset.
    *
+   * Frames use the compositor's explicit timing mode, with the hand-off done
+   * by the backend: the game runs its logic and renders on one thread, so in
+   * the implicit mode the compositor would only start on a frame at the next
+   * WaitGetPoses, after the game logic of the following frame. Each frame
+   * is handed off as soon as it is submitted instead, and WaitGetPoses
+   * no longer uses the queue, which DXVK's submission thread shares.
+   *
    * Everything here needs a headset to be verified; the conversions are
    * tested in vr_openvr_convert.h.
    */
@@ -66,6 +73,8 @@ namespace dxvk {
     VrExtent recommendedEyeExtent() const override;
 
     VrFrameTiming waitFrame() override;
+
+    void beginFrame() override;
 
     VrInputState pollInput(int64_t displayTime) override;
 
@@ -152,6 +161,11 @@ namespace dxvk {
     void destroyPointers();
 
     /**
+     * \brief Tells the compositor that the frame's rendering is done
+     */
+    void handOffFrame();
+
+    /**
      * \brief Time from now until the next frame reaches the eyes, in seconds
      */
     float secondsToPhotons() const;
@@ -163,6 +177,9 @@ namespace dxvk {
     VrInputState                      m_poses;
     int64_t                           m_frameCounter = 0;
     int64_t                           m_periodNs     = 0;
+
+    /// WaitGetPoses started a frame that is not handed off yet
+    bool                              m_frameStarted = false;
 
     /// Seconds' worth of frames at the display rate between two frame statistics logs
     constexpr static uint32_t         StatsPeriod    = 30;
@@ -200,6 +217,7 @@ namespace dxvk {
     // inside the runtime can be located from the log
     bool                              m_loggedWait   = false;
     bool                              m_loggedSubmit = false;
+    bool                              m_loggedTiming = false;
 
   };
 

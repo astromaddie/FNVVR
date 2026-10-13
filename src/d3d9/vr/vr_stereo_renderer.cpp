@@ -319,15 +319,16 @@ namespace dxvk {
     }
 
     VrFrameTiming timing = m_backend.waitFrame();
+    VrD3D9Bridge::beginFrame(m_device, m_backend);
 
     if (!timing.shouldRender) {
-      m_backend.submitEmptyFrame(timing.predictedDisplayTime);
+      VrD3D9Bridge::submitEmptyFrame(m_device, m_backend, timing.predictedDisplayTime);
       g_originalSwap(main, nullptr);
       return;
     }
 
     if (FAILED(m_device->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &m_gameTarget))) {
-      m_backend.submitEmptyFrame(timing.predictedDisplayTime);
+      VrD3D9Bridge::submitEmptyFrame(m_device, m_backend, timing.predictedDisplayTime);
       g_originalSwap(main, nullptr);
       return;
     }
@@ -382,7 +383,7 @@ namespace dxvk {
         m_loggedFailure = true;
       }
 
-      m_backend.submitEmptyFrame(timing.predictedDisplayTime);
+      VrD3D9Bridge::submitEmptyFrame(m_device, m_backend, timing.predictedDisplayTime);
       return;
     }
 
@@ -417,13 +418,14 @@ namespace dxvk {
     // onPresent copies to the panel. Waiting still paces the game to the
     // headset and provides the head pose the panel is placed with.
     VrFrameTiming timing = m_backend.waitFrame();
+    VrD3D9Bridge::beginFrame(m_device, m_backend);
     VrInputState input = m_backend.pollInput(timing.predictedDisplayTime);
     trackHead(input);
 
     m_controls.update(input, state, m_hasReference ? &m_reference : nullptr,
       menuPanel(), float(timing.predictedPeriod) * 1e-9f);
 
-    m_backend.submitEmptyFrame(timing.predictedDisplayTime);
+    VrD3D9Bridge::submitEmptyFrame(m_device, m_backend, timing.predictedDisplayTime);
 
     g_originalSwap(main, nullptr);
   }
