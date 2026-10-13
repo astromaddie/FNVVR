@@ -162,6 +162,9 @@ namespace dxvk {
     if (g_headLook && g_headLook->m_hasHead)
       skipTurn = 1;
 
+    if (g_headLook)
+      g_headLook->m_dialogueSpeaker = actor;
+
     reinterpret_cast<FocusOnActorFn>(VrGame::FocusOnActor)(player, nullptr, actor, blend, skipTurn);
   }
 

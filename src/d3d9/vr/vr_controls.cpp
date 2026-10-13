@@ -144,4 +144,9 @@ namespace dxvk {
     return m_headLook && m_headLook->adjustCamera(pose);
   }
 
+
+  void* VrControls::takeDialogueSpeaker() {
+    return m_headLook ? m_headLook->takeDialogueSpeaker() : nullptr;
+  }
+
 }

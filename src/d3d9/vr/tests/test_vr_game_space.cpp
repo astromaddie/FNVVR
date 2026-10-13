@@ -260,3 +260,18 @@ TEST_CASE(culling_fov_stays_below_a_right_angle) {
   CHECK_NEAR(fov.angleUp,     VrMaxCullingAngle, 1e-6);
   CHECK_NEAR(fov.angleDown,  -VrMaxCullingAngle, 1e-6);
 }
+
+
+TEST_CASE(game_point_comes_back_into_the_reference) {
+  VrGameCameraPose base;
+  base.forward  = { 1.0f, 0.0f, 0.0f };
+  base.up       = { 0.0f, 0.0f, 1.0f };
+  base.right    = { 0.0f, -1.0f, 0.0f };
+  base.position = { 10.0f, 20.0f, 30.0f };
+
+  // An eye moved to the point found is drawn at that point
+  VrPose eye;
+  eye.position = vrComputeGamePointInReference(base, { 210.0f, -30.0f, 10.0f }, 100.0f);
+  checkVector(eye.position, 0.5f, -0.2f, -2.0f);
+  checkVector(vrComputeEyeCameraPose(base, eye, 100.0f).position, 210.0f, -30.0f, 10.0f);
+}

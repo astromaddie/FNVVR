@@ -120,6 +120,27 @@ namespace dxvk {
   }
 
 
+  VrPose vrComputePanelPoseTowards(const VrPose& head, const VrVector3& target,
+    float distance, float maxPitch) {
+    VrVector3 direction = target - head.position;
+    float horizontal = std::sqrt(direction.x * direction.x + direction.z * direction.z);
+
+    if (horizontal < 1e-3f)
+      return vrComputePanelPose(head, distance);
+
+    // Turning by yaw around +Y brings -Z to the target's heading, and
+    // pitching around the turned +X raises it to the target
+    float yaw   = std::atan2(-direction.x, -direction.z);
+    float pitch = std::clamp(std::atan2(direction.y, horizontal), -maxPitch, maxPitch);
+
+    VrPose panel;
+    panel.orientation = vrQuaternionFromAxisAngle({ 0.0f, 1.0f, 0.0f }, yaw)
+                      * vrQuaternionFromAxisAngle({ 1.0f, 0.0f, 0.0f }, pitch);
+    panel.position    = head.position + vrRotate(panel.orientation, { 0.0f, 0.0f, -distance });
+    return panel;
+  }
+
+
   VrPose vrCompose(const VrPose& parent, const VrPose& child) {
     VrPose result;
     result.orientation = vrNormalize(parent.orientation * child.orientation);

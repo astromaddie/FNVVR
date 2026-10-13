@@ -9,6 +9,12 @@ namespace dxvk {
 
     using GetAsNodeFn = uintptr_t (__fastcall*)(uintptr_t object, void* unused);
 
+    // TESObjectREFR::Get3D, __thiscall without arguments
+    using Get3DFn = uintptr_t (__fastcall*)(uintptr_t reference, void* unused);
+
+    // The head bone is about ten levels below a character's root
+    constexpr uint32_t MaxSkeletonDepth = 16;
+
     template<typename T>
     T readField(uintptr_t base, uintptr_t offset) {
       return *reinterpret_cast<const T*>(base + offset);
@@ -46,6 +52,26 @@ namespace dxvk {
     }
 
     return 0;
+  }
+
+
+  bool vrFindActorHead(uintptr_t actor, VrVector3& position) {
+    if (!actor)
+      return false;
+
+    auto vtable = readField<uintptr_t>(actor, 0);
+    uintptr_t root = reinterpret_cast<Get3DFn>(readField<uintptr_t>(vtable, VrGame::RefGet3DSlot))(actor, nullptr);
+
+    uintptr_t head = vrFindGameObject(root, VrGame::HeadNodeName, MaxSkeletonDepth);
+
+    if (!head)
+      head = vrFindGameObject(root, VrGame::SpeakerNodeName, MaxSkeletonDepth);
+
+    if (!head)
+      return false;
+
+    std::memcpy(&position, reinterpret_cast<const void*>(head + VrGame::ObjectWorldTranslation), sizeof(position));
+    return true;
   }
 
 }

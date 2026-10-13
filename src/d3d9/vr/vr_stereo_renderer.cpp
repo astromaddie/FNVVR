@@ -8,6 +8,7 @@
 #include "vr_d3d9_bridge.h"
 #include "vr_game_addresses.h"
 #include "vr_game_memory.h"
+#include "vr_game_nodes.h"
 #include "vr_math.h"
 #include "vr_stereo_renderer.h"
 
@@ -49,6 +50,10 @@ namespace dxvk {
     // Head rotation the culling view allows for on every side, in radians:
     // the game culls with the head pose of the previous frame
     constexpr float CullingMargin = 0.1745329f;
+
+    // Steepest slope of the line from the head to a dialogue's speaker that
+    // the panel follows, in radians
+    constexpr float MaxSpeakerPanelPitch = 0.7853982f;
 
     // Frames, counted once the Pip-Boy is closed, during which the game's
     // Pip-Boy control cannot reopen it after the gaze pressed back
@@ -298,6 +303,7 @@ namespace dxvk {
     m_menuRendered = false;
     m_overPipBoy   = state == VrGameStateKind::PipBoy;
     m_menuDrawn    = !m_overPipBoy;
+    m_dialogueSpeaker = m_controls.takeDialogueSpeaker();
 
     // The panel is placed again when it switches from the whole frame to a
     // menu drawn in game
@@ -1119,9 +1125,11 @@ namespace dxvk {
 
 
   void VrStereoRenderer::submitMenu() {
-    // Placed once when it appears, and again once the head is known
-    if (!m_panelShown || (!m_panelPlacedWithHead && m_hasHeadPose))
-      placePanel(m_panelConfig.hudDistance);
+    // Placed once when it appears, again once the head is known, and again
+    // when a dialogue's speaker is first known or changes
+    if (!m_panelShown || (!m_panelPlacedWithHead && m_hasHeadPose)
+     || (m_dialogueSpeaker && m_dialogueSpeaker != m_panelSpeaker))
+      placeMenuPanel();
 
     m_panelShowsMenu = true;
 
@@ -1213,7 +1221,37 @@ namespace dxvk {
   }
 
 
+  void VrStereoRenderer::placeMenuPanel() {
+    m_panelSpeaker = m_dialogueSpeaker;
+
+    // The speaker can stand anywhere around the player, even behind, and
+    // sit lower than the eyes. The middle of the dialogue menu is left
+    // free for the speaker's face, so it is put on the line to the head.
+    VrVector3 head;
+
+    if (!m_dialogueSpeaker || !m_hasHeadPose || !m_hasReference
+     || !vrFindActorHead(reinterpret_cast<uintptr_t>(m_dialogueSpeaker), head)) {
+      placePanel(m_panelConfig.hudDistance);
+      return;
+    }
+
+    VrVector3 target = vrTransformPoint(m_reference,
+      vrComputeGamePointInReference(m_gameCameraPose, head, VrGameUnitsPerMetre));
+
+    m_panelPose = vrComputePanelPoseTowards(m_headPose, target,
+      m_panelConfig.hudDistance, MaxSpeakerPanelPitch);
+    m_panelPlacedWithHead = true;
+
+    if (!m_loggedSpeakerPanel) {
+      Logger::info("VR: The dialogue panel is placed between the head and the speaker's head");
+      m_loggedSpeakerPanel = true;
+    }
+  }
+
+
   void VrStereoRenderer::hidePanel() {
+    m_panelSpeaker = nullptr;
+
     if (!m_panelShown)
       return;
 

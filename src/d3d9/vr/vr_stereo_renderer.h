@@ -279,6 +279,13 @@ namespace dxvk {
     Com<IDirect3DTexture9> m_panelStaging;
     VrPose m_panelPose;
     float  m_panelWidth    = 0.0f;
+
+    // The actor a dialogue focused on this frame, and the one the menu
+    // panel was placed for: a dialogue's panel is placed between the head
+    // and the speaker's head
+    void*  m_dialogueSpeaker = nullptr;
+    void*  m_panelSpeaker    = nullptr;
+    bool   m_loggedSpeakerPanel = false;
     VrPanelPlacement m_menuPanel;
     bool   m_panelShown    = false;
     bool   m_panelPlacedWithHead = false;
@@ -413,6 +420,8 @@ namespace dxvk {
     void updatePanel(IDirect3DSwapChain9* swapchain);
 
     void placePanel(float distance);
+
+    void placeMenuPanel();
 
     /**
      * \brief Where the menu panel is, \c nullptr while it is hidden

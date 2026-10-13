@@ -36,6 +36,16 @@ namespace dxvk {
   }
 
 
+  VrVector3 vrComputeGamePointInReference(
+    const VrGameCameraPose& base,
+    const VrVector3&        point,
+          float             unitsPerMetre) {
+    // The base camera's axes are the reference's +X, +Y and -Z
+    VrVector3 offset = (point - base.position) * (1.0f / unitsPerMetre);
+    return { vrDot(offset, base.right), vrDot(offset, base.up), -vrDot(offset, base.forward) };
+  }
+
+
   VrHeadAngles vrComputeHeadAngles(const VrPose& headInReference) {
     // Forward is -Z, right is +X and up is +Y in the reference frame
     VrVector3 forward = vrRotate(headInReference.orientation, { 0.0f, 0.0f, -1.0f });

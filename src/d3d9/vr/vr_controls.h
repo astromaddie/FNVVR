@@ -81,6 +81,11 @@ namespace dxvk {
      */
     bool adjustCamera(VrGameCameraPose& pose) const;
 
+    /**
+     * \brief See VrHeadLook::takeDialogueSpeaker
+     */
+    void* takeDialogueSpeaker();
+
   private:
 
     VrPointerState updatePointer(

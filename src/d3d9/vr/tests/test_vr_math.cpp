@@ -205,3 +205,43 @@ TEST_CASE(panel_is_placed_ahead_at_head_height) {
   CHECK_NEAR(normal.x, 1.0f, 1e-5);
   CHECK_NEAR(normal.z, 0.0f, 1e-5);
 }
+
+
+TEST_CASE(panel_towards_a_target_lies_on_the_line_to_it) {
+  // Head at 1.7 m looking anywhere, target lower and to the left
+  VrPose head;
+  head.position    = { 0.0f, 1.7f, 0.0f };
+  head.orientation = vrQuaternionFromAxisAngle({ 0.0f, 1.0f, 0.0f }, 2.0f);
+
+  VrVector3 target = { -2.0f, 1.2f, -2.0f };
+  VrPose panel = vrComputePanelPoseTowards(head, target, 1.0f, 1.0f);
+
+  VrVector3 line = target - head.position;
+  VrVector3 expected = head.position + line * (1.0f / vrLength(line));
+  CHECK_NEAR(panel.position.x, expected.x, 1e-5);
+  CHECK_NEAR(panel.position.y, expected.y, 1e-5);
+  CHECK_NEAR(panel.position.z, expected.z, 1e-5);
+
+  // It faces the head and does not roll
+  VrVector3 back  = vrRotate(panel.orientation, { 0.0f, 0.0f, 1.0f });
+  VrVector3 right = vrRotate(panel.orientation, { 1.0f, 0.0f, 0.0f });
+  CHECK_NEAR(vrDot(back, line * (-1.0f / vrLength(line))), 1.0f, 1e-5);
+  CHECK_NEAR(right.y, 0.0f, 1e-6);
+}
+
+
+TEST_CASE(panel_towards_a_target_limits_its_slope) {
+  VrPose head;
+  head.position = { 0.0f, 1.7f, 0.0f };
+
+  // Straight ahead and far below: the slope is held at the limit
+  VrPose panel = vrComputePanelPoseTowards(head, { 0.0f, -10.0f, -1.0f }, 1.0f, 0.5f);
+  CHECK_NEAR(panel.position.x, 0.0f, 1e-5);
+  CHECK_NEAR(panel.position.y, 1.7f - std::sin(0.5f), 1e-5);
+  CHECK_NEAR(panel.position.z, -std::cos(0.5f), 1e-5);
+
+  // Right above the head: placed as an ordinary panel ahead
+  VrPose above = vrComputePanelPoseTowards(head, { 0.0f, 3.0f, 0.0f }, 1.0f, 0.5f);
+  CHECK_NEAR(above.position.y, 1.7f, 1e-5);
+  CHECK_NEAR(above.position.z, -1.0f, 1e-5);
+}
