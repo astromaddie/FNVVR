@@ -413,15 +413,15 @@ namespace dxvk {
     const VrGameCameraPose*     hand,
     const VrGameCameraPose*     otherHand,
           bool                  grip,
-          bool                  pipBoy) {
-    if (pipBoy)
+          VrFirstPersonMode     mode) {
+    if (mode != VrFirstPersonMode::Hands)
       hand = nullptr;
 
     m_gameCamera   = gameCamera;
     m_hasHand      = hand != nullptr;
     m_hasOtherHand = otherHand != nullptr;
     m_grip         = grip;
-    m_pipBoy       = pipBoy;
+    m_mode         = mode;
 
     if (hand)
       m_hand = *hand;
@@ -596,7 +596,19 @@ namespace dxvk {
     if (uint8_t* camera = field<uint8_t*>(main, VrGame::MainFirstPersonCamera))
       writeVector(camera, VrGame::CameraWorldTranslation, m_eyePosition - shift);
 
-    if (m_pipBoy) {
+    if (m_mode == VrFirstPersonMode::Hidden) {
+      m_hasAim    = false;
+      m_twoHanded = false;
+      m_braced    = false;
+      hideModel(root);
+      return;
+    }
+
+    // The arms and the weapon are culled one by one from here on
+    if (m_hidesModel)
+      showArms(root);
+
+    if (m_mode == VrFirstPersonMode::PipBoy) {
       m_hasAim    = false;
       m_twoHanded = false;
       m_braced    = false;
@@ -937,6 +949,23 @@ namespace dxvk {
   }
 
 
+  void VrWeaponHand::hideModel(uint8_t* root) {
+    // Culling the root culls the whole model. The objects culled one by
+    // one are shown again first, so that they are not left culled when the
+    // model is shown again.
+    if (!m_hidesModel)
+      showArms(root);
+
+    hide(root, false);
+    m_hidesModel = true;
+
+    if (!m_loggedHidden) {
+      Logger::info("VR: The arms and the weapon are hidden while the lasers point at a menu");
+      m_loggedHidden = true;
+    }
+  }
+
+
   void VrWeaponHand::hide(uint8_t* object, bool log) {
     uint32_t& flags = field<uint32_t>(object, VrGame::ObjectFlags);
     bool hidden = std::find(m_hiddenObjects.begin(), m_hiddenObjects.end(), object) != m_hiddenObjects.end();
@@ -962,6 +991,7 @@ namespace dxvk {
 
   void VrWeaponHand::showArms(uint8_t* root) {
     m_hidesRightHand = false;
+    m_hidesModel     = false;
 
     if (m_hiddenObjects.empty())
       return;

@@ -9,6 +9,19 @@
 namespace dxvk {
 
   /**
+   * \brief What the first-person model shows in a frame
+   */
+  enum class VrFirstPersonMode {
+    /// The weapon in the right hand, the left hand free or on the weapon
+    Hands,
+    /// The left forearm carries the Pip-Boy, the right hand is hidden
+    PipBoy,
+    /// Nothing is drawn: the controllers point at a menu with their lasers,
+    /// and the game would otherwise animate the arms in front of its camera
+    Hidden,
+  };
+
+  /**
    * \brief Puts the first-person weapon in the hand and shoots where it points
    *
    * Two calls of the game are redirected, see findings/weapon.md:
@@ -37,6 +50,8 @@ namespace dxvk {
    *   controller as the free hand is, and the right hand and the weapon
    *   are hidden. RenderPipBoy updates the model again before it draws the
    *   Pip-Boy screen, so the forearm is moved again after that update.
+   * - While a menu is pointed at with the lasers, the whole model is
+   *   hidden.
    *
    * Only used on the game's main thread.
    */
@@ -63,15 +78,15 @@ namespace dxvk {
      *    \c nullptr if it is not tracked
      * \param [in] grip Whether the other hand's grip on the weapon is held:
      *    it takes the weapon once it comes near it, and lets go on release
-     * \param [in] pipBoy Whether the Pip-Boy is shown: the other hand then
-     *    carries it, and \c hand is ignored
+     * \param [in] mode What the model shows. \c hand is ignored unless it
+     *    is VrFirstPersonMode::Hands.
      */
     void beginFrame(
       const VrGameCameraPose&     gameCamera,
       const VrGameCameraPose*     hand,
       const VrGameCameraPose*     otherHand,
             bool                  grip,
-            bool                  pipBoy);
+            VrFirstPersonMode     mode);
 
     /**
      * \brief Called before the game places the first-person camera for an eye
@@ -124,7 +139,7 @@ namespace dxvk {
     VrGameCameraPose m_otherHand;
     bool             m_hasOtherHand = false;
     bool             m_grip = false;
-    bool             m_pipBoy = false;
+    VrFirstPersonMode m_mode = VrFirstPersonMode::Hands;
 
     // Whether the other hand holds the weapon
     bool             m_twoHanded = false;
@@ -173,6 +188,8 @@ namespace dxvk {
     // weapon are among them
     std::vector<uint8_t*> m_hiddenObjects;
     bool             m_hidesRightHand = false;
+    bool             m_hidesModel = false;
+    bool             m_loggedHidden = false;
 
     static void __fastcall updateHook(
             uint8_t*              object,
@@ -212,6 +229,8 @@ namespace dxvk {
             void*                 updateData);
 
     void hideArms(uint8_t* root, bool rightHand);
+
+    void hideModel(uint8_t* root);
 
     void hide(uint8_t* object, bool log);
 
