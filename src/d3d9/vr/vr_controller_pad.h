@@ -33,6 +33,7 @@ namespace dxvk {
     constexpr uint32_t Sneak      = 0x08;
     constexpr uint32_t Jump       = 0x0C;
     constexpr uint32_t MenuMode   = 0x0E;
+    constexpr uint32_t SleepWait  = 0x0F;
     constexpr uint32_t Vats       = 0x10;
     constexpr uint32_t Grab       = 0x1B;
 

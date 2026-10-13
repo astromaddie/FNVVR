@@ -86,6 +86,11 @@
       "requirement": "optional"
     },
     {
+      "name": "/actions/game/in/wait",
+      "type": "boolean",
+      "requirement": "optional"
+    },
+    {
       "name": "/actions/game/in/grab",
       "type": "boolean",
       "requirement": "suggested"
@@ -167,9 +172,10 @@
       "/actions/game/in/jump": "Jump",
       "/actions/game/in/reload": "Reload",
       "/actions/game/in/sneak": "Sneak",
-      "/actions/game/in/pause_hold": "Pause menu (hold)",
+      "/actions/game/in/pause_hold": "Pause menu (hold), wait (tap)",
       "/actions/game/in/vats": "V.A.T.S.",
       "/actions/game/in/pause": "Pause menu",
+      "/actions/game/in/wait": "Wait",
       "/actions/game/in/grab": "Grab",
       "/actions/game/out/haptic_left": "Left hand vibration",
       "/actions/game/out/haptic_right": "Right hand vibration",

@@ -10,7 +10,7 @@ using namespace dxvk;
 namespace {
 
   // The vanilla Xbox layout: RT attacks, LT aims, A activates, Y jumps,
-  // X reloads, B opens the Pip-Boy
+  // X reloads, B opens the Pip-Boy, Back opens the wait menu
   struct Bindings {
     uint8_t codes[VrGameControl::Count];
 
@@ -24,6 +24,7 @@ namespace {
       codes[VrGameControl::MenuMode]  = 0x0B;
       codes[VrGameControl::Sneak]     = 0x08;
       codes[VrGameControl::Vats]      = 0x0F;
+      codes[VrGameControl::SleepWait] = 0x07;
     }
   };
 
@@ -42,6 +43,16 @@ TEST_CASE(game_actions_press_the_bound_inputs) {
   CHECK(pad.rightTrigger == 0xFF);
   CHECK(pad.leftTrigger == 0);
   CHECK(pad.buttons == (VrGamepadButton::Y | VrGamepadButton::LeftThumb | VrGamepadButton::LeftShoulder));
+}
+
+
+TEST_CASE(wait_presses_the_bound_input) {
+  Bindings bindings;
+  VrActionState actions;
+  actions.setPressed(VrAction::Wait, true);
+
+  VrPadState pad = vrComputePadState(actions, VrInputContext::Game, bindings.codes);
+  CHECK(pad.buttons == VrGamepadButton::Back);
 }
 
 

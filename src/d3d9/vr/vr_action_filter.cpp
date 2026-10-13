@@ -11,6 +11,7 @@ namespace dxvk {
       m_blocked    = actions.pressed;
       m_holdDown   = false;
       m_holdPulse  = 0.0f;
+      m_tapPulse   = 0.0f;
     }
 
     m_blocked &= actions.pressed;
@@ -25,8 +26,10 @@ namespace dxvk {
 
     result.setPressed(VrAction::PauseHold, false);
     result.setPressed(VrAction::Pause, m_holdPulse > 0.0f || result.isPressed(VrAction::Pause));
+    result.setPressed(VrAction::Wait,  m_tapPulse  > 0.0f || result.isPressed(VrAction::Wait));
 
     m_holdPulse -= dt;
+    m_tapPulse  -= dt;
     return result;
   }
 
@@ -44,6 +47,8 @@ namespace dxvk {
         m_holdFired = true;
         m_holdPulse = PulseTime;
       }
+    } else if (m_holdDown && !m_holdFired) {
+      m_tapPulse = PulseTime;
     }
 
     m_holdDown = down;

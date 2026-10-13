@@ -28,6 +28,7 @@ namespace dxvk {
       { VrAction::Sneak,    VrGameControl::Sneak     },
       { VrAction::Vats,     VrGameControl::Vats      },
       { VrAction::Grab,     VrGameControl::Grab      },
+      { VrAction::Wait,     VrGameControl::SleepWait },
     };
 
     struct ActionButton {
