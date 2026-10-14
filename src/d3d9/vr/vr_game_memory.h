@@ -47,6 +47,17 @@ namespace dxvk {
             uintptr_t             target);
 
     /**
+     * \brief Reads the function a relative call instruction reaches
+     *
+     * \param [in] site Address of a 5-byte call (opcode E8)
+     * \param [out] target Function the call reaches
+     * \returns \c false if there is no such call at the site
+     */
+    static bool callTarget(
+            uintptr_t             site,
+            uintptr_t*            target);
+
+    /**
      * \brief Redirects a relative call instruction
      *
      * \param [in] site Address of a 5-byte call (opcode E8)

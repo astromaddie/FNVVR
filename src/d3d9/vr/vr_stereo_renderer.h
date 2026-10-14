@@ -14,6 +14,7 @@
 #include "vr_culling_camera.h"
 #include "vr_game_camera.h"
 #include "vr_game_state.h"
+#include "vr_game_timer.h"
 #include "vr_hand_hud.h"
 #include "vr_hud_layers.h"
 #include "vr_menu_scenes.h"
@@ -276,6 +277,9 @@ namespace dxvk {
 
     // The player's weapon stays drawn, without the draw and holster animations
     std::unique_ptr<VrWeaponDrawn> m_weaponDrawn;
+
+    // The game's frame timer, measured against real time
+    std::unique_ptr<VrGameTimer> m_gameTimer;
 
     VrVector3           m_screenShift;
     bool                m_screenPass = false;

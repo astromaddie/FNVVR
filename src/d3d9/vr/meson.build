@@ -15,6 +15,7 @@ vr_src = files([
   'vr_pipboy_gaze.cpp',
   'vr_hand_hud.cpp',
   'vr_frame_stats.cpp',
+  'vr_game_timer_stats.cpp',
 ])
 
 # Parts that depend on DXVK and Vulkan, only built into d3d9.dll
@@ -46,6 +47,7 @@ vr_dxvk_src = files([
   'vr_pipboy_control.cpp',
   'vr_pipboy_render.cpp',
   'vr_game_resolution.cpp',
+  'vr_game_timer.cpp',
   'vr_preview_window.cpp',
   'vr_sky_anchor.cpp',
   'vr_stereo_renderer.cpp',
@@ -74,6 +76,7 @@ if add_languages('cpp', native: true, required: false)
     'tests/test_vr_pipboy_gaze.cpp',
     'tests/test_vr_hand_hud.cpp',
     'tests/test_vr_frame_stats.cpp',
+    'tests/test_vr_game_timer_stats.cpp',
   ])
 
   vr_test = executable('vr_tests', vr_test_sources, vr_src,

@@ -68,6 +68,13 @@ namespace dxvk {
   }
 
 
+  bool VrGameMemory::callTarget(
+          uintptr_t             site,
+          uintptr_t*            target) {
+    return readCallTarget(site, target);
+  }
+
+
   bool VrGameMemory::redirectCall(
           uintptr_t             site,
           uintptr_t             expectedTarget,

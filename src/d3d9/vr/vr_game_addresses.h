@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 namespace dxvk {
@@ -18,6 +19,26 @@ namespace dxvk {
 
     /** Main::Swap, __thiscall without stack arguments: draws the world and the HUD, then presents */
     constexpr uintptr_t Swap = 0x0086FF70;
+
+    /**
+     * The game's frame timer, see findings/main-loop.md §2. The main loop
+     * updates appTimer (BSTimer) through the call below to BSTimer::Update
+     * (__fastcall, timer in ECX, no stack arguments). It reads the tick
+     * count through the GetTickCount import and takes the step in whole
+     * milliseconds, at most 166, and sleeps up to 10 ms when the step is
+     * shorter. BSTimer: +0x00 disabled (byte), +0x04 fixed step in ms
+     * (0 when off), +0x10 step before the time multiplier (float, seconds),
+     * +0x1D the tick count had not advanced (byte).
+     */
+    constexpr uintptr_t TimerUpdateCallSite = 0x0086F296;
+    constexpr uintptr_t TimerUpdate         = 0x00771520;
+    constexpr uintptr_t AppTimer            = 0x011F6394;
+    constexpr uintptr_t TickCountImport     = 0x00FDF060;
+    constexpr uintptr_t TimerDisabled       = 0x00;
+    constexpr uintptr_t TimerFixedStep      = 0x04;
+    constexpr uintptr_t TimerStep           = 0x10;
+    constexpr uintptr_t TimerNoTick         = 0x1D;
+    constexpr size_t    TimerSize           = 0x20;
 
     /** Call to RenderInterface in InterfaceManager::Click, right before the HUD is drawn */
     constexpr uintptr_t RenderInterfaceCallSite = 0x007144D3;

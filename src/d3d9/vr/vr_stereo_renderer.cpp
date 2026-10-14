@@ -220,6 +220,11 @@ namespace dxvk {
     if (!renderer->m_weaponDrawn)
       Logger::info("VR: The weapon draw code was not found, the weapon is drawn and holstered as in the game");
 
+    renderer->m_gameTimer = VrGameTimer::install();
+
+    if (!renderer->m_gameTimer)
+      Logger::info("VR: The game's frame timer update was not found, it is not measured");
+
     g_stereoRenderer = renderer.get();
     return renderer;
   }
