@@ -48,6 +48,37 @@ namespace dxvk {
       return *reinterpret_cast<const uint8_t*>(VrGame::MultiThreadedRendering) != 0;
     }
 
+    template<typename T>
+    T read(uintptr_t address) {
+      return *reinterpret_cast<const T*>(address);
+    }
+
+    // Shadow lights of the world scene, far above iActorShadowCount
+    constexpr uint32_t MaxShadowLights = 256;
+
+    // Each shadow light keeps its shadow box's planes in the clip space of
+    // the eye that first drew shadowed geometry; drawing the shadow maps is
+    // what makes the next eye compute them again. When the right eye skips
+    // that pass, the flag is cleared here instead, or the right eye would
+    // cut its shadows with the left eye's planes.
+    void forgetShadowClipPlanes() {
+      auto node = read<uintptr_t>(VrGame::ShadowSceneNodes);
+
+      if (!node)
+        return;
+
+      auto item = read<uintptr_t>(node + VrGame::ShadowSceneNodeShadowLightsOffset);
+
+      for (uint32_t i = 0; item && i < MaxShadowLights; i++) {
+        auto light = read<uintptr_t>(item + VrGame::ShadowListItemLightOffset);
+
+        if (light)
+          *reinterpret_cast<uint8_t*>(light + VrGame::ShadowLightClipPlanesReadyOffset) = 0;
+
+        item = read<uintptr_t>(item + VrGame::ShadowListItemNextOffset);
+      }
+    }
+
   }
 
 
@@ -143,6 +174,9 @@ namespace dxvk {
 
     // The right eye keeps what the pass left for the left eye
     if (m_eye == 1 && m_drawnForLeft[index]) {
+      if (shared == Shared::Shadows)
+        forgetShadowClipPlanes();
+
       m_reused[index] += 1;
       return 0;
     }

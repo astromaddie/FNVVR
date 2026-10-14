@@ -847,6 +847,20 @@ namespace dxvk {
     constexpr uintptr_t SettingInt               = 0x0043D4D0;
 
     /**
+     * Shadow lights of the world shadow scene node (ShadowSceneNodes[0]):
+     * the list's first item, each item being { next, previous, light }.
+     * A shadow light keeps the planes of its shadow box in the clip space of
+     * the camera that drew the first shadowed geometry, and only renders
+     * again with fresh planes once the flag below is cleared, which
+     * ShadowSceneLight::MTRenderFrustumDepthMap (0x00B9F780) does after
+     * drawing the light's shadow map.
+     */
+    constexpr uint32_t ShadowSceneNodeShadowLightsOffset   = 0xC0;
+    constexpr uint32_t ShadowListItemNextOffset            = 0x00;
+    constexpr uint32_t ShadowListItemLightOffset           = 0x08;
+    constexpr uint32_t ShadowLightClipPlanesReadyOffset    = 0x208;
+
+    /**
      * The first-person model is drawn with its root's translation set to
      * this point (also pushed by PlaceCamera at FirstPersonZeroSite), so
      * that it sits near the origin. RenderPipBoy updates the model there
