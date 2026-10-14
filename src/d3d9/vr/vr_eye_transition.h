@@ -69,10 +69,11 @@ namespace dxvk {
       VkFence         fence         = VK_NULL_HANDLE;
     };
 
-    /// Slots used in turn. A frame makes at most six transitions (eye
-    /// images, HUD panel and menu panel, each out and back), so a slot is
-    /// reused four frames later, when the GPU is long done with it.
-    static constexpr uint32_t SlotCount = 24;
+    /// Slots used in turn. A frame makes at most ten transitions (eye
+    /// images, head HUD, wrist HUD, interaction prompt and menu panels,
+    /// each out and back), so a slot is reused four frames later, when the
+    /// GPU is long done with it.
+    static constexpr uint32_t SlotCount = 40;
 
     VrEyeTransition(const VrGraphicsBinding& binding);
 
