@@ -23,6 +23,15 @@ namespace dxvk {
   class VrEyeTransition;
 
   /**
+   * \brief CPU time used so far, in 100 ns units
+   */
+  struct VrCpuTimes {
+    uint64_t threadKernel = 0;
+    uint64_t threadUser   = 0;
+    uint64_t process      = 0;
+  };
+
+  /**
    * \brief VR backend for a real headset through OpenVR
    *
    * OpenVR is used because the game is a 32-bit process: the 32-bit
@@ -226,6 +235,9 @@ namespace dxvk {
     uint32_t                          m_presented    = 0;
     uint32_t                          m_reprojected  = 0;
     uint32_t                          m_dropped      = 0;
+
+    // CPU time used when the window started
+    VrCpuTimes                        m_statsCpu     = { };
 
     // Action handles, see vr_openvr_convert.h for the paths
     struct Actions {

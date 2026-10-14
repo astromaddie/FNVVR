@@ -42,6 +42,31 @@ namespace dxvk {
     // Recent frames whose compositor timing is logged with each window
     constexpr uint32_t CompositorHistory = 90;
 
+    // FILETIME units, 100 ns, per millisecond
+    constexpr double FileTimeUnitsPerMs = 10000.0;
+
+    uint64_t fileTimeValue(const FILETIME& time) {
+      return (uint64_t(time.dwHighDateTime) << 32) | time.dwLowDateTime;
+    }
+
+    // CPU time used so far by the calling thread and by the whole process.
+    // Windows counts it in clock ticks, so only a sum over many frames is
+    // meaningful.
+    VrCpuTimes readCpuTimes() {
+      VrCpuTimes times = { };
+      FILETIME creation, exit, kernel, user;
+
+      if (GetThreadTimes(GetCurrentThread(), &creation, &exit, &kernel, &user)) {
+        times.threadKernel = fileTimeValue(kernel);
+        times.threadUser   = fileTimeValue(user);
+      }
+
+      if (GetProcessTimes(GetCurrentProcess(), &creation, &exit, &kernel, &user))
+        times.process = fileTimeValue(kernel) + fileTimeValue(user);
+
+      return times;
+    }
+
     // Identifies the panel overlay within SteamVR, and names it in its UI
     // Overlay key and name of each panel, indexed by VrPanelId. The sort
     // order follows the index, so the HUD is drawn over the menu panel.
@@ -338,6 +363,7 @@ namespace dxvk {
     m_dropped      = stats.m_nNumDroppedFrames;
     m_statsRunning = true;
     m_stats.reset();
+    m_statsCpu     = readCpuTimes();
   }
 
 
@@ -431,6 +457,23 @@ namespace dxvk {
     }
 
     Logger::info(str::format("VR: Compositor: ", counts, " in the window; ", recent));
+
+    // Whether the game thread computes or waits during the time the steps
+    // above attribute to it, and how much the other threads work
+    VrCpuTimes cpu = readCpuTimes();
+    double windowMs = seconds * 1000.0;
+    double threadMs = double((cpu.threadKernel + cpu.threadUser)
+      - (m_statsCpu.threadKernel + m_statsCpu.threadUser)) / FileTimeUnitsPerMs;
+    double kernelMs = double(cpu.threadKernel - m_statsCpu.threadKernel) / FileTimeUnitsPerMs;
+    double processMs = double(cpu.process - m_statsCpu.process) / FileTimeUnitsPerMs;
+
+    if (windowMs > 0.0 && threadMs > 0.0) {
+      Logger::info(str::format("VR: CPU time in the window: game thread ",
+        fixed(threadMs / double(m_stats.frames())), " ms per frame (",
+        std::lround(100.0 * threadMs / windowMs), " % of the time, ",
+        std::lround(100.0 * kernelMs / threadMs), " % of it in the kernel), whole process ",
+        fixed(processMs / windowMs), " cores busy on average"));
+    }
 
     startStatsWindow();
   }
