@@ -17,6 +17,12 @@ namespace dxvk {
    * before the submission and put back afterwards, on the same queue, so that
    * DXVK finds them as it left them.
    *
+   * The CPU never waits for the GPU: the runtime copies the image with
+   * commands it submits to the same queue, so queue order alone puts the
+   * copy after the game's rendering and before the image is moved back.
+   * The game thread can then start on the next frame while the GPU
+   * finishes this one.
+   *
    * Uses the Vulkan library already loaded by DXVK. All calls must be made
    * with the queue locked, which is the case inside IVRBackend::submitFrame.
    */
@@ -41,7 +47,6 @@ namespace dxvk {
     /**
      * \brief Moves images to the transfer source layout
      *
-     * Waits until the transition is done on the GPU.
      * \param [in] images Images, at most MaxImages
      * \param [in] count Number of images
      * \returns \c false if the transition could not be submitted
@@ -51,7 +56,7 @@ namespace dxvk {
     /**
      * \brief Moves images back to the layout they had
      *
-     * Does not wait: the queue executes it after the compositor's work.
+     * The queue executes it after the compositor's copy.
      */
     bool restore(const VrEyeImage* images, uint32_t count);
 
@@ -64,17 +69,22 @@ namespace dxvk {
       VkFence         fence         = VK_NULL_HANDLE;
     };
 
+    /// Slots used in turn. A frame makes at most six transitions (eye
+    /// images, HUD panel and menu panel, each out and back), so a slot is
+    /// reused four frames later, when the GPU is long done with it.
+    static constexpr uint32_t SlotCount = 24;
+
     VrEyeTransition(const VrGraphicsBinding& binding);
 
     bool initialize();
 
-    bool submit(const VrEyeImage* images, uint32_t count, Slot& slot, bool toSource);
+    bool submit(const VrEyeImage* images, uint32_t count, bool toSource);
 
-    VrGraphicsBinding          m_binding;
-    std::unique_ptr<Functions> m_vk;
-    VkCommandPool              m_pool = VK_NULL_HANDLE;
-    Slot                       m_toSource;
-    Slot                       m_restore;
+    VrGraphicsBinding           m_binding;
+    std::unique_ptr<Functions>  m_vk;
+    VkCommandPool               m_pool     = VK_NULL_HANDLE;
+    std::array<Slot, SlotCount> m_slots    = { };
+    uint32_t                    m_nextSlot = 0;
 
   };
 

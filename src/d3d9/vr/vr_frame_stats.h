@@ -19,8 +19,8 @@ namespace dxvk {
     /// Getting the eye rendering to the queue: DXVK's flush, the wait for
     /// its worker thread and the drain of its submission queue
     Sync,
-    /// Waiting for the GPU to finish the eye images
-    GpuWait,
+    /// Moving the eye images to the layout the runtime reads
+    Transition,
     /// Handing the eye images to the runtime
     Submit,
     /// Telling the runtime the frame is complete
@@ -28,7 +28,7 @@ namespace dxvk {
     /// From the hand-off to the next wait: panels, then the game logic of
     /// the next frame
     After,
-    /// Part of After spent submitting panels, their sync and GPU wait included
+    /// Part of After spent submitting panels, their sync included
     Panels,
     /// Blocked until the runtime wants the next frame
     Wait,

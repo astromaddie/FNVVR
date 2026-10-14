@@ -305,15 +305,15 @@ namespace dxvk {
       };
 
       VrFrameCycle cycle = { };
-      cycle[uint32_t(VrFrameStep::Interval)] = ms(frame.posesReady,  posesReady);
-      cycle[uint32_t(VrFrameStep::Render)]   = ms(frame.posesReady,  frame.submitStart) - frame.syncMs;
-      cycle[uint32_t(VrFrameStep::Sync)]     = frame.syncMs;
-      cycle[uint32_t(VrFrameStep::GpuWait)]  = ms(frame.submitStart, frame.imagesReady);
-      cycle[uint32_t(VrFrameStep::Submit)]   = ms(frame.imagesReady, frame.eyesSubmitted);
-      cycle[uint32_t(VrFrameStep::HandOff)]  = ms(frame.eyesSubmitted, frame.submitted);
-      cycle[uint32_t(VrFrameStep::After)]    = ms(frame.submitted,   waitStart);
-      cycle[uint32_t(VrFrameStep::Panels)]   = frame.panelMs;
-      cycle[uint32_t(VrFrameStep::Wait)]     = ms(waitStart,         posesReady);
+      cycle[uint32_t(VrFrameStep::Interval)]   = ms(frame.posesReady,    posesReady);
+      cycle[uint32_t(VrFrameStep::Render)]     = ms(frame.posesReady,    frame.submitStart) - frame.syncMs;
+      cycle[uint32_t(VrFrameStep::Sync)]       = frame.syncMs;
+      cycle[uint32_t(VrFrameStep::Transition)] = ms(frame.submitStart,   frame.imagesReady);
+      cycle[uint32_t(VrFrameStep::Submit)]     = ms(frame.imagesReady,   frame.eyesSubmitted);
+      cycle[uint32_t(VrFrameStep::HandOff)]    = ms(frame.eyesSubmitted, frame.submitted);
+      cycle[uint32_t(VrFrameStep::After)]      = ms(frame.submitted,     waitStart);
+      cycle[uint32_t(VrFrameStep::Panels)]     = frame.panelMs;
+      cycle[uint32_t(VrFrameStep::Wait)]       = ms(waitStart,           posesReady);
 
       if (m_stats.add(cycle))
         logFrameStats();
@@ -363,7 +363,7 @@ namespace dxvk {
       m_stats.lateFrames(), " late by a display period or more, ", m_stats.busyFrames(),
       " busy for longer than a period. Average/longest ms: frame ", step(VrFrameStep::Interval),
       ", eye rendering ", step(VrFrameStep::Render), ", DXVK sync ", step(VrFrameStep::Sync),
-      ", GPU wait ", step(VrFrameStep::GpuWait), ", submission ", step(VrFrameStep::Submit),
+      ", layout transition ", step(VrFrameStep::Transition), ", submission ", step(VrFrameStep::Submit),
       ", hand-off ", step(VrFrameStep::HandOff), ", after submission ", step(VrFrameStep::After),
       " (panels ", step(VrFrameStep::Panels), "), waiting for the runtime ", step(VrFrameStep::Wait)));
 

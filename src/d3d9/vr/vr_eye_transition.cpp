@@ -6,7 +6,7 @@ namespace dxvk {
 
   namespace {
 
-    // Longest wait for the GPU to finish a layout transition, in nanoseconds
+    // Longest wait for the GPU to finish the earlier use of a slot, in nanoseconds
     constexpr uint64_t WaitTimeoutNs = 1000000000;
 
   }
@@ -66,17 +66,24 @@ namespace dxvk {
 
 
   VrEyeTransition::~VrEyeTransition() {
+    std::array<VkFence, SlotCount> fences = { };
+    uint32_t fenceCount = 0;
+
+    for (const Slot& slot : m_slots) {
+      if (slot.fence)
+        fences[fenceCount++] = slot.fence;
+    }
+
+    // Destroying the pool frees its command buffers
     if (m_pool) {
-      // Destroying the pool frees its command buffers
-      m_vk->waitForFences(m_binding.device, 1, &m_restore.fence, VK_TRUE, WaitTimeoutNs);
+      if (fenceCount)
+        m_vk->waitForFences(m_binding.device, fenceCount, fences.data(), VK_TRUE, WaitTimeoutNs);
+
       m_vk->destroyCommandPool(m_binding.device, m_pool, nullptr);
     }
 
-    if (m_toSource.fence)
-      m_vk->destroyFence(m_binding.device, m_toSource.fence, nullptr);
-
-    if (m_restore.fence)
-      m_vk->destroyFence(m_binding.device, m_restore.fence, nullptr);
+    for (uint32_t i = 0; i < fenceCount; i++)
+      m_vk->destroyFence(m_binding.device, fences[i], nullptr);
   }
 
 
@@ -108,41 +115,49 @@ namespace dxvk {
       return false;
     }
 
-    VkCommandBuffer buffers[2] = { };
+    std::array<VkCommandBuffer, SlotCount> buffers = { };
 
     VkCommandBufferAllocateInfo allocInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
     allocInfo.commandPool        = m_pool;
     allocInfo.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandBufferCount = 2;
+    allocInfo.commandBufferCount = SlotCount;
 
-    if (m_vk->allocateCommandBuffers(m_binding.device, &allocInfo, buffers) != VK_SUCCESS)
+    if (m_vk->allocateCommandBuffers(m_binding.device, &allocInfo, buffers.data()) != VK_SUCCESS)
       return false;
 
-    m_toSource.commandBuffer = buffers[0];
-    m_restore.commandBuffer  = buffers[1];
-
-    // Both fences start signaled, so that the first wait on them returns
+    // The fences start signaled, so that the first wait on them returns
     VkFenceCreateInfo fenceInfo = { VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
     fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
-    return m_vk->createFence(m_binding.device, &fenceInfo, nullptr, &m_toSource.fence) == VK_SUCCESS
-        && m_vk->createFence(m_binding.device, &fenceInfo, nullptr, &m_restore.fence) == VK_SUCCESS;
+    for (uint32_t i = 0; i < SlotCount; i++) {
+      m_slots[i].commandBuffer = buffers[i];
+
+      if (m_vk->createFence(m_binding.device, &fenceInfo, nullptr, &m_slots[i].fence) != VK_SUCCESS) {
+        m_slots[i].fence = VK_NULL_HANDLE;
+        return false;
+      }
+    }
+
+    return true;
   }
 
 
   bool VrEyeTransition::toTransferSource(const VrEyeImage* images, uint32_t count) {
-    return submit(images, count, m_toSource, true);
+    return submit(images, count, true);
   }
 
 
   bool VrEyeTransition::restore(const VrEyeImage* images, uint32_t count) {
-    return submit(images, count, m_restore, false);
+    return submit(images, count, false);
   }
 
 
-  bool VrEyeTransition::submit(const VrEyeImage* images, uint32_t count, Slot& slot, bool toSource) {
+  bool VrEyeTransition::submit(const VrEyeImage* images, uint32_t count, bool toSource) {
     if (count > MaxImages)
       return false;
+
+    Slot& slot = m_slots[m_nextSlot];
+    m_nextSlot = (m_nextSlot + 1) % SlotCount;
 
     // The previous use of this slot must be done before its buffer is reset
     if (m_vk->waitForFences(m_binding.device, 1, &slot.fence, VK_TRUE, WaitTimeoutNs) != VK_SUCCESS)
@@ -196,9 +211,6 @@ namespace dxvk {
       Logger::err("VR: Could not submit the image layout transition");
       return false;
     }
-
-    if (toSource)
-      return m_vk->waitForFences(m_binding.device, 1, &slot.fence, VK_TRUE, WaitTimeoutNs) == VK_SUCCESS;
 
     return true;
   }
