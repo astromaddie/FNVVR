@@ -122,7 +122,8 @@ namespace dxvk {
           bool                  showPreview,
     const VrPanelConfig&        panel,
     const VrTurnConfig&         turn,
-          bool                  weaponInHand) {
+          bool                  weaponInHand,
+    const VrGameTimerConfig&    timer) {
     if (g_stereoRenderer)
       return nullptr;
 
@@ -220,7 +221,7 @@ namespace dxvk {
     if (!renderer->m_weaponDrawn)
       Logger::info("VR: The weapon draw code was not found, the weapon is drawn and holstered as in the game");
 
-    renderer->m_gameTimer = VrGameTimer::install();
+    renderer->m_gameTimer = VrGameTimer::install(timer);
 
     if (!renderer->m_gameTimer)
       Logger::info("VR: The game's frame timer update was not found, it is not measured");

@@ -110,6 +110,7 @@ namespace dxvk {
      * \param [in] panel Placement of the panel for menus and loading screens
      * \param [in] turn How the turning stick turns the player
      * \param [in] weaponInHand Draw the weapon in the right hand and shoot along it
+     * \param [in] timer How the game's frame timer is driven
      * \returns \c nullptr if the executable is not the supported version
      */
     static std::unique_ptr<VrStereoRenderer> install(
@@ -118,7 +119,8 @@ namespace dxvk {
             bool                  showPreview,
       const VrPanelConfig&        panel,
       const VrTurnConfig&         turn,
-            bool                  weaponInHand);
+            bool                  weaponInHand,
+      const VrGameTimerConfig&    timer);
 
     /**
      * \brief Called when the game presents, before the image is shown

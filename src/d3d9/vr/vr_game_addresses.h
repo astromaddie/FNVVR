@@ -26,19 +26,46 @@ namespace dxvk {
      * (__fastcall, timer in ECX, no stack arguments). It reads the tick
      * count through the GetTickCount import and takes the step in whole
      * milliseconds, at most 166, and sleeps up to 10 ms when the step is
-     * shorter. BSTimer: +0x00 disabled (byte), +0x04 fixed step in ms
-     * (0 when off), +0x10 step before the time multiplier (float, seconds),
-     * +0x1D the tick count had not advanced (byte).
+     * shorter. BSTimer::Update(ms) (__thiscall, one stack argument) is the
+     * part that takes the tick count as an argument; with a fixed step it
+     * takes that step instead, without sleeping. BSTimer: +0x00 disabled
+     * (byte), +0x04 fixed step in ms (float, 0 when off), +0x10 step before
+     * the time multiplier (float, seconds), +0x14 last tick and +0x18 first
+     * tick (ms, the last one relative to the first), +0x1D the tick count had
+     * not advanced (byte).
      */
     constexpr uintptr_t TimerUpdateCallSite = 0x0086F296;
     constexpr uintptr_t TimerUpdate         = 0x00771520;
+    constexpr uintptr_t TimerUpdateMs       = 0x00AA4EE0;
     constexpr uintptr_t AppTimer            = 0x011F6394;
     constexpr uintptr_t TickCountImport     = 0x00FDF060;
     constexpr uintptr_t TimerDisabled       = 0x00;
     constexpr uintptr_t TimerFixedStep      = 0x04;
     constexpr uintptr_t TimerStep           = 0x10;
+    constexpr uintptr_t TimerLastTime       = 0x14;
+    constexpr uintptr_t TimerFirstTime      = 0x18;
     constexpr uintptr_t TimerNoTick         = 0x1D;
     constexpr size_t    TimerSize           = 0x20;
+
+    /**
+     * States in which the frame timer keeps the game's own step (the New
+     * Vegas Tick Fix does the same): BGSSaveLoadGame* with its flags at
+     * +0x244, bit 2 set while a save loads (BGSSaveLoadGame::IsLoading
+     * 0x0042CE10); a byte set while a new game loads; a byte set during the
+     * pause menu's fade. See findings/main-loop.md §2.
+     */
+    constexpr uintptr_t SaveLoadGame        = 0x011DDF38;
+    constexpr uintptr_t SaveLoadFlags       = 0x244;
+    constexpr uint32_t  SaveLoadLoading     = 0x2;
+    constexpr uintptr_t LoadingNewGame      = 0x011D8907;
+    constexpr uintptr_t PauseFade           = 0x011DEA2D;
+
+    /**
+     * Value of the fMaxTime:HAVOK setting (float, seconds, 1/60 by default):
+     * Havok's simulation step, scaled by the time multiplier, read every
+     * frame by bhkWorld::SetDeltaTime 0x00C66760 and bhkWorld::Update.
+     */
+    constexpr uintptr_t HavokMaxStep        = 0x01267B38;
 
     /** Call to RenderInterface in InterfaceManager::Click, right before the HUD is drawn */
     constexpr uintptr_t RenderInterfaceCallSite = 0x007144D3;
