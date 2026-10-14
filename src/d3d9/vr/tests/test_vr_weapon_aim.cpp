@@ -38,6 +38,31 @@ namespace {
     return t.rotate * v + t.translate;
   }
 
+  // The game's NiMatrix3::MakeXRotation, MakeYRotation and MakeZRotation
+  VrGameRotation rotationX(float angle) {
+    float c = std::cos(angle), s = std::sin(angle);
+    VrGameRotation r;
+    r.m[1][1] = c; r.m[1][2] = s;
+    r.m[2][1] = -s; r.m[2][2] = c;
+    return r;
+  }
+
+  VrGameRotation rotationY(float angle) {
+    float c = std::cos(angle), s = std::sin(angle);
+    VrGameRotation r;
+    r.m[0][0] = c; r.m[0][2] = -s;
+    r.m[2][0] = s; r.m[2][2] = c;
+    return r;
+  }
+
+  VrGameRotation rotationZ(float angle) {
+    float c = std::cos(angle), s = std::sin(angle);
+    VrGameRotation r;
+    r.m[0][0] = c; r.m[0][1] = s;
+    r.m[1][0] = -s; r.m[1][1] = c;
+    return r;
+  }
+
 }
 
 
@@ -178,4 +203,19 @@ TEST_CASE(inverse_undoes_a_transform) {
   VrVector3 v = { 1.0f, 2.0f, 3.0f };
   VrVector3 back = apply(vrInverse(t), apply(t, v));
   checkVector(back, 1.0f, 2.0f, 3.0f);
+}
+
+
+TEST_CASE(barrel_direction_gives_the_node_heading_and_pitch) {
+  // The game's FromEulerAnglesZXY, whose inverse it uses to fire from a
+  // third-person weapon's projectile node
+  float heading = 0.7f;
+  float pitch   = -0.3f;
+
+  for (float roll : { 0.0f, 1.2f, -2.5f }) {
+    VrGameRotation node = rotationZ(heading) * rotationX(pitch) * rotationY(roll);
+    VrHeadAngles angles = vrComputeAimAngles(vrComputeBarrelDirection(node));
+    CHECK_NEAR(angles.yaw, heading, 1e-4);
+    CHECK_NEAR(angles.pitch, pitch, 1e-4);
+  }
 }
