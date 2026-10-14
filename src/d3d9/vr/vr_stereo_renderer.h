@@ -8,11 +8,13 @@
 #include "../../util/com/com_pointer.h"
 #include "../../util/util_time.h"
 
+#include "vr_activate_target.h"
 #include "vr_backend.h"
 #include "vr_controls.h"
 #include "vr_culling_camera.h"
 #include "vr_game_camera.h"
 #include "vr_game_state.h"
+#include "vr_hand_hud.h"
 #include "vr_hud_layers.h"
 #include "vr_menu_scenes.h"
 #include "vr_pipboy_animation.h"
@@ -69,7 +71,12 @@ namespace dxvk {
    * In game, the HUD messages, objectives and subtitles are shown on a
    * panel that follows the head. The left eye's interface pass, whose image
    * is never shown, draws them alone into the panel's texture instead of the
-   * backbuffer, with the other HUD groups hidden. Menus opened in game
+   * backbuffer, with the other HUD groups hidden. The right eye's pass draws
+   * the health bar, the compass and the interaction prompt alone in the same
+   * way; they are cut out of its image and shown on the hands: the health
+   * bar and compass on the back of the right hand while the player looks at
+   * it, the prompt above the fingertip nearest the target. The game window
+   * then shows no HUD. Menus opened in game
    * (pause, dialogue, containers, ...) are drawn the same way, without the
    * HUD, and shown on the menu panel. Meanwhile the right eye's pass, which
    * the headset does not show either, draws the head HUD groups the game
@@ -149,6 +156,8 @@ namespace dxvk {
       None,
       /// HUD messages, objectives and subtitles, for the panel in front of the head
       Hud,
+      /// Health bar, compass and interaction prompt, for the hand panels
+      HandHud,
       /// Menus opened in game, for the menu panel
       Menu,
     };
@@ -191,6 +200,24 @@ namespace dxvk {
     Com<IDirect3DTexture9> m_hudPanelTexture;
     Com<IDirect3DTexture9> m_menuTexture;
     InterfaceLayer m_layer = InterfaceLayer::None;
+
+    // Health bar, compass and interaction prompt, drawn by the right eye's
+    // interface pass in game and cut out into the hand panels' textures
+    VrActivateTarget       m_activateTarget;
+    Com<IDirect3DTexture9> m_handHudTexture;
+    Com<IDirect3DTexture9> m_wristTexture;
+    Com<IDirect3DTexture9> m_promptTexture;
+    VrWristGaze            m_wristGaze;
+    VrPromptHand           m_promptHand;
+    bool   m_handHudAvailable = false;
+    bool   m_promptAvailable  = false;
+    bool   m_handHudRendered  = false;
+    bool   m_wristShown       = false;
+    bool   m_promptShown      = false;
+    bool   m_loggedHandHudCrops = false;
+    bool   m_loggedWrist      = false;
+    bool   m_loggedPrompt     = false;
+    bool   m_loggedHandHudFailure = false;
     bool   m_hudAvailable  = false;
     bool   m_hudRendered   = false;
     bool   m_menuRendered  = false;
@@ -418,6 +445,19 @@ namespace dxvk {
     void submitMenu();
 
     void hideHud();
+
+    void submitHandHud(const VrInputState& input, float dt);
+
+    bool showHandPanel(
+            VrPanelId             id,
+      const VrInterfaceRect&      crop,
+            float                 metresPerUnit,
+      const VrPose&               pose,
+            Com<IDirect3DTexture9>& texture);
+
+    void hideHandPanel(VrPanelId id, bool& shown);
+
+    void hideHandHud();
 
     void updatePanel(IDirect3DSwapChain9* swapchain);
 

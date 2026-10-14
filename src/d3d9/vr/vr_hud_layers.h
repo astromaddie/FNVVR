@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <vector>
 
+#include "vr_hand_hud.h"
+
 namespace dxvk {
 
   /**
@@ -56,6 +58,22 @@ namespace dxvk {
     }
 
     /**
+     * \brief Checks whether groupRect can read the HUD groups' rectangles
+     */
+    bool rectsFound() const {
+      return m_rectsFound;
+    }
+
+    /**
+     * \brief Reads where a HUD group is laid out
+     *
+     * \param [in] group HUDMainMenu field of the group
+     * \param [out] rect The group's rectangle, in interface units
+     * \returns \c false if the HUD or the group does not exist
+     */
+    bool groupRect(uintptr_t group, VrInterfaceRect& rect) const;
+
+    /**
      * \brief Checks whether the interface pass draws a menu other than the HUD
      *
      * Valid once the game culled the menus for the pass. While the Pip-Boy
@@ -73,6 +91,7 @@ namespace dxvk {
 
     bool                    m_available = false;
     bool                    m_menusFound = false;
+    bool                    m_rectsFound = false;
     std::vector<uint32_t*>  m_culledFlags;
 
     void cullTile(uintptr_t tile);

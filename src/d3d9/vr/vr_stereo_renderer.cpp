@@ -43,6 +43,9 @@ namespace dxvk {
     // HUD groups shown on the panel in front of the head
     constexpr uintptr_t HeadHudGroups[] = { VrGame::HudMessages, VrGame::HudQuestReminder, VrGame::HudSubtitles };
 
+    // HUD groups shown on the hands
+    constexpr uintptr_t HandHudGroups[] = { VrGame::HudHitPoints, VrGame::HudInfo };
+
     // Head pose used to place the panel before the headset reported one:
     // standing at the origin and looking ahead
     constexpr float DefaultHeadHeight = 1.6f;
@@ -88,6 +91,7 @@ namespace dxvk {
     g_stereoRenderer = nullptr;
     hidePanel();
     hideHud();
+    hideHandHud();
   }
 
 
@@ -140,6 +144,15 @@ namespace dxvk {
       Logger::info("VR: The HUD layout was not found, the HUD is not shown in the headset");
     else if (!renderer->m_hudLayers.menusFound())
       Logger::info("VR: The menu list was not found, HUD messages are not shown while a menu is open");
+
+    renderer->m_handHudAvailable = renderer->m_hudAvailable && renderer->m_hudLayers.rectsFound();
+    renderer->m_promptAvailable  = renderer->m_handHudAvailable
+      && renderer->m_activateTarget.initialize();
+
+    if (!renderer->m_handHudAvailable)
+      Logger::info("VR: The health bar, compass and interaction prompt are not shown in the headset");
+    else if (!renderer->m_promptAvailable)
+      Logger::info("VR: The activation target was not found, the interaction prompt is not shown in the headset");
 
     if (!renderer->m_menuScenes.initialize())
       Logger::info("VR: The menu scene functions were not found, menus such as lockpicking show no 3D model in the headset");
@@ -294,6 +307,7 @@ namespace dxvk {
     if (showsPanel(state)) {
       m_layer = InterfaceLayer::None;
       hideHud();
+      hideHandHud();
       renderPanelFrame(main, state);
       return;
     }
@@ -303,6 +317,7 @@ namespace dxvk {
 
     m_layer = chooseLayer(state);
     m_hudRendered  = false;
+    m_handHudRendered = false;
     m_menuRendered = false;
     m_overPipBoy   = state == VrGameStateKind::PipBoy;
     m_menuDrawn    = !m_overPipBoy;
@@ -398,6 +413,11 @@ namespace dxvk {
       submitHud();
     else
       hideHud();
+
+    if (m_handHudRendered)
+      submitHandHud(input, dt);
+    else
+      hideHandHud();
 
     // A menu keeps its last image for a frame where it was not drawn
     if (m_menuRendered)
@@ -848,6 +868,9 @@ namespace dxvk {
     if (m_eye == 1 && m_layer == InterfaceLayer::Menu && m_hudAvailable && m_hudLayers.menusFound())
       return InterfaceLayer::Hud;
 
+    if (m_eye == 1 && m_layer == InterfaceLayer::Hud && m_handHudAvailable)
+      return InterfaceLayer::HandHud;
+
     return InterfaceLayer::None;
   }
 
@@ -861,8 +884,12 @@ namespace dxvk {
     if (layer == InterfaceLayer::None || !createInterfaceTextures())
       return false;
 
-    IDirect3DTexture9* texture = layer == InterfaceLayer::Hud
-      ? m_hudTexture.ptr() : m_menuTexture.ptr();
+    IDirect3DTexture9* texture = m_menuTexture.ptr();
+
+    if (layer == InterfaceLayer::Hud)
+      texture = m_hudTexture.ptr();
+    else if (layer == InterfaceLayer::HandHud)
+      texture = m_handHudTexture.ptr();
 
     Com<IDirect3DSurface9> layerSurface;
     Com<IDirect3DSurface9> renderTarget;
@@ -897,6 +924,8 @@ namespace dxvk {
 
     if (layer == InterfaceLayer::Hud)
       m_hudRendered = rendered;
+    else if (layer == InterfaceLayer::HandHud)
+      m_handHudRendered = rendered;
     else
       m_menuRendered = rendered && m_menuDrawn;
 
@@ -1032,6 +1061,8 @@ namespace dxvk {
 
     if (layer == InterfaceLayer::Menu)
       m_hudIsolated = m_hudLayers.isolate(nullptr, 0);
+    else if (layer == InterfaceLayer::HandHud)
+      m_hudIsolated = m_hudLayers.isolate(HandHudGroups, std::size(HandHudGroups));
     else if (m_layer == InterfaceLayer::Menu)
       m_hudIsolated = m_hudLayers.isolateFromMenus(HeadHudGroups, std::size(HeadHudGroups));
     else
@@ -1047,11 +1078,14 @@ namespace dxvk {
     m_gameTarget->GetDesc(&desc);
 
     // One texture per panel, since a panel keeps showing its last image.
-    // The HUD is drawn into one texture and rearranged into the panel's.
+    // The HUD is drawn into one texture and rearranged into the panel's,
+    // and the hand HUD into another, which is cut out into the hand panels'.
     bool created = SUCCEEDED(m_device->CreateTexture(desc.Width, desc.Height, 1,
         D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &m_hudTexture, nullptr))
       && SUCCEEDED(m_device->CreateTexture(desc.Width, desc.Height, 1,
         D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &m_hudPanelTexture, nullptr))
+      && SUCCEEDED(m_device->CreateTexture(desc.Width, desc.Height, 1,
+        D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &m_handHudTexture, nullptr))
       && SUCCEEDED(m_device->CreateTexture(desc.Width, desc.Height, 1,
         D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &m_menuTexture, nullptr));
 
@@ -1060,6 +1094,7 @@ namespace dxvk {
         " interface textures, the HUD and menus are not shown in the headset"));
       m_hudTexture  = nullptr;
       m_hudPanelTexture = nullptr;
+      m_handHudTexture = nullptr;
       m_menuTexture = nullptr;
       m_interfaceFailed = true;
     }
@@ -1153,6 +1188,161 @@ namespace dxvk {
 
     m_backend.hidePanel(VrPanelId::HudHead);
     m_hudShown = false;
+  }
+
+
+  void VrStereoRenderer::submitHandHud(const VrInputState& input, float dt) {
+    VrInterfaceRect hitPoints;
+    VrInterfaceRect info;
+
+    if (!m_hudLayers.groupRect(VrGame::HudHitPoints, hitPoints)
+     || !m_hudLayers.groupRect(VrGame::HudInfo, info)) {
+      hideHandHud();
+      return;
+    }
+
+    D3DSURFACE_DESC desc = { };
+    m_handHudTexture->GetLevelDesc(0, &desc);
+
+    VrHandHudCrops crops = vrComputeHandHudCrops(hitPoints, info,
+      vrComputeInterfaceSize(desc.Width, desc.Height));
+
+    if (!m_loggedHandHudCrops) {
+      Logger::info(str::format("VR: Hand HUD crops in interface units: health bar and compass ",
+        crops.wrist.left, ",", crops.wrist.top, " to ", crops.wrist.right, ",", crops.wrist.bottom,
+        ", interaction prompt ", crops.prompt.left, ",", crops.prompt.top, " to ",
+        crops.prompt.right, ",", crops.prompt.bottom));
+      m_loggedHandHudCrops = true;
+    }
+
+    const VrPose* head = m_hasHeadPose ? &m_headPose : nullptr;
+
+    // The health bar and compass, while the back of the right hand is looked at
+    const VrControllerState& right = input.controllers[uint32_t(VrHand::Right)];
+    VrPose wristPose;
+
+    if (right.isActive)
+      wristPose = vrComputeWristPanelPose(right);
+
+    if (m_wristGaze.update(head, right.isActive ? &wristPose : nullptr, dt)) {
+      m_wristShown = showHandPanel(VrPanelId::HudWrist, crops.wrist,
+        VrHandHudLayout::WristMetresPerUnit, wristPose, m_wristTexture);
+
+      if (m_wristShown && !m_loggedWrist) {
+        Logger::info("VR: The back of the right hand is looked at, the health bar and compass are shown on it");
+        m_loggedWrist = true;
+      }
+    } else {
+      hideHandPanel(VrPanelId::HudWrist, m_wristShown);
+    }
+
+    // The interaction prompt, at the hand nearest what the player would activate
+    VrVector3 target;
+    VrHand hand = VrHand::Right;
+
+    if (!m_promptAvailable || !head || !m_hasReference || !m_activateTarget.find(target)) {
+      hideHandPanel(VrPanelId::HudPrompt, m_promptShown);
+      return;
+    }
+
+    target = vrTransformPoint(m_reference,
+      vrComputeGamePointInReference(m_gameCameraPose, target, VrGameUnitsPerMetre));
+
+    if (!m_promptHand.update(input.controllers, target, hand)) {
+      hideHandPanel(VrPanelId::HudPrompt, m_promptShown);
+      return;
+    }
+
+    m_promptShown = showHandPanel(VrPanelId::HudPrompt, crops.prompt,
+      VrHandHudLayout::PromptMetresPerUnit,
+      vrComputePromptPanelPose(input.controllers[uint32_t(hand)], *head), m_promptTexture);
+
+    if (m_promptShown && !m_loggedPrompt) {
+      Logger::info(str::format("VR: The interaction prompt is shown at the fingertip of the ",
+        hand == VrHand::Left ? "left" : "right", " hand"));
+      m_loggedPrompt = true;
+    }
+  }
+
+
+  bool VrStereoRenderer::showHandPanel(
+          VrPanelId             id,
+    const VrInterfaceRect&      crop,
+          float                 metresPerUnit,
+    const VrPose&               pose,
+          Com<IDirect3DTexture9>& texture) {
+    D3DSURFACE_DESC desc = { };
+    m_handHudTexture->GetLevelDesc(0, &desc);
+
+    VrVector2 size  = vrComputeInterfaceSize(desc.Width, desc.Height);
+    float     scale = float(desc.Width) / size.x;
+
+    RECT source = {
+      std::clamp(LONG(std::lround(crop.left   * scale)), LONG(0), LONG(desc.Width)),
+      std::clamp(LONG(std::lround(crop.top    * scale)), LONG(0), LONG(desc.Height)),
+      std::clamp(LONG(std::lround(crop.right  * scale)), LONG(0), LONG(desc.Width)),
+      std::clamp(LONG(std::lround(crop.bottom * scale)), LONG(0), LONG(desc.Height)) };
+
+    UINT width  = UINT(source.right - source.left);
+    UINT height = UINT(source.bottom - source.top);
+
+    if (source.right <= source.left || source.bottom <= source.top)
+      return false;
+
+    // The crops only change with the game's resolution
+    if (texture != nullptr) {
+      D3DSURFACE_DESC current = { };
+      texture->GetLevelDesc(0, &current);
+
+      if (current.Width != width || current.Height != height)
+        texture = nullptr;
+    }
+
+    if (texture == nullptr && FAILED(m_device->CreateTexture(width, height, 1,
+        D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &texture, nullptr))) {
+      texture = nullptr;
+
+      if (!m_loggedHandHudFailure) {
+        Logger::err(str::format("VR: Failed to create a ", width, "x", height, " hand HUD texture"));
+        m_loggedHandHudFailure = true;
+      }
+
+      return false;
+    }
+
+    Com<IDirect3DSurface9> sourceSurface;
+    Com<IDirect3DSurface9> panelSurface;
+
+    bool copied = SUCCEEDED(m_handHudTexture->GetSurfaceLevel(0, &sourceSurface))
+      && SUCCEEDED(texture->GetSurfaceLevel(0, &panelSurface))
+      && SUCCEEDED(m_device->StretchRect(sourceSurface.ptr(), &source, panelSurface.ptr(), nullptr, D3DTEXF_NONE));
+
+    bool shown = copied && VrD3D9Bridge::submitPanel(m_device, m_backend, id,
+      texture.ptr(), pose, crop.width() * metresPerUnit, VrPanelAnchor::Room);
+
+    if (!shown && !m_loggedHandHudFailure) {
+      Logger::err("VR: Failed to show a hand HUD panel");
+      m_loggedHandHudFailure = true;
+    }
+
+    return shown;
+  }
+
+
+  void VrStereoRenderer::hideHandPanel(VrPanelId id, bool& shown) {
+    if (!shown)
+      return;
+
+    m_backend.hidePanel(id);
+    shown = false;
+  }
+
+
+  void VrStereoRenderer::hideHandHud() {
+    // The wrist display waits to be looked at again before it reappears
+    m_wristGaze.reset();
+    hideHandPanel(VrPanelId::HudWrist,  m_wristShown);
+    hideHandPanel(VrPanelId::HudPrompt, m_promptShown);
   }
 
 

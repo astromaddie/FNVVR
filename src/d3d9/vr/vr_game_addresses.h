@@ -509,6 +509,10 @@ namespace dxvk {
     constexpr uint8_t   HudMessagesStore[]      = { 0x8B, 0x0D, 0xC0, 0x96, 0x1D, 0x01, 0x89, 0x81, 0x34, 0x01, 0x00, 0x00 };
     constexpr uint8_t   HudQuestReminderStore[] = { 0x8B, 0x0D, 0xC0, 0x96, 0x1D, 0x01, 0x89, 0x81, 0x24, 0x01, 0x00, 0x00 };
     constexpr uint8_t   HudSubtitlesStore[]     = { 0x8B, 0x0D, 0xC0, 0x96, 0x1D, 0x01, 0x89, 0x81, 0x3C, 0x01, 0x00, 0x00 };
+    constexpr uintptr_t HudHitPointsStoreSite     = 0x0076C7AE;
+    constexpr uintptr_t HudInfoStoreSite          = 0x0076D6BF;
+    constexpr uint8_t   HudHitPointsStore[]     = { 0x8B, 0x0D, 0xC0, 0x96, 0x1D, 0x01, 0x89, 0x81, 0x18, 0x01, 0x00, 0x00 };
+    constexpr uint8_t   HudInfoStore[]          = { 0x8B, 0x0D, 0xC0, 0x96, 0x1D, 0x01, 0x89, 0x81, 0x38, 0x01, 0x00, 0x00 };
 
     /**
      * Tile of every menu, indexed by menu id minus FirstMenuId: an array of
@@ -536,6 +540,34 @@ namespace dxvk {
     constexpr uintptr_t HudQuestReminder = 0x124;
     constexpr uintptr_t HudMessages      = 0x134;
     constexpr uintptr_t HudSubtitles     = 0x13C;
+
+    /**
+     * HUDMainMenu fields holding the HUD groups shown on the hands: HitPoints
+     * (health bar and compass) and Info (interaction prompt)
+     */
+    constexpr uintptr_t HudHitPoints     = 0x118;
+    constexpr uintptr_t HudInfo          = 0x138;
+
+    /**
+     * Traits of a tile's rectangle, in interface units, read with
+     * TileGetFloat: x and y relative to the parent, width and height.
+     * HUDMainMenu::Create sets those of the HUD groups from the screen size
+     * and safe zone, with the HUD menu's own tile at the origin, see
+     * findings/hud.md §9.
+     */
+    constexpr uint32_t  TileTraitX      = 0xFA1;
+    constexpr uint32_t  TileTraitY      = 0xFA2;
+    constexpr uint32_t  TileTraitHeight = 0xFB0;
+    constexpr uint32_t  TileTraitWidth  = 0xFB1;
+
+    /**
+     * Interface::GetActivateREFR, __cdecl without arguments: the reference
+     * the player would activate (InterfaceManager+0xFC), whose name and
+     * action the HUD's Info group shows, or null. Checked against its first
+     * bytes (push ebp / mov ebp,esp / call GetSingleton / test eax,eax / jz).
+     */
+    constexpr uintptr_t GetActivateRef = 0x00703350;
+    constexpr uint8_t   GetActivateRefPrologue[] = { 0x55, 0x8B, 0xEC, 0xE8, 0xB8, 0x3E, 0xDB, 0xFF, 0x85, 0xC0, 0x74, 0x21 };
 
     /**
      * HUDMainMenu fields holding every top-level HUD group: ActionPoints,
