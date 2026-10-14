@@ -160,3 +160,12 @@ TEST_CASE(menu_sticks_are_passed_on) {
   CHECK(pad.thumbRightX == 16384);
   CHECK(pad.thumbRightY == -32767);
 }
+
+
+TEST_CASE(button_icons_match_the_hud_prompt) {
+  CHECK(vrButtonIconForInput(0x0A) == 9);
+  CHECK(vrButtonIconForInput(VrGamepadInput::X) == 11);
+  CHECK(vrButtonIconForInput(0x11) == 14);
+  CHECK(vrButtonIconForInput(0x07) == 0);
+  CHECK(vrButtonIconForInput(0xFF) == 0);
+}

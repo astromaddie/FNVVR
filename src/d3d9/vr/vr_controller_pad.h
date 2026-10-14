@@ -42,6 +42,13 @@ namespace dxvk {
   }
 
   /**
+   * \brief Gamepad input codes of the game's bindings, see findings/input.md
+   */
+  namespace VrGamepadInput {
+    constexpr uint8_t X = 0x0C;
+  }
+
+  /**
    * \brief Turns the controller actions into a gamepad state for the game
    *
    * The game supports an Xbox gamepad, and in gamepad mode it also accepts
@@ -82,5 +89,16 @@ namespace dxvk {
           VrPadState&           pad,
           uint32_t              control,
     const uint8_t*              bindings);
+
+  /**
+   * \brief Button image the HUD shows for a gamepad input
+   *
+   * The value of the "_xbox_button" trait the game gives the interaction
+   * prompt for the input bound to Activate, see findings/hud.md §9.2.
+   *
+   * \param [in] input Gamepad input code, as in the game's bindings
+   * \returns The image, or 0 if the game shows none for that input
+   */
+  uint32_t vrButtonIconForInput(uint8_t input);
 
 }

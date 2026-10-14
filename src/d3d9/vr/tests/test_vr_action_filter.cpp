@@ -114,3 +114,42 @@ TEST_CASE(other_actions_and_sticks_pass_through) {
   CHECK(result.isPressed(VrAction::Attack));
   CHECK(result.move.x == 0.5f && result.move.y == -0.25f);
 }
+
+
+TEST_CASE(reload_activates_while_the_prompt_is_at_the_left_hand) {
+  VrActionFilter filter;
+  filter.setReloadActivates(true);
+
+  VrActionState result = filter.update(pressed(VrAction::Reload), VrInputContext::Game, Frame);
+  CHECK(result.isPressed(VrAction::Activate));
+  CHECK(!result.isPressed(VrAction::Reload));
+
+  filter.update(VrActionState(), VrInputContext::Game, Frame);
+  filter.setReloadActivates(false);
+
+  result = filter.update(pressed(VrAction::Reload), VrInputContext::Game, Frame);
+  CHECK(result.isPressed(VrAction::Reload));
+  CHECK(!result.isPressed(VrAction::Activate));
+}
+
+
+TEST_CASE(a_held_reload_keeps_what_it_did_when_the_prompt_moves) {
+  VrActionFilter filter;
+
+  VrActionState result = filter.update(pressed(VrAction::Reload), VrInputContext::Game, Frame);
+  CHECK(result.isPressed(VrAction::Reload));
+
+  filter.setReloadActivates(true);
+  result = filter.update(pressed(VrAction::Reload), VrInputContext::Game, Frame);
+  CHECK(result.isPressed(VrAction::Reload));
+  CHECK(!result.isPressed(VrAction::Activate));
+
+  filter.update(VrActionState(), VrInputContext::Game, Frame);
+  result = filter.update(pressed(VrAction::Reload), VrInputContext::Game, Frame);
+  CHECK(result.isPressed(VrAction::Activate));
+
+  filter.setReloadActivates(false);
+  result = filter.update(pressed(VrAction::Reload), VrInputContext::Game, Frame);
+  CHECK(result.isPressed(VrAction::Activate));
+  CHECK(!result.isPressed(VrAction::Reload));
+}
