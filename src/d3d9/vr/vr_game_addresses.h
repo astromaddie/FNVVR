@@ -127,6 +127,16 @@ namespace dxvk {
     constexpr uintptr_t ProjectileCreate         = 0x009BCA60;
 
     /**
+     * Call to PlayerCharacter::ApplyAutoAimActor in Projectile::AimProjectile
+     * (0x009BD860), which Projectile::Create reaches for the player's
+     * projectiles, and the function: __thiscall with 7 stack arguments, see
+     * ApplyAutoAimFn. It turns the projectile towards the point under the
+     * camera's centre, findings/weapon.md §9.
+     */
+    constexpr uintptr_t AutoAimCallSite = 0x009BD9E2;
+    constexpr uintptr_t ApplyAutoAim    = 0x00965620;
+
+    /**
      * Player fields: first-person root (NiNode*) and whether the first-person
      * model is used (0) or the third-person one, as Fire reads it (0x00524D10).
      * Actor process (+0x68) and its virtual function telling whether the

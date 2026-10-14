@@ -25,6 +25,11 @@ namespace dxvk {
       uint32_t a9, uint32_t a10, uint32_t a11, uint32_t a12,
       float spreadHeading, float spreadPitch, uint32_t a15);
 
+    // PlayerCharacter::ApplyAutoAimActor is __thiscall with 7 stack arguments
+    using ApplyAutoAimFn = void (__fastcall*)(uint8_t* player, void* unused,
+      void* projectile, void* releaseNode, float* heading, float* pitch,
+      void* origin, float startHeading, float startPitch);
+
     // Process virtual function, __thiscall without arguments, returns a
     // bool in AL
     using IsWeaponOutFn = uint32_t (__fastcall*)(uint8_t* process, void* unused);
@@ -58,6 +63,9 @@ namespace dxvk {
     constexpr int8_t WeaponTypePistolEnergy = 4;
     constexpr int8_t WeaponTypeRifle        = 5;
     constexpr int8_t WeaponTypeLauncher     = 9;
+
+    constexpr float Pi               = 3.14159265f;
+    constexpr float DegreesPerRadian = 180.0f / Pi;
 
     VrWeaponHand* g_weaponHand = nullptr;
 
@@ -385,6 +393,11 @@ namespace dxvk {
         VrGame::ProjectileCreate, reinterpret_cast<const void*>(&VrWeaponHand::createProjectileHook)))
       Logger::warn("VR: The projectile call was not found, the weapon shoots along the head");
 
+    // If this one fails, the hand's shots still bend towards where the head looks
+    if (found && !VrGameMemory::redirectCall(VrGame::AutoAimCallSite,
+        VrGame::ApplyAutoAim, reinterpret_cast<const void*>(&VrWeaponHand::autoAimHook)))
+      Logger::warn("VR: The auto-aim call was not found, shots bend towards where the head looks");
+
     if (found) {
       bool redirected = true;
 
@@ -503,6 +516,7 @@ namespace dxvk {
           uint32_t a9, uint32_t a10, uint32_t a11, uint32_t a12,
           float spreadHeading, float spreadPitch, uint32_t a15) {
     uint8_t* object = player();
+    bool handAimed = false;
 
     if (g_weaponHand && g_weaponHand->m_hasAim && object && shooter == object
      && !*reinterpret_cast<const uint32_t*>(VrGame::VatsCameraState)) {
@@ -516,12 +530,52 @@ namespace dxvk {
         z = muzzle.z;
         heading = aim.yaw + spreadHeading;
         pitch   = aim.pitch + spreadPitch;
+        handAimed = true;
       }
     }
 
-    return reinterpret_cast<ProjectileCreateFn>(VrGame::ProjectileCreate)(
+    // The projectile is initialised, and aimed by the auto-aim, before
+    // Create returns
+    if (g_weaponHand)
+      g_weaponHand->m_handAimedShot = handAimed;
+
+    void* result = reinterpret_cast<ProjectileCreateFn>(VrGame::ProjectileCreate)(
       projectile, shooter, target, weapon, x, y, z, heading, pitch,
       a9, a10, a11, a12, spreadHeading, spreadPitch, a15);
+
+    if (g_weaponHand)
+      g_weaponHand->m_handAimedShot = false;
+
+    return result;
+  }
+
+
+  void __fastcall VrWeaponHand::autoAimHook(
+          uint8_t*              player,
+          void*                 unused,
+          void*                 projectile,
+          void*                 releaseNode,
+          float*                heading,
+          float*                pitch,
+          void*                 origin,
+          float                 startHeading,
+          float                 startPitch) {
+    // The game turns the player's projectiles towards the point under the
+    // centre of its camera, up to a few degrees each way, then adds the gun
+    // wobble and the spread again. With the camera on the head, that bends
+    // the shots from where the weapon points towards where the head looks.
+    // The weapon drawn in the hand already sways with the wobble, and the
+    // spread is applied once when the shot is aimed.
+    if (g_weaponHand && g_weaponHand->m_handAimedShot) {
+      if (!g_weaponHand->m_loggedAutoAim) {
+        Logger::info("VR: The game's auto-aim is skipped for shots aimed with the hand");
+        g_weaponHand->m_loggedAutoAim = true;
+      }
+      return;
+    }
+
+    reinterpret_cast<ApplyAutoAimFn>(VrGame::ApplyAutoAim)(player, nullptr,
+      projectile, releaseNode, heading, pitch, origin, startHeading, startPitch);
   }
 
 
@@ -674,10 +728,28 @@ namespace dxvk {
     if (!muzzle)
       muzzle = findObject(weapon, VrGame::ProjectileNodeAltName);
 
-    // Relative to the root, which the game places at the player
+    // Relative to the root, which the game places at the player. The shots
+    // follow the barrel as it is drawn: the game animates the weapon at an
+    // angle to its camera, so the barrel does not point along the hand.
     m_muzzleOffset = readVector(muzzle ? muzzle : weapon, VrGame::ObjectWorldTranslation) - drawnRoot;
-    m_aimDirection = hand.forward;
+    m_aimDirection = muzzle
+      ? vrComputeBarrelDirection(readRotation(muzzle, VrGame::ObjectWorldRotation))
+      : hand.forward;
     m_hasAim       = true;
+
+    if (weapon != m_loggedBarrelWeapon) {
+      VrHeadAngles barrelAngles = vrComputeAimAngles(m_aimDirection);
+      VrHeadAngles handAngles   = vrComputeAimAngles(hand.forward);
+
+      // Heading difference wrapped into [-pi, pi)
+      float right = vrWrapHeading(barrelAngles.yaw - handAngles.yaw + Pi) - Pi;
+      float up    = handAngles.pitch - barrelAngles.pitch;
+
+      Logger::info(str::format("VR: Weapon barrel ", right * DegreesPerRadian, " degrees right and ",
+        up * DegreesPerRadian, " degrees up of the hand",
+        muzzle ? "" : " (no projectile node, the shots follow the hand)"));
+      m_loggedBarrelWeapon = weapon;
+    }
 
     if (!m_loggedActive) {
       Logger::info("VR: The weapon is in the right hand");

@@ -158,4 +158,9 @@ namespace dxvk {
     return angles;
   }
 
+
+  VrVector3 vrComputeBarrelDirection(const VrGameRotation& rotation) {
+    return { rotation.m[0][1], rotation.m[1][1], rotation.m[2][1] };
+  }
+
 }
