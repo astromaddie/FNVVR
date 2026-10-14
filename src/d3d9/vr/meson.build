@@ -17,6 +17,7 @@ vr_src = files([
   'vr_frame_stats.cpp',
   'vr_game_timer_stats.cpp',
   'vr_game_timer_step.cpp',
+  'vr_render_profile.cpp',
 ])
 
 # Parts that depend on DXVK and Vulkan, only built into d3d9.dll
@@ -50,6 +51,7 @@ vr_dxvk_src = files([
   'vr_game_resolution.cpp',
   'vr_game_timer.cpp',
   'vr_preview_window.cpp',
+  'vr_render_passes.cpp',
   'vr_sky_anchor.cpp',
   'vr_stereo_renderer.cpp',
   'vr_tile_texture_retry.cpp',
@@ -79,6 +81,7 @@ if add_languages('cpp', native: true, required: false)
     'tests/test_vr_frame_stats.cpp',
     'tests/test_vr_game_timer_stats.cpp',
     'tests/test_vr_game_timer_step.cpp',
+    'tests/test_vr_render_profile.cpp',
   ])
 
   vr_test = executable('vr_tests', vr_test_sources, vr_src,

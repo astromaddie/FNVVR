@@ -25,6 +25,7 @@
 #include "vr_pipboy_render.h"
 #include "vr_preview_window.h"
 #include "vr_prompt_icon.h"
+#include "vr_render_passes.h"
 #include "vr_sky_anchor.h"
 #include "vr_tile_texture_retry.h"
 #include "vr_weapon_hand.h"
@@ -111,6 +112,7 @@ namespace dxvk {
      * \param [in] turn How the turning stick turns the player
      * \param [in] weaponInHand Draw the weapon in the right hand and shoot along it
      * \param [in] timer How the game's frame timer is driven
+     * \param [in] passes Which render passes both eyes share
      * \returns \c nullptr if the executable is not the supported version
      */
     static std::unique_ptr<VrStereoRenderer> install(
@@ -120,7 +122,8 @@ namespace dxvk {
       const VrPanelConfig&        panel,
       const VrTurnConfig&         turn,
             bool                  weaponInHand,
-      const VrGameTimerConfig&    timer);
+      const VrGameTimerConfig&    timer,
+      const VrRenderPassConfig&   passes);
 
     /**
      * \brief Called when the game presents, before the image is shown
@@ -282,6 +285,7 @@ namespace dxvk {
 
     // The game's frame timer, measured against real time
     std::unique_ptr<VrGameTimer> m_gameTimer;
+    std::unique_ptr<VrRenderPasses> m_renderPasses;
 
     VrVector3           m_screenShift;
     bool                m_screenPass = false;
@@ -410,6 +414,8 @@ namespace dxvk {
     VrGameCameraPose handInGame(const VrControllerState& controller) const;
 
     bool cullingView(VrGameCameraPose& pose, VrGameFrustum& frustum);
+
+    bool sharedPassView(VrGameCameraPose& pose, VrGameFrustum& frustum);
 
     void updatePipBoyGaze(
       const VrInputState&         input,
