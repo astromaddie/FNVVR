@@ -49,6 +49,8 @@ namespace dxvk {
   struct VrHandHudCrops {
     /// Health bar and compass, for the back of the right hand
     VrInterfaceRect wrist;
+    /// Action points, ammunition and weapon condition, shown below them
+    VrInterfaceRect actionPoints;
     /// Interaction prompt, for the fingertip
     VrInterfaceRect prompt;
   };
@@ -56,23 +58,57 @@ namespace dxvk {
   /**
    * \brief Computes where the hand HUD elements are in the interface image
    *
-   * Both elements are drawn in the same interface pass, so each crop only
-   * has to hold its own element and must not reach into the other. The
-   * game puts the health bar and compass in the bottom left corner and the
-   * prompt at the bottom centre. The crop of the health bar is its group's
-   * rectangle with a margin. The prompt's text is wrapped to its group's
-   * width but its lines reach above and below the group, so its crop is
-   * taller, stays centred on the group and is narrowed so that it does not
-   * overlap the health bar's crop.
+   * The elements are drawn in the same interface pass, so each crop only
+   * has to hold its own element and must not reach into the others. The
+   * game puts the health bar and compass in the bottom left corner, the
+   * action points and ammunition in the bottom right corner and the prompt
+   * at the bottom centre. The crops of the corners are their group's
+   * rectangle with a margin, a wider one on the left of the action points,
+   * where the weapon condition's label moves when an ammunition type is
+   * shown. The prompt's text is wrapped to its group's width but its lines
+   * reach above and below the group, so its crop is taller, stays centred
+   * on the group and is narrowed so that it overlaps neither corner.
    *
    * \param [in] hitPoints Rectangle of the HitPoints group, in interface units
+   * \param [in] actionPoints Rectangle of the ActionPoints group, in interface units
    * \param [in] info Rectangle of the Info group, in interface units
    * \param [in] size Size of the interface, in interface units
    */
   VrHandHudCrops vrComputeHandHudCrops(
     const VrInterfaceRect&      hitPoints,
+    const VrInterfaceRect&      actionPoints,
     const VrInterfaceRect&      info,
     const VrVector2&            size);
+
+  /**
+   * \brief Layout of the wrist display's image
+   *
+   * The health bar and compass are on top, towards the fingers, and the
+   * action points and ammunition below them, towards the forearm. Both are
+   * centred horizontally. Rectangles and size are in interface units.
+   */
+  struct VrWristStack {
+    VrVector2       size = { 0.0f, 0.0f };
+    VrInterfaceRect health;
+    VrInterfaceRect actionPoints;
+
+    /**
+     * \brief How far the image's centre lies below the health bar's, in interface units
+     */
+    float healthDrop() const {
+      return 0.5f * size.y - 0.5f * (health.top + health.bottom);
+    }
+  };
+
+  /**
+   * \brief Stacks the crops of the wrist display into one image
+   *
+   * \param [in] health Crop of the health bar and compass
+   * \param [in] actionPoints Crop of the action points and ammunition
+   */
+  VrWristStack vrComputeWristStack(
+    const VrInterfaceRect&      health,
+    const VrInterfaceRect&      actionPoints);
 
   /**
    * \brief Where the hand HUD panels are placed and how large they are
@@ -106,8 +142,14 @@ namespace dxvk {
    *
    * The panel's up axis runs along the hand towards the fingers, like the
    * dial of a watch, and the panel faces outwards from the back of the hand.
+   * The health bar stays at WristOffset, and the panel's centre is moved
+   * towards the forearm so that what is drawn below it hangs from there.
+   *
+   * \param [in] hand Right hand controller
+   * \param [in] drop Distance from the health bar's centre down to the
+   *    panel's centre, in metres
    */
-  VrPose vrComputeWristPanelPose(const VrControllerState& hand);
+  VrPose vrComputeWristPanelPose(const VrControllerState& hand, float drop);
 
   /**
    * \brief Pose of the interaction prompt panel at a hand's fingertip

@@ -45,6 +45,8 @@ namespace dxvk {
         VrGame::HudHitPointsStore, sizeof(VrGame::HudHitPointsStore))
       && VrGameMemory::matches(VrGame::HudInfoStoreSite,
         VrGame::HudInfoStore, sizeof(VrGame::HudInfoStore))
+      && VrGameMemory::matches(VrGame::HudActionPointsStoreSite,
+        VrGame::HudActionPointsStore, sizeof(VrGame::HudActionPointsStore))
       && VrGameMemory::matches(VrGame::TileGetFloat,
         VrGame::TileGetFloatPrologue, sizeof(VrGame::TileGetFloatPrologue));
 

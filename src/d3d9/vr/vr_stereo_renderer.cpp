@@ -44,7 +44,9 @@ namespace dxvk {
     constexpr uintptr_t HeadHudGroups[] = { VrGame::HudMessages, VrGame::HudQuestReminder, VrGame::HudSubtitles };
 
     // HUD groups shown on the hands
-    constexpr uintptr_t HandHudGroups[] = { VrGame::HudHitPoints, VrGame::HudInfo };
+    constexpr uintptr_t HandHudGroups[] = {
+      VrGame::HudHitPoints, VrGame::HudActionPoints, VrGame::HudAmmoTypeLabel,
+      VrGame::HudConditionArrows, VrGame::HudInfo };
 
     // Head pose used to place the panel before the headset reported one:
     // standing at the origin and looking ahead
@@ -68,6 +70,25 @@ namespace dxvk {
     bool showsPanel(VrGameStateKind state) {
       return state == VrGameStateKind::MainMenu
           || state == VrGameStateKind::Loading;
+    }
+
+    /**
+     * \brief Converts a rectangle in interface units to pixels of an image
+     */
+    RECT interfaceToPixels(const VrInterfaceRect& rect, float scale, const D3DSURFACE_DESC& desc) {
+      return {
+        std::clamp(LONG(std::lround(rect.left   * scale)), LONG(0), LONG(desc.Width)),
+        std::clamp(LONG(std::lround(rect.top    * scale)), LONG(0), LONG(desc.Height)),
+        std::clamp(LONG(std::lround(rect.right  * scale)), LONG(0), LONG(desc.Width)),
+        std::clamp(LONG(std::lround(rect.bottom * scale)), LONG(0), LONG(desc.Height)) };
+    }
+
+    VrInterfaceRect pixelsToRect(const RECT& rect) {
+      return { float(rect.left), float(rect.top), float(rect.right), float(rect.bottom) };
+    }
+
+    RECT rectToPixels(const VrInterfaceRect& rect) {
+      return { LONG(rect.left), LONG(rect.top), LONG(rect.right), LONG(rect.bottom) };
     }
 
     SwapFn            g_originalSwap            = reinterpret_cast<SwapFn>(VrGame::Swap);
@@ -150,7 +171,7 @@ namespace dxvk {
       && renderer->m_activateTarget.initialize();
 
     if (!renderer->m_handHudAvailable)
-      Logger::info("VR: The health bar, compass and interaction prompt are not shown in the headset");
+      Logger::info("VR: The health bar, compass, action points, ammunition and interaction prompt are not shown in the headset");
     else if (!renderer->m_promptAvailable)
       Logger::info("VR: The activation target was not found, the interaction prompt is not shown in the headset");
 
@@ -1193,9 +1214,11 @@ namespace dxvk {
 
   void VrStereoRenderer::submitHandHud(const VrInputState& input, float dt) {
     VrInterfaceRect hitPoints;
+    VrInterfaceRect actionPoints;
     VrInterfaceRect info;
 
     if (!m_hudLayers.groupRect(VrGame::HudHitPoints, hitPoints)
+     || !m_hudLayers.groupRect(VrGame::HudActionPoints, actionPoints)
      || !m_hudLayers.groupRect(VrGame::HudInfo, info)) {
       hideHandHud();
       return;
@@ -1204,12 +1227,16 @@ namespace dxvk {
     D3DSURFACE_DESC desc = { };
     m_handHudTexture->GetLevelDesc(0, &desc);
 
-    VrHandHudCrops crops = vrComputeHandHudCrops(hitPoints, info,
-      vrComputeInterfaceSize(desc.Width, desc.Height));
+    VrVector2 size  = vrComputeInterfaceSize(desc.Width, desc.Height);
+    float     scale = float(desc.Width) / size.x;
+
+    VrHandHudCrops crops = vrComputeHandHudCrops(hitPoints, actionPoints, info, size);
 
     if (!m_loggedHandHudCrops) {
       Logger::info(str::format("VR: Hand HUD crops in interface units: health bar and compass ",
         crops.wrist.left, ",", crops.wrist.top, " to ", crops.wrist.right, ",", crops.wrist.bottom,
+        ", action points and ammunition ", crops.actionPoints.left, ",", crops.actionPoints.top,
+        " to ", crops.actionPoints.right, ",", crops.actionPoints.bottom,
         ", interaction prompt ", crops.prompt.left, ",", crops.prompt.top, " to ",
         crops.prompt.right, ",", crops.prompt.bottom));
       m_loggedHandHudCrops = true;
@@ -1217,19 +1244,31 @@ namespace dxvk {
 
     const VrPose* head = m_hasHeadPose ? &m_headPose : nullptr;
 
-    // The health bar and compass, while the back of the right hand is looked at
+    // The health bar and compass, with the action points and ammunition
+    // below them, while the back of the right hand is looked at. They are
+    // stacked in pixels, so that each part is copied without scaling.
+    RECT health = interfaceToPixels(crops.wrist, scale, desc);
+    RECT weapon = interfaceToPixels(crops.actionPoints, scale, desc);
+    VrWristStack stack = vrComputeWristStack(pixelsToRect(health), pixelsToRect(weapon));
+
+    const HandPanelPart wristParts[] = {
+      { health, rectToPixels(stack.health) },
+      { weapon, rectToPixels(stack.actionPoints) } };
+
+    float wristMetresPerPixel = VrHandHudLayout::WristMetresPerUnit / scale;
+
     const VrControllerState& right = input.controllers[uint32_t(VrHand::Right)];
     VrPose wristPose;
 
     if (right.isActive)
-      wristPose = vrComputeWristPanelPose(right);
+      wristPose = vrComputeWristPanelPose(right, stack.healthDrop() * wristMetresPerPixel);
 
     if (m_wristGaze.update(head, right.isActive ? &wristPose : nullptr, dt)) {
-      m_wristShown = showHandPanel(VrPanelId::HudWrist, crops.wrist,
-        VrHandHudLayout::WristMetresPerUnit, wristPose, m_wristTexture);
+      m_wristShown = showHandPanel(VrPanelId::HudWrist, wristParts, std::size(wristParts),
+        wristMetresPerPixel, wristPose, m_wristTexture);
 
       if (m_wristShown && !m_loggedWrist) {
-        Logger::info("VR: The back of the right hand is looked at, the health bar and compass are shown on it");
+        Logger::info("VR: The back of the right hand is looked at, the health bar, compass, action points and ammunition are shown on it");
         m_loggedWrist = true;
       }
     } else {
@@ -1253,8 +1292,11 @@ namespace dxvk {
       return;
     }
 
-    m_promptShown = showHandPanel(VrPanelId::HudPrompt, crops.prompt,
-      VrHandHudLayout::PromptMetresPerUnit,
+    RECT prompt = interfaceToPixels(crops.prompt, scale, desc);
+    const HandPanelPart promptPart = { prompt, { 0, 0, prompt.right - prompt.left, prompt.bottom - prompt.top } };
+
+    m_promptShown = showHandPanel(VrPanelId::HudPrompt, &promptPart, 1,
+      VrHandHudLayout::PromptMetresPerUnit / scale,
       vrComputePromptPanelPose(input.controllers[uint32_t(hand)], *head), m_promptTexture);
 
     if (m_promptShown && !m_loggedPrompt) {
@@ -1267,26 +1309,20 @@ namespace dxvk {
 
   bool VrStereoRenderer::showHandPanel(
           VrPanelId             id,
-    const VrInterfaceRect&      crop,
-          float                 metresPerUnit,
+    const HandPanelPart*        parts,
+          size_t                count,
+          float                 metresPerPixel,
     const VrPose&               pose,
           Com<IDirect3DTexture9>& texture) {
-    D3DSURFACE_DESC desc = { };
-    m_handHudTexture->GetLevelDesc(0, &desc);
+    UINT width  = 0;
+    UINT height = 0;
 
-    VrVector2 size  = vrComputeInterfaceSize(desc.Width, desc.Height);
-    float     scale = float(desc.Width) / size.x;
+    for (size_t i = 0; i < count; i++) {
+      width  = std::max(width,  UINT(std::max(parts[i].target.right,  LONG(0))));
+      height = std::max(height, UINT(std::max(parts[i].target.bottom, LONG(0))));
+    }
 
-    RECT source = {
-      std::clamp(LONG(std::lround(crop.left   * scale)), LONG(0), LONG(desc.Width)),
-      std::clamp(LONG(std::lround(crop.top    * scale)), LONG(0), LONG(desc.Height)),
-      std::clamp(LONG(std::lround(crop.right  * scale)), LONG(0), LONG(desc.Width)),
-      std::clamp(LONG(std::lround(crop.bottom * scale)), LONG(0), LONG(desc.Height)) };
-
-    UINT width  = UINT(source.right - source.left);
-    UINT height = UINT(source.bottom - source.top);
-
-    if (source.right <= source.left || source.bottom <= source.top)
+    if (!width || !height)
       return false;
 
     // The crops only change with the game's resolution
@@ -1313,12 +1349,23 @@ namespace dxvk {
     Com<IDirect3DSurface9> sourceSurface;
     Com<IDirect3DSurface9> panelSurface;
 
+    // Parts narrower than the panel leave transparent space around them
     bool copied = SUCCEEDED(m_handHudTexture->GetSurfaceLevel(0, &sourceSurface))
       && SUCCEEDED(texture->GetSurfaceLevel(0, &panelSurface))
-      && SUCCEEDED(m_device->StretchRect(sourceSurface.ptr(), &source, panelSurface.ptr(), nullptr, D3DTEXF_NONE));
+      && SUCCEEDED(m_device->ColorFill(panelSurface.ptr(), nullptr, D3DCOLOR_ARGB(0, 0, 0, 0)));
+
+    for (size_t i = 0; i < count && copied; i++) {
+      const HandPanelPart& part = parts[i];
+
+      if (part.source.right <= part.source.left || part.source.bottom <= part.source.top)
+        continue;
+
+      copied = SUCCEEDED(m_device->StretchRect(sourceSurface.ptr(), &part.source,
+        panelSurface.ptr(), &part.target, D3DTEXF_NONE));
+    }
 
     bool shown = copied && VrD3D9Bridge::submitPanel(m_device, m_backend, id,
-      texture.ptr(), pose, crop.width() * metresPerUnit, VrPanelAnchor::Room);
+      texture.ptr(), pose, float(width) * metresPerPixel, VrPanelAnchor::Room);
 
     if (!shown && !m_loggedHandHudFailure) {
       Logger::err("VR: Failed to show a hand HUD panel");

@@ -72,10 +72,12 @@ namespace dxvk {
    * panel that follows the head. The left eye's interface pass, whose image
    * is never shown, draws them alone into the panel's texture instead of the
    * backbuffer, with the other HUD groups hidden. The right eye's pass draws
-   * the health bar, the compass and the interaction prompt alone in the same
-   * way; they are cut out of its image and shown on the hands: the health
-   * bar and compass on the back of the right hand while the player looks at
-   * it, the prompt above the fingertip nearest the target. The game window
+   * the health bar, the compass, the action points, the ammunition and the
+   * interaction prompt alone in the same way; they are cut out of its image
+   * and shown on the hands: the health bar and compass, with the action
+   * points and ammunition below them, on the back of the right hand while
+   * the player looks at it, the prompt above the fingertip nearest the
+   * target. The game window
    * then shows no HUD. Menus opened in game
    * (pause, dialogue, containers, ...) are drawn the same way, without the
    * HUD, and shown on the menu panel. Meanwhile the right eye's pass, which
@@ -201,8 +203,9 @@ namespace dxvk {
     Com<IDirect3DTexture9> m_menuTexture;
     InterfaceLayer m_layer = InterfaceLayer::None;
 
-    // Health bar, compass and interaction prompt, drawn by the right eye's
-    // interface pass in game and cut out into the hand panels' textures
+    // Health bar, compass, action points, ammunition and interaction prompt,
+    // drawn by the right eye's interface pass in game and cut out into the
+    // hand panels' textures
     VrActivateTarget       m_activateTarget;
     Com<IDirect3DTexture9> m_handHudTexture;
     Com<IDirect3DTexture9> m_wristTexture;
@@ -448,10 +451,21 @@ namespace dxvk {
 
     void submitHandHud(const VrInputState& input, float dt);
 
+    /**
+     * \brief Part of a hand panel's image, cut out of the hand HUD's image
+     *
+     * Both rectangles are in pixels; the target is in the panel's image.
+     */
+    struct HandPanelPart {
+      RECT source;
+      RECT target;
+    };
+
     bool showHandPanel(
             VrPanelId             id,
-      const VrInterfaceRect&      crop,
-            float                 metresPerUnit,
+      const HandPanelPart*        parts,
+            size_t                count,
+            float                 metresPerPixel,
       const VrPose&               pose,
             Com<IDirect3DTexture9>& texture);
 

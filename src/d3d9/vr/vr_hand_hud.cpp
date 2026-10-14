@@ -18,6 +18,12 @@ namespace dxvk {
     // bracket images slightly overflow, in interface units
     constexpr float WristMargin = 12.0f;
 
+    // The weapon condition's label is right-aligned 80 units into the
+    // ActionPoints group and moves 50 units left when an ammunition type is
+    // shown (HUDMainMenu::ShiftConditionTileOver), so it overflows the
+    // group's left side, in interface units
+    constexpr float ActionPointsMarginLeft = 50.0f;
+
     // The prompt's first line (the action, such as "Take") is drawn above
     // its group and the item details below it, in interface units
     constexpr float PromptMarginAbove = 80.0f;
@@ -56,6 +62,7 @@ namespace dxvk {
 
   VrHandHudCrops vrComputeHandHudCrops(
     const VrInterfaceRect&      hitPoints,
+    const VrInterfaceRect&      actionPoints,
     const VrInterfaceRect&      info,
     const VrVector2&            size) {
     VrHandHudCrops crops;
@@ -66,17 +73,27 @@ namespace dxvk {
       hitPoints.right  + WristMargin,
       hitPoints.bottom + WristMargin }, size);
 
+    crops.actionPoints = clampRect({
+      actionPoints.left   - ActionPointsMarginLeft,
+      actionPoints.top    - WristMargin,
+      actionPoints.right  + WristMargin,
+      actionPoints.bottom + WristMargin }, size);
+
     float centre     = 0.5f * (info.left + info.right);
     float halfWidth  = 0.5f * info.width() + PromptMarginSide;
     float top        = std::max(info.top - PromptMarginAbove, 0.0f);
     float bottom     = size.y;
 
     // Narrowed on both sides, so that the prompt stays centred
-    if (top < crops.wrist.bottom && bottom > crops.wrist.top && crops.wrist.right <= centre)
-      halfWidth = std::min(halfWidth, centre - crops.wrist.right);
+    for (const VrInterfaceRect& corner : { crops.wrist, crops.actionPoints }) {
+      if (corner.isEmpty() || top >= corner.bottom || bottom <= corner.top)
+        continue;
 
-    if (top < crops.wrist.bottom && bottom > crops.wrist.top && crops.wrist.left >= centre)
-      halfWidth = std::min(halfWidth, crops.wrist.left - centre);
+      if (corner.right <= centre)
+        halfWidth = std::min(halfWidth, centre - corner.right);
+      else if (corner.left >= centre)
+        halfWidth = std::min(halfWidth, corner.left - centre);
+    }
 
     halfWidth = std::min({ halfWidth, centre, size.x - centre });
 
@@ -85,7 +102,24 @@ namespace dxvk {
   }
 
 
-  VrPose vrComputeWristPanelPose(const VrControllerState& hand) {
+  VrWristStack vrComputeWristStack(
+    const VrInterfaceRect&      health,
+    const VrInterfaceRect&      actionPoints) {
+    VrWristStack stack;
+    stack.size.x = std::max(health.width(), actionPoints.width());
+    stack.size.y = health.height() + actionPoints.height();
+
+    // Rounded down, so that parts given in whole pixels stay on whole pixels
+    float healthLeft = std::floor(0.5f * (stack.size.x - health.width()));
+    float actionLeft = std::floor(0.5f * (stack.size.x - actionPoints.width()));
+
+    stack.health       = { healthLeft, 0.0f, healthLeft + health.width(), health.height() };
+    stack.actionPoints = { actionLeft, health.height(), actionLeft + actionPoints.width(), stack.size.y };
+    return stack;
+  }
+
+
+  VrPose vrComputeWristPanelPose(const VrControllerState& hand, float drop) {
     // A panel faces along +Z with its up axis on +Y. Turned by -90 degrees
     // around X, its up axis runs forward along the hand (-Z) and it faces
     // up (+Y). Turned around the hand's forward axis, it faces the hand's
@@ -95,8 +129,9 @@ namespace dxvk {
       VrHandHudLayout::WristFaceUpAngle - QuarterTurn);
 
     VrPose pose;
-    pose.position    = vrComputeControllerPoint(hand, VrHandHudLayout::WristOffset);
     pose.orientation = vrNormalize(hand.aimPose.orientation * outwards * alongHand);
+    pose.position    = vrComputeControllerPoint(hand, VrHandHudLayout::WristOffset)
+                     - vrRotate(pose.orientation, { 0.0f, drop, 0.0f });
     return pose;
   }
 

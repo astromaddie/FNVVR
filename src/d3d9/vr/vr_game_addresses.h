@@ -511,8 +511,10 @@ namespace dxvk {
     constexpr uint8_t   HudSubtitlesStore[]     = { 0x8B, 0x0D, 0xC0, 0x96, 0x1D, 0x01, 0x89, 0x81, 0x3C, 0x01, 0x00, 0x00 };
     constexpr uintptr_t HudHitPointsStoreSite     = 0x0076C7AE;
     constexpr uintptr_t HudInfoStoreSite          = 0x0076D6BF;
+    constexpr uintptr_t HudActionPointsStoreSite  = 0x0076C185;
     constexpr uint8_t   HudHitPointsStore[]     = { 0x8B, 0x0D, 0xC0, 0x96, 0x1D, 0x01, 0x89, 0x81, 0x18, 0x01, 0x00, 0x00 };
     constexpr uint8_t   HudInfoStore[]          = { 0x8B, 0x0D, 0xC0, 0x96, 0x1D, 0x01, 0x89, 0x81, 0x38, 0x01, 0x00, 0x00 };
+    constexpr uint8_t   HudActionPointsStore[]  = { 0x8B, 0x0D, 0xC0, 0x96, 0x1D, 0x01, 0x89, 0x81, 0x14, 0x01, 0x00, 0x00 };
 
     /**
      * Tile of every menu, indexed by menu id minus FirstMenuId: an array of
@@ -543,9 +545,14 @@ namespace dxvk {
 
     /**
      * HUDMainMenu fields holding the HUD groups shown on the hands: HitPoints
-     * (health bar and compass) and Info (interaction prompt)
+     * (health bar and compass), ActionPoints (action points, ammunition and
+     * weapon condition), with AmmoTypeLabel and CNDArrows, which are placed
+     * inside the ActionPoints group's rectangle, and Info (interaction prompt)
      */
     constexpr uintptr_t HudHitPoints     = 0x118;
+    constexpr uintptr_t HudActionPoints  = 0x114;
+    constexpr uintptr_t HudAmmoTypeLabel = 0x15C;
+    constexpr uintptr_t HudConditionArrows = 0x180;
     constexpr uintptr_t HudInfo          = 0x138;
 
     /**
