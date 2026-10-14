@@ -72,9 +72,13 @@ namespace dxvk {
     Menu,
     /// HUD messages, objectives and subtitles, in front of the head
     HudHead,
+    /// Health bar and compass, on the back of the right hand
+    HudWrist,
+    /// Interaction prompt, at the fingertip nearest the target
+    HudPrompt,
   };
 
-  constexpr uint32_t VrPanelCount = 2;
+  constexpr uint32_t VrPanelCount = 4;
 
   /**
    * \brief What a panel's pose is relative to
@@ -239,8 +243,8 @@ namespace dxvk {
      * The panel is drawn over the stereo frames and stays visible with its
      * last image until hidePanel is called for it. It does not depend on the
      * frame loop: it may be submitted while no stereo frames are rendered,
-     * for example while the game loads. Panels are independent of each other,
-     * and HudHead is drawn over Menu.
+     * for example while the game loads. Panels are independent of each other.
+     * HudHead is drawn over Menu, and the hand panels over HudHead.
      */
     virtual bool submitPanel(VrPanelId id, const VrPanelSubmission& panel) = 0;
 

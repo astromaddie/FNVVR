@@ -7,7 +7,7 @@ namespace dxvk {
   /**
    * \brief Turns the raw actions into the actions the game acts on
    *
-   * Two rules apply:
+   * Three rules apply:
    *
    * - The PauseHold action opens the pause menu once it is held for
    *   \ref HoldTime, and a shorter press opens the wait menu when it is
@@ -23,6 +23,12 @@ namespace dxvk {
    *   until they are released. The same button means something else in a
    *   menu, so holding it across the change would trigger the menu action
    *   (for example the pause menu's Y right after the long press opened it).
+   *
+   * - While the interaction prompt is at the left hand, the Reload action
+   *   (X, a left hand button) activates instead, so that the hand the
+   *   prompt is at activates. What a press does is decided when it starts
+   *   and kept until it is released, so a press never turns into the other
+   *   control when the prompt moves to the other hand.
    */
   class VrActionFilter {
 
@@ -46,6 +52,15 @@ namespace dxvk {
             VrInputContext        context,
             float                 dt);
 
+    /**
+     * \brief Makes the Reload action activate from the next press on
+     *
+     * \param [in] activates Whether the interaction prompt is at the left hand
+     */
+    void setReloadActivates(bool activates) {
+      m_reloadActivates = activates;
+    }
+
   private:
 
     VrInputContext m_context = VrInputContext::Game;
@@ -57,7 +72,13 @@ namespace dxvk {
     float m_holdPulse   = 0.0f;
     float m_tapPulse    = 0.0f;
 
+    bool  m_reloadActivates = false;
+    bool  m_reloadDown      = false;
+    bool  m_pressActivates  = false;
+
     void updateHold(bool down, float dt);
+
+    void updateReload(VrActionState& actions);
 
   };
 

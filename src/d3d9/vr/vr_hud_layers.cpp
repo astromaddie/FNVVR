@@ -8,6 +8,8 @@ namespace dxvk {
 
   namespace {
 
+    using TileGetFloatFn = float (__thiscall*)(uintptr_t tile, uint32_t trait);
+
     template<typename T>
     T readField(uintptr_t base, uintptr_t offset) {
       return *reinterpret_cast<const T*>(base + offset);
@@ -38,7 +40,38 @@ namespace dxvk {
       && VrGameMemory::readable(VrGame::MenuTileCount, sizeof(uint16_t))
       && VrGameMemory::readable(VrGame::InterfaceManager, sizeof(uintptr_t));
 
+    m_rectsFound = m_available
+      && VrGameMemory::matches(VrGame::HudHitPointsStoreSite,
+        VrGame::HudHitPointsStore, sizeof(VrGame::HudHitPointsStore))
+      && VrGameMemory::matches(VrGame::HudInfoStoreSite,
+        VrGame::HudInfoStore, sizeof(VrGame::HudInfoStore))
+      && VrGameMemory::matches(VrGame::HudActionPointsStoreSite,
+        VrGame::HudActionPointsStore, sizeof(VrGame::HudActionPointsStore))
+      && VrGameMemory::matches(VrGame::TileGetFloat,
+        VrGame::TileGetFloatPrologue, sizeof(VrGame::TileGetFloatPrologue));
+
     return m_available;
+  }
+
+
+  bool VrHudLayers::groupRect(uintptr_t group, VrInterfaceRect& rect) const {
+    if (!m_rectsFound)
+      return false;
+
+    uintptr_t hud  = readField<uintptr_t>(VrGame::HudMainMenu, 0);
+    uintptr_t tile = hud ? readField<uintptr_t>(hud, group) : 0;
+
+    if (!tile)
+      return false;
+
+    // The groups are children of the HUD menu's tile, which is at the
+    // origin, so their position is relative to the screen
+    auto getFloat = reinterpret_cast<TileGetFloatFn>(VrGame::TileGetFloat);
+    rect.left   = getFloat(tile, VrGame::TileTraitX);
+    rect.top    = getFloat(tile, VrGame::TileTraitY);
+    rect.right  = rect.left + getFloat(tile, VrGame::TileTraitWidth);
+    rect.bottom = rect.top  + getFloat(tile, VrGame::TileTraitHeight);
+    return true;
   }
 
 

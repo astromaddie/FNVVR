@@ -127,6 +127,16 @@ namespace dxvk {
     constexpr uintptr_t ProjectileCreate         = 0x009BCA60;
 
     /**
+     * Call to PlayerCharacter::ApplyAutoAimActor in Projectile::AimProjectile
+     * (0x009BD860), which Projectile::Create reaches for the player's
+     * projectiles, and the function: __thiscall with 7 stack arguments, see
+     * ApplyAutoAimFn. It turns the projectile towards the point under the
+     * camera's centre, findings/weapon.md §9.
+     */
+    constexpr uintptr_t AutoAimCallSite = 0x009BD9E2;
+    constexpr uintptr_t ApplyAutoAim    = 0x00965620;
+
+    /**
      * Player fields: first-person root (NiNode*) and whether the first-person
      * model is used (0) or the third-person one, as Fire reads it (0x00524D10).
      * Actor process (+0x68) and its virtual function telling whether the
@@ -509,6 +519,12 @@ namespace dxvk {
     constexpr uint8_t   HudMessagesStore[]      = { 0x8B, 0x0D, 0xC0, 0x96, 0x1D, 0x01, 0x89, 0x81, 0x34, 0x01, 0x00, 0x00 };
     constexpr uint8_t   HudQuestReminderStore[] = { 0x8B, 0x0D, 0xC0, 0x96, 0x1D, 0x01, 0x89, 0x81, 0x24, 0x01, 0x00, 0x00 };
     constexpr uint8_t   HudSubtitlesStore[]     = { 0x8B, 0x0D, 0xC0, 0x96, 0x1D, 0x01, 0x89, 0x81, 0x3C, 0x01, 0x00, 0x00 };
+    constexpr uintptr_t HudHitPointsStoreSite     = 0x0076C7AE;
+    constexpr uintptr_t HudInfoStoreSite          = 0x0076D6BF;
+    constexpr uintptr_t HudActionPointsStoreSite  = 0x0076C185;
+    constexpr uint8_t   HudHitPointsStore[]     = { 0x8B, 0x0D, 0xC0, 0x96, 0x1D, 0x01, 0x89, 0x81, 0x18, 0x01, 0x00, 0x00 };
+    constexpr uint8_t   HudInfoStore[]          = { 0x8B, 0x0D, 0xC0, 0x96, 0x1D, 0x01, 0x89, 0x81, 0x38, 0x01, 0x00, 0x00 };
+    constexpr uint8_t   HudActionPointsStore[]  = { 0x8B, 0x0D, 0xC0, 0x96, 0x1D, 0x01, 0x89, 0x81, 0x14, 0x01, 0x00, 0x00 };
 
     /**
      * Tile of every menu, indexed by menu id minus FirstMenuId: an array of
@@ -536,6 +552,59 @@ namespace dxvk {
     constexpr uintptr_t HudQuestReminder = 0x124;
     constexpr uintptr_t HudMessages      = 0x134;
     constexpr uintptr_t HudSubtitles     = 0x13C;
+
+    /**
+     * HUDMainMenu fields holding the HUD groups shown on the hands: HitPoints
+     * (health bar and compass), ActionPoints (action points, ammunition and
+     * weapon condition), with AmmoTypeLabel and CNDArrows, which are placed
+     * inside the ActionPoints group's rectangle, and Info (interaction prompt)
+     */
+    constexpr uintptr_t HudHitPoints     = 0x118;
+    constexpr uintptr_t HudActionPoints  = 0x114;
+    constexpr uintptr_t HudAmmoTypeLabel = 0x15C;
+    constexpr uintptr_t HudConditionArrows = 0x180;
+    constexpr uintptr_t HudInfo          = 0x138;
+
+    /**
+     * Traits of a tile's rectangle, in interface units, read with
+     * TileGetFloat: x and y relative to the parent, width and height.
+     * HUDMainMenu::Create sets those of the HUD groups from the screen size
+     * and safe zone, with the HUD menu's own tile at the origin, see
+     * findings/hud.md §9.
+     */
+    constexpr uint32_t  TileTraitX      = 0xFA1;
+    constexpr uint32_t  TileTraitY      = 0xFA2;
+    constexpr uint32_t  TileTraitHeight = 0xFB0;
+    constexpr uint32_t  TileTraitWidth  = 0xFB1;
+
+    /**
+     * Interface::GetActivateREFR, __cdecl without arguments: the reference
+     * the player would activate (InterfaceManager+0xFC), whose name and
+     * action the HUD's Info group shows, or null. Checked against its first
+     * bytes (push ebp / mov ebp,esp / call GetSingleton / test eax,eax / jz).
+     */
+    constexpr uintptr_t GetActivateRef = 0x00703350;
+    constexpr uint8_t   GetActivateRefPrologue[] = { 0x55, 0x8B, 0xEC, 0xE8, 0xB8, 0x3E, 0xDB, 0xFF, 0x85, 0xC0, 0x74, 0x21 };
+
+    /**
+     * Button icon of the interaction prompt. The HUDMainMenu field holds the
+     * Info group's justify_center_hotrect tile, whose "_xbox_button" trait
+     * picks the gamepad button image (9 A, 11 X, ...). SetInfoForRef sets it
+     * from the Activate control's binding, inlined at the given site, which
+     * is checked (push 9 / push "_xbox_button" / call TextToTrait / ... /
+     * mov ecx,[HudMainMenu] / mov ecx,[ecx+0x9C]). Tile::TextToTrait is
+     * __cdecl (name) and returns TileTraitUnknown for an unknown name. See
+     * findings/hud.md §9.2.
+     */
+    constexpr uintptr_t HudPromptButtonTile   = 0x9C;
+    constexpr uintptr_t HudPromptIconSite     = 0x00777BFA;
+    constexpr uint8_t   HudPromptIconCode[]   = { 0x6A, 0x09, 0x68, 0xD0, 0x34, 0x07, 0x01, 0xE8, 0x5A, 0x9C, 0x28, 0x00,
+                                                  0x83, 0xC4, 0x04, 0x50, 0x8B, 0x0D, 0xC0, 0x96, 0x1D, 0x01,
+                                                  0x8B, 0x89, 0x9C, 0x00, 0x00, 0x00 };
+    constexpr uintptr_t TileTextToTrait       = 0x00A01860;
+    constexpr uint8_t   TileTextToTraitPrologue[] = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0xF6, 0xCD, 0xF1, 0x00 };
+    constexpr uint32_t  TileTraitUnknown      = 0x80000000;
+    constexpr char      PromptIconTraitName[] = "_xbox_button";
 
     /**
      * HUDMainMenu fields holding every top-level HUD group: ActionPoints,

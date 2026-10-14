@@ -128,4 +128,17 @@ namespace dxvk {
    */
   VrHeadAngles vrComputeAimAngles(const VrVector3& direction);
 
+  /**
+   * \brief Direction a weapon's projectile node fires along
+   *
+   * The game turns a node's world rotation into a heading and a pitch with
+   * NiMatrix3::ToEulerAnglesZXY when it fires from a third-person weapon:
+   * the rotation is Rz(heading) * Rx(pitch) * Ry(roll), so the direction
+   * of fire is the node's Y axis, whatever the roll.
+   *
+   * \param [in] rotation World rotation of the projectile node
+   * \returns The node's Y axis in the game world
+   */
+  VrVector3 vrComputeBarrelDirection(const VrGameRotation& rotation);
+
 }

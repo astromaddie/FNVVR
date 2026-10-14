@@ -39,8 +39,10 @@ namespace dxvk {
    *   that only the hands are drawn.
    * - TESObjectWEAP::Fire creates the player's projectiles from the muzzle
    *   the game animated in front of its camera. They start from the muzzle
-   *   drawn in the hand instead, along the direction the hand points, with
-   *   the game's spread kept.
+   *   drawn in the hand instead, along the barrel as it is drawn, with the
+   *   game's spread kept. The game's auto-aim, which would turn them
+   *   towards the point under the centre of its camera, the head, leaves
+   *   them alone.
    * - AnimData::MorphOrBlendToSequence starts the game's animations. When
    *   the other hand supports a pistol, the game's aim animation starts
    *   without blending from the previous pose, so the left hand is on the
@@ -172,6 +174,14 @@ namespace dxvk {
     VrVector3        m_aimDirection;
     bool             m_hasAim = false;
 
+    // Set while the game creates a projectile aimed with the hand, so that
+    // its auto-aim leaves it alone
+    bool             m_handAimedShot = false;
+
+    // Weapon node whose barrel angle was last logged, compared but not
+    // dereferenced
+    const uint8_t*   m_loggedBarrelWeapon = nullptr;
+
     bool             m_loggedActive = false;
     bool             m_loggedFrame  = false;
     bool             m_loggedArms   = false;
@@ -182,6 +192,7 @@ namespace dxvk {
     bool             m_loggedPipBoy = false;
     bool             m_loggedRightHand = false;
     bool             m_loggedScreen = false;
+    bool             m_loggedAutoAim = false;
 
     // Objects culled by the VR layer, compared but not dereferenced until
     // they are found in the model again, and whether the right hand and the
@@ -206,6 +217,17 @@ namespace dxvk {
             float x, float y, float z, float heading, float pitch,
             uint32_t a9, uint32_t a10, uint32_t a11, uint32_t a12,
             float spreadHeading, float spreadPitch, uint32_t a15);
+
+    static void __fastcall autoAimHook(
+            uint8_t*              player,
+            void*                 unused,
+            void*                 projectile,
+            void*                 releaseNode,
+            float*                heading,
+            float*                pitch,
+            void*                 origin,
+            float                 startHeading,
+            float                 startPitch);
 
     static void* __fastcall playSequenceHook(
             uint8_t*              animData,
