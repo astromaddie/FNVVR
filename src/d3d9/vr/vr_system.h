@@ -89,7 +89,8 @@ namespace dxvk {
   private:
 
     VrSystem(std::unique_ptr<IVRBackend> backend, bool showPreview,
-      const VrPanelConfig& panel, const VrTurnConfig& turn, bool weaponInHand, bool headsetResolution);
+      const VrPanelConfig& panel, const VrTurnConfig& turn, bool weaponInHand, bool headsetResolution,
+      const VrGameTimerConfig& timer);
 
     std::unique_ptr<IVRBackend>          m_backend;
     std::unique_ptr<VrExtensionProvider> m_extensionProvider;
@@ -98,6 +99,7 @@ namespace dxvk {
     VrPanelConfig                        m_panelConfig;
     VrTurnConfig                         m_turnConfig;
     bool                                 m_weaponInHand;
+    VrGameTimerConfig                    m_timerConfig;
     VrGameResolution                     m_resolution;
     bool                                 m_headsetResolution;
     bool                                 m_resolutionChosen = false;
