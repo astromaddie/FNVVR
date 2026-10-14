@@ -145,4 +145,23 @@ namespace dxvk {
       pressInput(pad, bindings[control]);
   }
 
+
+  uint32_t vrButtonIconForInput(uint8_t input) {
+    // HUDMainMenu::SetInfoForRef handles the thumbsticks' buttons, the
+    // face buttons, the shoulder buttons and the triggers
+    switch (input) {
+      case 0x08: return 17;
+      case 0x09: return 18;
+      case 0x0A: return 9;
+      case 0x0B: return 10;
+      case 0x0C: return 11;
+      case 0x0D: return 12;
+      case 0x0E: return 16;
+      case 0x0F: return 15;
+      case 0x10: return 13;
+      case 0x11: return 14;
+      default:   return 0;
+    }
+  }
+
 }

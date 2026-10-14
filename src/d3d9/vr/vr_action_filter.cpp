@@ -12,6 +12,7 @@ namespace dxvk {
       m_holdDown   = false;
       m_holdPulse  = 0.0f;
       m_tapPulse   = 0.0f;
+      m_reloadDown = false;
     }
 
     m_blocked &= actions.pressed;
@@ -23,6 +24,7 @@ namespace dxvk {
       return result;
 
     updateHold(result.isPressed(VrAction::PauseHold), dt);
+    updateReload(result);
 
     result.setPressed(VrAction::PauseHold, false);
     result.setPressed(VrAction::Pause, m_holdPulse > 0.0f || result.isPressed(VrAction::Pause));
@@ -52,6 +54,21 @@ namespace dxvk {
     }
 
     m_holdDown = down;
+  }
+
+
+  void VrActionFilter::updateReload(VrActionState& actions) {
+    bool down = actions.isPressed(VrAction::Reload);
+
+    if (down && !m_reloadDown)
+      m_pressActivates = m_reloadActivates;
+
+    m_reloadDown = down;
+
+    if (down && m_pressActivates) {
+      actions.setPressed(VrAction::Reload,   false);
+      actions.setPressed(VrAction::Activate, true);
+    }
   }
 
 }

@@ -77,6 +77,16 @@ namespace dxvk {
     }
 
     /**
+     * \brief Makes the left hand's reload button activate
+     *
+     * \param [in] left Whether the interaction prompt is at the left hand,
+     *    see VrActionFilter
+     */
+    void setPromptAtLeftHand(bool left) {
+      m_filter.setReloadActivates(left);
+    }
+
+    /**
      * \brief See VrHeadLook::adjustCamera
      */
     bool adjustCamera(VrGameCameraPose& pose) const;
