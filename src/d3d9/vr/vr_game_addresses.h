@@ -577,6 +577,26 @@ namespace dxvk {
     constexpr uint8_t   GetActivateRefPrologue[] = { 0x55, 0x8B, 0xEC, 0xE8, 0xB8, 0x3E, 0xDB, 0xFF, 0x85, 0xC0, 0x74, 0x21 };
 
     /**
+     * Button icon of the interaction prompt. The HUDMainMenu field holds the
+     * Info group's justify_center_hotrect tile, whose "_xbox_button" trait
+     * picks the gamepad button image (9 A, 11 X, ...). SetInfoForRef sets it
+     * from the Activate control's binding, inlined at the given site, which
+     * is checked (push 9 / push "_xbox_button" / call TextToTrait / ... /
+     * mov ecx,[HudMainMenu] / mov ecx,[ecx+0x9C]). Tile::TextToTrait is
+     * __cdecl (name) and returns TileTraitUnknown for an unknown name. See
+     * findings/hud.md §9.2.
+     */
+    constexpr uintptr_t HudPromptButtonTile   = 0x9C;
+    constexpr uintptr_t HudPromptIconSite     = 0x00777BFA;
+    constexpr uint8_t   HudPromptIconCode[]   = { 0x6A, 0x09, 0x68, 0xD0, 0x34, 0x07, 0x01, 0xE8, 0x5A, 0x9C, 0x28, 0x00,
+                                                  0x83, 0xC4, 0x04, 0x50, 0x8B, 0x0D, 0xC0, 0x96, 0x1D, 0x01,
+                                                  0x8B, 0x89, 0x9C, 0x00, 0x00, 0x00 };
+    constexpr uintptr_t TileTextToTrait       = 0x00A01860;
+    constexpr uint8_t   TileTextToTraitPrologue[] = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0xF6, 0xCD, 0xF1, 0x00 };
+    constexpr uint32_t  TileTraitUnknown      = 0x80000000;
+    constexpr char      PromptIconTraitName[] = "_xbox_button";
+
+    /**
      * HUDMainMenu fields holding every top-level HUD group: ActionPoints,
      * HitPoints (with the compass), RadiationMeter, EnemyHealth, QuestReminder,
      * Region_Location, ReticleCenter, SneakMeter, Messages, Info, Subtitles,

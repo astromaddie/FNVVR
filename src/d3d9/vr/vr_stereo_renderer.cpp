@@ -174,6 +174,8 @@ namespace dxvk {
       Logger::info("VR: The health bar, compass, action points, ammunition and interaction prompt are not shown in the headset");
     else if (!renderer->m_promptAvailable)
       Logger::info("VR: The activation target was not found, the interaction prompt is not shown in the headset");
+    else if (!renderer->m_promptIcon.initialize())
+      Logger::info("VR: The prompt's button icon was not found, the prompt shows the activate button at both hands");
 
     if (!renderer->m_menuScenes.initialize())
       Logger::info("VR: The menu scene functions were not found, menus such as lockpicking show no 3D model in the headset");
@@ -382,6 +384,9 @@ namespace dxvk {
       m_controls.setGameAim(m_weaponHand->wantsGameAim());
 
     m_controls.setMenuBack(m_closePipBoy);
+
+    // The prompt's hand was chosen on the previous frame too
+    m_controls.setPromptAtLeftHand(m_promptShown && m_promptHand.hand() == VrHand::Left);
 
     float dt = float(timing.predictedPeriod) * 1e-9f;
 
@@ -1292,12 +1297,20 @@ namespace dxvk {
       return;
     }
 
+    // The button that activates with this hand, from the next frame on
+    m_promptIcon.show(hand);
+
     RECT prompt = interfaceToPixels(crops.prompt, scale, desc);
     const HandPanelPart promptPart = { prompt, { 0, 0, prompt.right - prompt.left, prompt.bottom - prompt.top } };
 
     m_promptShown = showHandPanel(VrPanelId::HudPrompt, &promptPart, 1,
       VrHandHudLayout::PromptMetresPerUnit / scale,
       vrComputePromptPanelPose(input.controllers[uint32_t(hand)], *head), m_promptTexture);
+
+    if (m_promptShown && hand == VrHand::Left && !m_loggedLeftPrompt) {
+      Logger::info("VR: The interaction prompt is at the left hand, the left hand's reload button activates");
+      m_loggedLeftPrompt = true;
+    }
 
     if (m_promptShown && !m_loggedPrompt) {
       Logger::info(str::format("VR: The interaction prompt is shown at the fingertip of the ",

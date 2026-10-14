@@ -23,6 +23,7 @@
 #include "vr_pipboy_gaze.h"
 #include "vr_pipboy_render.h"
 #include "vr_preview_window.h"
+#include "vr_prompt_icon.h"
 #include "vr_sky_anchor.h"
 #include "vr_tile_texture_retry.h"
 #include "vr_weapon_hand.h"
@@ -212,6 +213,7 @@ namespace dxvk {
     Com<IDirect3DTexture9> m_promptTexture;
     VrWristGaze            m_wristGaze;
     VrPromptHand           m_promptHand;
+    VrPromptIcon           m_promptIcon;
     bool   m_handHudAvailable = false;
     bool   m_promptAvailable  = false;
     bool   m_handHudRendered  = false;
@@ -220,6 +222,7 @@ namespace dxvk {
     bool   m_loggedHandHudCrops = false;
     bool   m_loggedWrist      = false;
     bool   m_loggedPrompt     = false;
+    bool   m_loggedLeftPrompt = false;
     bool   m_loggedHandHudFailure = false;
     bool   m_hudAvailable  = false;
     bool   m_hudRendered   = false;

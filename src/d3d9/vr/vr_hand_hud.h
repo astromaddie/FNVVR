@@ -229,6 +229,13 @@ namespace dxvk {
       const VrVector3&            target,
             VrHand&               hand);
 
+    /**
+     * \brief The hand chosen last
+     */
+    VrHand hand() const {
+      return m_hand;
+    }
+
   private:
 
     VrHand m_hand = VrHand::Right;
