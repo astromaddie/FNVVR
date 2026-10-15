@@ -69,7 +69,7 @@ namespace dxvk {
     const VrVector3&            offset);
 
   /// Largest distance between a hand's grip and the Pip-Boy screen for the hand to be at the Pip-Boy, in metres
-  constexpr float VrPipBoyHandReach = 0.15f;
+  constexpr float VrPipBoyHandReach = 0.20f;
 
   /**
    * \brief Whether a hand is at the Pip-Boy on the other forearm
