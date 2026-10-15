@@ -1018,6 +1018,43 @@ namespace dxvk {
     constexpr uintptr_t TileUpdateLock      = 0x011F3330;
     constexpr uint32_t  TraitTextureAtlas   = 0xFF9;
 
+    /**
+     * Developer mode (VrDeveloperMode), see findings/developer-mode.md.
+     * SetGodMode (__cdecl, bool) is what the console's tgm calls. The data
+     * handler's object list (+0x04) chains every loaded TESObject through
+     * +0x20. A weapon (form type 0x28) is not playable when bit 0x80 of its
+     * flags at +0x100 is set. Items are added as the console's AddItem does:
+     * a TESContainer (12 bytes) built on the stack, filled with AddObject
+     * (__thiscall, object, count, extra) and handed to the player with
+     * AddContainerToReference (__thiscall, reference, silent).
+     * GetInventoryChanges (__cdecl, reference) and GetObjectCount
+     * (__thiscall, object) count an item in an inventory.
+     */
+    constexpr uintptr_t SetGodMode                 = 0x009526A0;
+    constexpr uint8_t   SetGodModeCode[]           = { 0x55, 0x8B, 0xEC, 0x8A, 0x45, 0x08, 0xA2, 0xBA, 0x07, 0x1E, 0x01 };
+    constexpr uintptr_t DataHandler                = 0x011C3F2C;
+    constexpr uintptr_t DataHandlerObjectList      = 0x04;
+    constexpr uintptr_t ObjectListRoot             = 0x04;
+    constexpr uintptr_t ObjectNext                 = 0x20;
+    constexpr uintptr_t FormType                   = 0x04;
+    constexpr uintptr_t FormFlags                  = 0x08;
+    constexpr uint32_t  FormFlagDeleted            = 0x20;
+    constexpr uint8_t   FormTypeWeapon             = 0x28;
+    constexpr uintptr_t WeaponFlags                = 0x100;
+    constexpr uint8_t   WeaponFlagNotPlayable      = 0x80;
+    constexpr size_t    ContainerSize              = 0x0C;
+    constexpr uintptr_t ContainerConstruct         = 0x00481610;
+    constexpr uintptr_t ContainerDestruct          = 0x00481680;
+    constexpr uint8_t   ContainerConstructPrologue[] = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x1B, 0x8F, 0xF0, 0x00, 0x64, 0xA1 };
+    constexpr uintptr_t ContainerAddObject         = 0x004818E0;
+    constexpr uint8_t   ContainerAddObjectPrologue[] = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0xB6, 0x77, 0xF1, 0x00, 0x64, 0xA1 };
+    constexpr uintptr_t ContainerAddToReference    = 0x004821A0;
+    constexpr uint8_t   ContainerAddToReferencePrologue[] = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x79, 0xEF, 0xEE, 0x00, 0x64, 0xA1 };
+    constexpr uintptr_t GetInventoryChanges        = 0x004BF220;
+    constexpr uint8_t   GetInventoryChangesPrologue[] = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x13, 0x12, 0xEF, 0x00, 0x64, 0xA1 };
+    constexpr uintptr_t InventoryObjectCount       = 0x004C8F30;
+    constexpr uint8_t   InventoryObjectCountPrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x14, 0x89, 0x4D, 0xF0, 0xC7, 0x45, 0xF4 };
+
   }
 
 }

@@ -124,7 +124,8 @@ namespace dxvk {
     const VrTurnConfig&         turn,
           bool                  weaponInHand,
     const VrGameTimerConfig&    timer,
-    const VrRenderPassConfig&   passes) {
+    const VrRenderPassConfig&   passes,
+          bool                  developerMode) {
     if (g_stereoRenderer)
       return nullptr;
 
@@ -226,6 +227,15 @@ namespace dxvk {
 
     if (!renderer->m_weaponDrawn)
       Logger::info("VR: The weapon draw code was not found, the weapon is drawn and holstered as in the game");
+
+    if (developerMode) {
+      renderer->m_developerMode = VrDeveloperMode::install();
+
+      if (renderer->m_developerMode)
+        Logger::info("VR: Developer mode is on: god mode and every playable weapon after each loading screen");
+      else
+        Logger::warn("VR: The functions the developer mode calls were not found, it is off");
+    }
 
     renderer->m_gameTimer = VrGameTimer::install(timer);
 
@@ -355,6 +365,9 @@ namespace dxvk {
     m_tileTextureRetry.update();
 
     VrGameStateKind state = readGameState();
+
+    if (m_developerMode)
+      m_developerMode->update(state);
 
     if (showsPanel(state)) {
       m_layer = InterfaceLayer::None;
