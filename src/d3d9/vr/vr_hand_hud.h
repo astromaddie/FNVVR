@@ -203,6 +203,35 @@ namespace dxvk {
   };
 
   /**
+   * \brief What one hand's activation pick found
+   */
+  struct VrHandPickResult {
+    /// The hand is tracked and its ray was cast
+    bool tracked = false;
+    /// The ray found something to activate
+    bool hit     = false;
+    /// The game took a body near the ray because the ray itself missed
+    bool fuzzy   = false;
+  };
+
+  /**
+   * \brief Chooses the hand whose pick names the activation target
+   *
+   * Each tracked hand casts the game's activation pick along its ray. A
+   * hand that finds a target wins over one that does not, and a ray that
+   * reaches its target wins over a fuzzy one that only passes near a body.
+   * Otherwise the previous hand keeps the target, so that it does not jump
+   * between the hands while both point at something.
+   *
+   * \param [in] picks Result of each hand, indexed by VrHand
+   * \param [in] previous Hand chosen on the previous pick
+   * \returns The chosen hand, a tracked one if either is tracked
+   */
+  VrHand vrChooseActivateHand(
+    const std::array<VrHandPickResult, VrHandCount>& picks,
+          VrHand                  previous);
+
+  /**
    * \brief Chooses the hand the interaction prompt is shown at
    *
    * The hand nearest the target is chosen. The prompt only moves to the

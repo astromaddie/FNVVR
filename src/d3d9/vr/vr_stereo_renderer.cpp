@@ -194,6 +194,11 @@ namespace dxvk {
     if (weaponInHand)
       renderer->m_weaponHand = VrWeaponHand::install();
 
+    renderer->m_handPick = VrHandActivatePick::install();
+
+    if (!renderer->m_handPick)
+      Logger::info("VR: The activation pick was not found, the activation target follows the view");
+
     renderer->m_skyAnchor = VrSkyAnchor::install();
 
     if (!renderer->m_skyAnchor)
@@ -412,7 +417,7 @@ namespace dxvk {
     m_controls.setMenuBack(m_closePipBoy);
 
     // The prompt's hand was chosen on the previous frame too
-    m_controls.setPromptAtLeftHand(m_promptShown && m_promptHand.hand() == VrHand::Left);
+    m_controls.setPromptAtLeftHand(m_promptShown && m_promptAt == VrHand::Left);
 
     float dt = float(timing.predictedPeriod) * 1e-9f;
 
@@ -433,6 +438,7 @@ namespace dxvk {
     // The game turned its camera with the head already
     m_controls.adjustCamera(m_gameCameraPose);
     updateWeaponHand(input, state, modelCamera);
+    updateHandPick(input, state);
     updatePipBoyGaze(input, state, dt);
 
     for (uint32_t eye = 0; eye < VrEyeCount; eye++) {
@@ -499,6 +505,10 @@ namespace dxvk {
 
     m_controls.update(input, state, m_hasReference ? &m_reference : nullptr,
       menuPanel(), float(timing.predictedPeriod) * 1e-9f);
+
+    // Nothing in the world can be pointed at without the stereo view
+    if (m_handPick)
+      m_handPick->setRays({ });
 
     VrD3D9Bridge::submitEmptyFrame(m_device, m_backend, timing.predictedDisplayTime);
 
@@ -778,6 +788,33 @@ namespace dxvk {
       m_pipBoyBackFrames -= 1;
 
     m_pipBoyControl.blockGameOpen(m_pipBoyBackFrames != 0);
+  }
+
+
+  void VrStereoRenderer::updateHandPick(
+    const VrInputState&         input,
+          VrGameStateKind       state) {
+    if (!m_handPick)
+      return;
+
+    // The game picks after this frame is drawn, from the same camera
+    std::array<VrHandRay, VrHandCount> rays;
+    std::array<const VrHandRay*, VrHandCount> tracked = { };
+
+    for (uint32_t i = 0; i < VrHandCount; i++) {
+      const VrControllerState& controller = input.controllers[i];
+
+      if (state != VrGameStateKind::InGame || !m_hasReference || !controller.isActive)
+        continue;
+
+      VrGameCameraPose aim = vrComputeEyeCameraPose(m_gameCameraPose,
+        vrComputeEyeInReference(m_reference, controller.aimPose), VrGameUnitsPerMetre);
+
+      rays[i]    = { aim.position, aim.forward };
+      tracked[i] = &rays[i];
+    }
+
+    m_handPick->setRays(tracked);
   }
 
 
@@ -1341,10 +1378,21 @@ namespace dxvk {
     target = vrTransformPoint(m_reference,
       vrComputeGamePointInReference(m_gameCameraPose, target, VrGameUnitsPerMetre));
 
-    if (!m_promptHand.update(input.controllers, target, hand)) {
+    // The hand that pointed at the target, or the nearest one when the
+    // game picked along the view
+    if (m_handPick && m_handPick->pickedWithHands()) {
+      hand = m_handPick->hand();
+
+      if (!input.controllers[uint32_t(hand)].isActive) {
+        hideHandPanel(VrPanelId::HudPrompt, m_promptShown);
+        return;
+      }
+    } else if (!m_promptHand.update(input.controllers, target, hand)) {
       hideHandPanel(VrPanelId::HudPrompt, m_promptShown);
       return;
     }
+
+    m_promptAt = hand;
 
     // The button that activates with this hand, from the next frame on
     m_promptIcon.show(hand);

@@ -15,6 +15,7 @@
 #include "vr_game_camera.h"
 #include "vr_game_state.h"
 #include "vr_game_timer.h"
+#include "vr_hand_activate_pick.h"
 #include "vr_hand_hud.h"
 #include "vr_hud_layers.h"
 #include "vr_menu_scenes.h"
@@ -236,6 +237,7 @@ namespace dxvk {
     Com<IDirect3DTexture9> m_promptTexture;
     VrWristGaze            m_wristGaze;
     VrPromptHand           m_promptHand;
+    VrHand                 m_promptAt = VrHand::Right;
     VrPromptIcon           m_promptIcon;
     bool   m_handHudAvailable = false;
     bool   m_promptAvailable  = false;
@@ -279,6 +281,9 @@ namespace dxvk {
 
     // The first-person weapon, drawn in the hand when it is installed
     std::unique_ptr<VrWeaponHand> m_weaponHand;
+
+    // The activation target, picked along the hands instead of the view
+    std::unique_ptr<VrHandActivatePick> m_handPick;
     VrVector3           m_eyePosition;
 
     // The sky, centred on the eye being drawn when it is installed
@@ -430,6 +435,8 @@ namespace dxvk {
 
     void updateWeaponHand(const VrInputState& input, VrGameStateKind state,
       const VrGameCameraPose& gameCamera);
+
+    void updateHandPick(const VrInputState& input, VrGameStateKind state);
 
     VrGameCameraPose handInGame(const VrControllerState& controller) const;
 

@@ -7,9 +7,11 @@ namespace dxvk {
   /**
    * \brief Finds what the player would activate
    *
-   * The game picks the reference under its crosshair, which follows the
-   * head, and the HUD's interaction prompt names it. Its position is where
-   * the prompt is anchored to the nearest hand, see findings/hud.md §9.
+   * The game picks the reference along the hands (VrHandActivatePick), or
+   * under its crosshair, which follows the head, when the hands are not
+   * tracked, and the HUD's interaction prompt names it. When the game
+   * picked along the view, the prompt is anchored to the hand nearest the
+   * reference's position, see findings/hud.md §9 and §10.
    *
    * Only used on the game's main thread.
    */

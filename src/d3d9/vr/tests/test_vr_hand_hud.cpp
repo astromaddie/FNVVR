@@ -253,3 +253,45 @@ TEST_CASE(prompt_hand_is_the_nearest_with_a_margin) {
   hands[uint32_t(VrHand::Left)].isActive = false;
   CHECK(!chooser.update(hands, { 1.0f, 1.0f, -1.0f }, hand));
 }
+
+
+TEST_CASE(activate_hand_is_the_one_that_finds_a_target) {
+  std::array<VrHandPickResult, VrHandCount> picks;
+  VrHandPickResult& left  = picks[uint32_t(VrHand::Left)];
+  VrHandPickResult& right = picks[uint32_t(VrHand::Right)];
+
+  left.tracked  = true;
+  right.tracked = true;
+
+  // Neither finds anything: the previous hand stays
+  CHECK(vrChooseActivateHand(picks, VrHand::Right) == VrHand::Right);
+  CHECK(vrChooseActivateHand(picks, VrHand::Left) == VrHand::Left);
+
+  // Only the left hand points at something
+  left.hit = true;
+  CHECK(vrChooseActivateHand(picks, VrHand::Right) == VrHand::Left);
+
+  // Both do: the previous hand keeps the target
+  right.hit = true;
+  CHECK(vrChooseActivateHand(picks, VrHand::Right) == VrHand::Right);
+  CHECK(vrChooseActivateHand(picks, VrHand::Left) == VrHand::Left);
+
+  // A ray that reaches its target wins over one that only passes near a body
+  right.fuzzy = true;
+  CHECK(vrChooseActivateHand(picks, VrHand::Right) == VrHand::Left);
+  left.fuzzy = true;
+  CHECK(vrChooseActivateHand(picks, VrHand::Right) == VrHand::Right);
+}
+
+
+TEST_CASE(activate_hand_is_a_tracked_one) {
+  std::array<VrHandPickResult, VrHandCount> picks;
+  picks[uint32_t(VrHand::Left)].tracked = true;
+
+  CHECK(vrChooseActivateHand(picks, VrHand::Right) == VrHand::Left);
+  CHECK(vrChooseActivateHand(picks, VrHand::Left) == VrHand::Left);
+
+  picks[uint32_t(VrHand::Left)].tracked  = false;
+  picks[uint32_t(VrHand::Right)].tracked = true;
+  CHECK(vrChooseActivateHand(picks, VrHand::Left) == VrHand::Right);
+}

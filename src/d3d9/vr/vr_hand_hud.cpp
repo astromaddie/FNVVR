@@ -183,6 +183,29 @@ namespace dxvk {
   }
 
 
+  VrHand vrChooseActivateHand(
+    const std::array<VrHandPickResult, VrHandCount>& picks,
+          VrHand                  previous) {
+    VrHand other = previous == VrHand::Right ? VrHand::Left : VrHand::Right;
+    const VrHandPickResult& kept      = picks[uint32_t(previous)];
+    const VrHandPickResult& candidate = picks[uint32_t(other)];
+
+    if (!candidate.tracked)
+      return previous;
+
+    if (!kept.tracked)
+      return other;
+
+    if (kept.hit != candidate.hit)
+      return candidate.hit ? other : previous;
+
+    if (kept.hit && kept.fuzzy != candidate.fuzzy)
+      return candidate.fuzzy ? previous : other;
+
+    return previous;
+  }
+
+
   bool VrPromptHand::update(
     const std::array<VrControllerState, VrHandCount>& controllers,
     const VrVector3&            target,
