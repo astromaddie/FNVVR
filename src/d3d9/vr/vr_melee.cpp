@@ -143,6 +143,8 @@ namespace dxvk {
 
 
   void VrSwingTracker::update(const VrVector3& tip, float dt) {
+    bool wasSwinging = swinging();
+
     m_speed = m_hasTip && dt > 0.0f
       ? vrLength(tip - m_tip) / (dt * VrGameUnitsPerMetre)
       : 0.0f;
@@ -151,23 +153,36 @@ namespace dxvk {
     m_hasTip = true;
 
     if (m_speed < m_config.hitSpeed) {
-      // The swing is over: the next one may hit the same targets again
       m_peakSpeed = 0.0f;
-      m_hits.clear();
     } else {
+      if (!wasSwinging)
+        m_swing++;
+
       m_peakSpeed = std::max(m_peakSpeed, m_speed);
     }
+
+    for (Hit& hit : m_hits)
+      hit.age += dt;
+
+    m_hits.erase(std::remove_if(m_hits.begin(), m_hits.end(),
+      [this] (const Hit& hit) { return !blocks(hit); }), m_hits.end());
   }
 
 
   bool VrSwingTracker::hasHit(const void* target) const {
-    return std::find(m_hits.begin(), m_hits.end(), target) != m_hits.end();
+    return std::any_of(m_hits.begin(), m_hits.end(),
+      [this, target] (const Hit& hit) { return hit.target == target && blocks(hit); });
   }
 
 
   void VrSwingTracker::addHit(const void* target) {
     if (!hasHit(target))
-      m_hits.push_back(target);
+      m_hits.push_back({ target, m_swing, 0.0f });
+  }
+
+
+  bool VrSwingTracker::blocks(const Hit& hit) const {
+    return (swinging() && hit.swing == m_swing) || hit.age < RehitTime;
   }
 
 

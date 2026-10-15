@@ -129,9 +129,10 @@ namespace dxvk {
     /**
      * \brief Blade of the melee weapon in the right hand
      *
-     * Measured from the weapon's bound each time the weapon is drawn in the
-     * hand, see vrMeasureBlade, and given in the hand's frame, so that it
-     * can be placed on the hand pose of a later frame.
+     * Measured from the weapon's bound the first time the weapon is drawn
+     * in the hand, see vrMeasureBlade, and given in the hand's frame, so
+     * that it can be placed on the hand pose of a later frame. The weapon
+     * is then held still in the hand, so the blade does not change.
      *
      * \returns The blade, or \c nullptr if the hand holds no one- or
      *    two-handed melee weapon
@@ -189,8 +190,17 @@ namespace dxvk {
     VrVector3        m_aimDirection;
     bool             m_hasAim = false;
 
-    // Blade of the melee weapon in the hand, in the hand's frame
+    // Melee weapon held still in the hand, see placeModel: the weapon node
+    // and form it was first drawn with, compared but not dereferenced, and
+    // its rotation relative to the hand
+    const uint8_t*   m_heldWeapon = nullptr;
+    const uint8_t*   m_heldForm   = nullptr;
+    VrGameRotation   m_heldRotation;
+
+    // Blade of the held melee weapon, in the hand's frame, and whether the
+    // weapon is in the hand this frame
     VrBlade          m_blade;
+    bool             m_bladeMeasured = false;
     bool             m_hasBlade = false;
 
     // Set while the game creates a projectile aimed with the hand, so that
@@ -200,9 +210,6 @@ namespace dxvk {
     // Weapon node whose barrel angle was last logged, compared but not
     // dereferenced
     const uint8_t*   m_loggedBarrelWeapon = nullptr;
-
-    // Weapon node whose blade was last logged, compared but not dereferenced
-    const uint8_t*   m_loggedBladeWeapon = nullptr;
 
     bool             m_loggedActive = false;
     bool             m_loggedFrame  = false;
@@ -266,7 +273,7 @@ namespace dxvk {
 
     void updateGrip(GripKind kind, bool canHold, const VrVector3& support);
 
-    void measureBlade(const uint8_t* player, const uint8_t* weapon, const VrGameCameraPose& hand);
+    void measureBlade(const uint8_t* weapon, const VrGameCameraPose& hand);
 
     void placeOtherHand(
             uint8_t*              root,
@@ -284,7 +291,11 @@ namespace dxvk {
 
     bool holdsWeapon(const uint8_t* player) const;
 
+    const uint8_t* weaponForm(const uint8_t* player) const;
+
     int8_t weaponType(const uint8_t* player) const;
+
+    static bool isMelee(const uint8_t* weapon);
 
     GripKind weaponGrip(const uint8_t* player) const;
 

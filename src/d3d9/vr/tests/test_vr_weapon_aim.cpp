@@ -103,6 +103,39 @@ TEST_CASE(rig_turns_with_hand_relative_to_camera) {
 }
 
 
+TEST_CASE(rig_holding_weapon_undoes_its_animation) {
+  VrGameCameraPose camera = northFacing({ });
+  VrGameCameraPose hand   = eastFacing({ 50.0f, 0.0f, 0.0f });
+  VrVector3 weapon = { 0.0f, 10.0f, 0.0f };
+
+  // Held as the game first animated it: the same as following the camera
+  VrGameRotation idle = rotationZ(0.3f);
+  VrGameRotation held = vrComputeHeldRotation(camera, idle);
+  VrGameTransform follow = vrComputeRigToHand(camera, weapon, hand);
+  VrGameTransform hold   = vrComputeRigHoldingWeapon(idle, weapon, held, hand);
+
+  for (uint32_t i = 0; i < 3; i++) {
+    for (uint32_t j = 0; j < 3; j++)
+      CHECK_NEAR(hold.rotate.m[i][j], follow.rotate.m[i][j], 1e-5);
+  }
+
+  checkVector(apply(hold, weapon), 50.0f, 0.0f, 0.0f);
+
+  // The game raises the weapon to block: it stays as it was in the hand
+  VrGameRotation raised = rotationX(0.8f) * idle;
+  hold = vrComputeRigHoldingWeapon(raised, weapon, held, hand);
+  VrGameRotation drawn = hold.rotate * raised;
+  VrGameRotation expected = follow.rotate * idle;
+
+  for (uint32_t i = 0; i < 3; i++) {
+    for (uint32_t j = 0; j < 3; j++)
+      CHECK_NEAR(drawn.m[i][j], expected.m[i][j], 1e-5);
+  }
+
+  checkVector(apply(hold, weapon), 50.0f, 0.0f, 0.0f);
+}
+
+
 TEST_CASE(aim_angles_follow_game_convention) {
   VrHeadAngles north = vrComputeAimAngles({ 0.0f, 2.0f, 0.0f });
   CHECK_NEAR(north.yaw, 0.0f, 1e-5);

@@ -179,21 +179,41 @@ TEST_CASE(melee_swing_power_from_peak_speed) {
 TEST_CASE(melee_swing_hits_each_target_once) {
   VrSwingConfig config;
   VrSwingTracker swing(config);
+  constexpr float T = VrSwingTracker::RehitTime;
   int a = 0;
   int b = 0;
 
-  swing.update({ 0.0f, 0.0f, 0.0f }, 0.01f);
-  swing.update({ 0.03f * M, 0.0f, 0.0f }, 0.01f);
+  // The tip moves along X at 3 m/s while x grows by 0.03 m every 10 ms
+  float x = 0.0f;
+  swing.update({ x, 0.0f, 0.0f }, 0.01f);
+  swing.update({ x += 0.03f * M, 0.0f, 0.0f }, 0.01f);
   swing.addHit(&a);
   CHECK(swing.hasHit(&a));
   CHECK(!swing.hasHit(&b));
 
-  swing.update({ 0.06f * M, 0.0f, 0.0f }, 0.01f);
+  // A swing that keeps going does not hit it again, however long it lasts
+  swing.update({ x += 3.0f * T * M, 0.0f, 0.0f }, T);
+  CHECK(swing.swinging());
   CHECK(swing.hasHit(&a));
 
-  // Once the blade slows down, the target can be hit again
-  swing.update({ 0.06f * M, 0.0f, 0.0f }, 0.01f);
+  // Once the swing is over, it can be hit again
+  swing.update({ x, 0.0f, 0.0f }, 0.01f);
+  CHECK(!swing.swinging());
   CHECK(!swing.hasHit(&a));
+
+  // Shaking the blade against a target: the next swing comes too soon
+  swing.update({ x += 0.03f * M, 0.0f, 0.0f }, 0.01f);
+  swing.addHit(&b);
+  swing.update({ x, 0.0f, 0.0f }, 0.01f);
+  swing.update({ x -= 0.03f * M, 0.0f, 0.0f }, 0.01f);
+  CHECK(swing.swinging());
+  CHECK(swing.hasHit(&b));
+
+  // A later swing can hit it again
+  swing.update({ x, 0.0f, 0.0f }, T);
+  swing.update({ x += 0.03f * M, 0.0f, 0.0f }, 0.01f);
+  CHECK(swing.swinging());
+  CHECK(!swing.hasHit(&b));
 
   swing.addHit(&b);
   swing.reset();

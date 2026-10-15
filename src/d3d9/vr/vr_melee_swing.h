@@ -23,7 +23,9 @@ namespace dxvk {
    * attack control, see findings/melee.md §9. Each frame, the blade is
    * swept from where it was on the previous frame to where the hand holds
    * it now, against capsules around the skeleton bones of the loaded
-   * actors. When it touches one while its tip moves at least at the hit
+   * actors. Both are taken relative to the player's body, so that only the
+   * hand's own motion sweeps and makes speed: running into an actor or
+   * turning with the weapon held still does not hit. When it touches one while its tip moves at least at the hit
    * speed, the game's Actor::CombatHit deals the hit as if the player's
    * swing animation had reached it: the game computes the damage,
    * criticals, sounds, reaction and crime. The blade held still across the
@@ -51,12 +53,15 @@ namespace dxvk {
      * \param [in] blade Blade of the weapon in the hand, or \c nullptr if
      *    the hand holds no melee weapon
      * \param [in] head Head pose in the game world
+     * \param [in] body Pose the eyes and hands are placed on in the game
+     *    world, which moves and turns with the player
      * \param [in] dt Time since the previous frame, in seconds
      */
     VrMeleeHit update(
       const VrGameCameraPose*     hand,
       const VrBlade*              blade,
       const VrGameCameraPose&     head,
+      const VrGameCameraPose&     body,
             float                 dt);
 
     /**
@@ -84,11 +89,12 @@ namespace dxvk {
     VrSwingTracker m_swing;
     VrGuardTracker m_guard;
 
+    // Blade on the previous frame, in the body's frame
     VrSegment      m_blade;
     bool           m_hasBlade = false;
 
     uint32_t       m_loggedHits = 0;
-    bool           m_loggedGuard = false;
+    uint32_t       m_loggedGuards = 0;
 
     uint32_t hitActors(uint8_t* player, const VrSegment& from, const VrSegment& to, bool power);
 

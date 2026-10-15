@@ -58,6 +58,37 @@ namespace dxvk {
     const VrGameCameraPose& hand);
 
   /**
+   * \brief Computes how to move the first-person model to hold the weapon still
+   *
+   * Unlike vrComputeRigToHand, what the game animates on the weapon is
+   * undone: the weapon keeps the same rotation relative to the hand, and
+   * the arms follow it. A melee weapon is swung by the hand, so the game's
+   * idle, walking and block animations must not turn it.
+   *
+   * \param [in] weaponRotation World rotation the game animated the weapon to
+   * \param [in] weaponPosition Position of the weapon node
+   * \param [in] held Weapon rotation relative to the hand's rotation
+   *    (vrCameraRotation), see vrComputeHeldRotation
+   * \param [in] hand Hand pose: forward is where it points
+   * \returns Transform to apply on the left of the model's root
+   */
+  VrGameTransform vrComputeRigHoldingWeapon(
+    const VrGameRotation&   weaponRotation,
+    const VrVector3&        weaponPosition,
+    const VrGameRotation&   held,
+    const VrGameCameraPose& hand);
+
+  /**
+   * \brief Rotation of the weapon relative to the hand under vrComputeRigToHand
+   *
+   * \param [in] gameCamera Camera the game placed the model for
+   * \param [in] weaponRotation World rotation the game animated the weapon to
+   */
+  VrGameRotation vrComputeHeldRotation(
+    const VrGameCameraPose& gameCamera,
+    const VrGameRotation&   weaponRotation);
+
+  /**
    * \brief Turns the hand holding the weapon towards the supporting hand
    *
    * With both hands on the weapon, the line between the hands decides

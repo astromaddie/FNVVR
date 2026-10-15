@@ -120,6 +120,7 @@ namespace dxvk {
     const VrGameCameraPose*     hand,
     const VrBlade*              blade,
     const VrGameCameraPose&     head,
+    const VrGameCameraPose&     body,
           float                 dt) {
     VrMeleeHit result;
 
@@ -132,25 +133,33 @@ namespace dxvk {
       return result;
     }
 
-    VrSegment previous = m_blade;
+    // Where the blade was on the previous frame, moved and turned with the
+    // body since
+    VrSegment previous = {
+      vrPointFromHand(body, m_blade.a),
+      vrPointFromHand(body, m_blade.b) };
     bool hadBlade = m_hasBlade;
 
-    m_blade    = vrBladeInWorld(*hand, *blade);
+    VrSegment current = vrBladeInWorld(*hand, *blade);
+
+    m_blade    = { vrPointToHand(body, current.a), vrPointToHand(body, current.b) };
     m_hasBlade = true;
 
-    m_swing.update(m_blade.b, dt);
-    m_guard.update(vrIsGuardPose(head, m_blade), m_swing.swinging(), dt);
+    bool wasGuarding = m_guard.guarding();
 
-    if (m_guard.guarding() && !m_loggedGuard) {
+    m_swing.update(m_blade.b, dt);
+    m_guard.update(vrIsGuardPose(head, current), m_swing.swinging(), dt);
+
+    if (m_guard.guarding() && !wasGuarding && m_loggedGuards < MaxLoggedHits) {
       Logger::info("VR: The melee weapon is held as a guard, the game's block control is held");
-      m_loggedGuard = true;
+      m_loggedGuards++;
     }
 
     if (!hadBlade || !m_swing.swinging())
       return result;
 
     result.power = m_swing.powerful();
-    result.count = hitActors(player, previous, m_blade, result.power);
+    result.count = hitActors(player, previous, current, result.power);
 
     if (result.count && m_loggedHits < MaxLoggedHits) {
       Logger::info(str::format("VR: Melee swing at ", m_swing.speed(), " m/s hit ", result.count,

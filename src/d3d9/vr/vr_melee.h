@@ -39,6 +39,8 @@ namespace dxvk {
   /**
    * \brief Turns a point from a hand's frame to the game world
    *
+   * Works for the frame of any pose, such as the player's body.
+   *
    * \param [in] hand Hand pose in the game world
    * \param [in] local Distances along the hand's forward, up and right axes
    */
@@ -97,12 +99,20 @@ namespace dxvk {
    * \brief Follows the swings of a blade, frame after frame
    *
    * A swing lasts while the blade's tip moves at least as fast as the hit
-   * speed. Each target is hit once per swing, and a swing is a power attack
-   * once its tip has reached the power speed.
+   * speed. Each target is hit once per swing, and not again before
+   * \ref RehitTime, so that shaking the blade against a target does not
+   * hit it at every shake. A swing is a power attack once its tip has
+   * reached the power speed.
+   *
+   * The tip is followed in the player's frame, not in the world, so that
+   * walking, running or turning with a still hand is no swing.
    */
   class VrSwingTracker {
 
   public:
+
+    /// Shortest time between two hits on the same target, in seconds
+    constexpr static float RehitTime = 0.4f;
 
     explicit VrSwingTracker(const VrSwingConfig& config)
     : m_config(config) { }
@@ -115,7 +125,7 @@ namespace dxvk {
     /**
      * \brief Moves the tip to where it is in this frame
      *
-     * \param [in] tip Tip position in the game world, in game units
+     * \param [in] tip Tip position in the player's frame, in game units
      * \param [in] dt Time since the previous frame, in seconds
      */
     void update(const VrVector3& tip, float dt);
@@ -142,7 +152,9 @@ namespace dxvk {
     }
 
     /**
-     * \brief Whether a target was hit during the current swing
+     * \brief Whether a target cannot be hit yet
+     *
+     * It was hit during the current swing, or less than \ref RehitTime ago.
      *
      * \param [in] target Compared, never dereferenced
      */
@@ -155,6 +167,12 @@ namespace dxvk {
 
   private:
 
+    struct Hit {
+      const void* target;
+      uint32_t    swing;
+      float       age;
+    };
+
     VrSwingConfig m_config;
 
     VrVector3 m_tip;
@@ -162,7 +180,12 @@ namespace dxvk {
     float     m_speed     = 0.0f;
     float     m_peakSpeed = 0.0f;
 
-    std::vector<const void*> m_hits;
+    // Counts the swings, to tell the hits of the current one
+    uint32_t  m_swing = 0;
+
+    std::vector<Hit> m_hits;
+
+    bool blocks(const Hit& hit) const;
 
   };
 

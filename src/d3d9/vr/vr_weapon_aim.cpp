@@ -74,6 +74,25 @@ namespace dxvk {
   }
 
 
+  VrGameTransform vrComputeRigHoldingWeapon(
+    const VrGameRotation&   weaponRotation,
+    const VrVector3&        weaponPosition,
+    const VrGameRotation&   held,
+    const VrGameCameraPose& hand) {
+    VrGameTransform result;
+    result.rotate    = vrCameraRotation(hand) * held * vrTranspose(weaponRotation);
+    result.translate = hand.position - result.rotate * weaponPosition;
+    return result;
+  }
+
+
+  VrGameRotation vrComputeHeldRotation(
+    const VrGameCameraPose& gameCamera,
+    const VrGameRotation&   weaponRotation) {
+    return vrTranspose(vrCameraRotation(gameCamera)) * weaponRotation;
+  }
+
+
   VrGameCameraPose vrComputeTwoHandedPose(
     const VrGameCameraPose& hand,
     const VrVector3&        support,
