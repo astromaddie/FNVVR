@@ -635,6 +635,29 @@ namespace dxvk {
     constexpr uint8_t   GetActivateRefPrologue[] = { 0x55, 0x8B, 0xEC, 0xE8, 0xB8, 0x3E, 0xDB, 0xFF, 0x85, 0xC0, 0x74, 0x21 };
 
     /**
+     * ViewCaster::FindActivateREFR, __thiscall on the ViewCaster at
+     * InterfaceManager+0x13C, stack arguments (const NiPoint3* origin,
+     * const NiPoint3* direction, float distance, float* hitDistance,
+     * bool* fuzzy), ret 0x14, returns the reference or null. It sweeps a
+     * sphere along the ray and takes the nearest thing to activate, or a
+     * body near the ray when the ray misses (fuzzy). Called once from
+     * InterfaceManager::RefreshActivateREFR (0x0070BC20), which passes its
+     * own origin and direction variables: the water pick and the pick
+     * location after the call use whatever they hold. See findings/hud.md §10.
+     */
+    constexpr uintptr_t FindActivateRef         = 0x00631D60;
+    constexpr uintptr_t FindActivateRefCallSite = 0x0070C130;
+
+    /**
+     * ViewCaster::pFuzzyBody, the rigid body of the last fuzzy pick, which
+     * the Z grab holds by. FindActivateREFR clears it first; checked
+     * against that store (mov dword ptr [0x011CC5EC], 0).
+     */
+    constexpr uintptr_t FuzzyPickBody        = 0x011CC5EC;
+    constexpr uintptr_t FuzzyPickBodyClear   = 0x00631DBF;
+    constexpr uint8_t   FuzzyPickBodyClearBytes[] = { 0xC7, 0x05, 0xEC, 0xC5, 0x1C, 0x01, 0x00, 0x00, 0x00, 0x00 };
+
+    /**
      * Button icon of the interaction prompt. The HUDMainMenu field holds the
      * Info group's justify_center_hotrect tile, whose "_xbox_button" trait
      * picks the gamepad button image (9 A, 11 X, ...). SetInfoForRef sets it
