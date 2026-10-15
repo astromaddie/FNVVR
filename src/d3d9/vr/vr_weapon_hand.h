@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 
+#include "vr_melee.h"
 #include "vr_weapon_aim.h"
 
 namespace dxvk {
@@ -82,13 +83,15 @@ namespace dxvk {
      *    it takes the weapon once it comes near it, and lets go on release
      * \param [in] mode What the model shows. \c hand is ignored unless it
      *    is VrFirstPersonMode::Hands.
+     * \param [in] dt Time since the previous frame, in seconds
      */
     void beginFrame(
       const VrGameCameraPose&     gameCamera,
       const VrGameCameraPose*     hand,
       const VrGameCameraPose*     otherHand,
             bool                  grip,
-            VrFirstPersonMode     mode);
+            VrFirstPersonMode     mode,
+            float                 dt);
 
     /**
      * \brief Called before the game places the first-person camera for an eye
@@ -123,6 +126,22 @@ namespace dxvk {
      */
     const VrVector3* pipBoyScreen() const {
       return m_hasPipBoyScreen ? &m_pipBoyScreen : nullptr;
+    }
+
+    /**
+     * \brief Blade of the melee weapon in the right hand
+     *
+     * Measured from the weapon's bound once the game has settled the weapon
+     * in its idle pose, see vrMeasureBlade and VrHeldRotationSettle, and
+     * given in the hand's frame, so
+     * that it can be placed on the hand pose of a later frame. The weapon
+     * is then held still in the hand, so the blade does not change.
+     *
+     * \returns The blade, or \c nullptr if the hand holds no one- or
+     *    two-handed melee weapon
+     */
+    const VrBlade* blade() const {
+      return m_hasBlade ? &m_blade : nullptr;
     }
 
   private:
@@ -173,6 +192,22 @@ namespace dxvk {
     VrVector3        m_muzzleOffset;
     VrVector3        m_aimDirection;
     bool             m_hasAim = false;
+
+    // Melee weapon held still in the hand, see placeModel: the weapon node
+    // and form it was drawn with, compared but not dereferenced, and its
+    // rotation relative to the hand once the game has settled it. The model
+    // is placed once per eye, the settling is followed once per frame.
+    const uint8_t*       m_heldWeapon = nullptr;
+    const uint8_t*       m_heldForm   = nullptr;
+    VrHeldRotationSettle m_heldSettle;
+    bool                 m_heldSettleUpdated = false;
+    float                m_frameTime = 0.0f;
+
+    // Blade of the held melee weapon, in the hand's frame, and whether the
+    // weapon is in the hand this frame
+    VrBlade          m_blade;
+    bool             m_bladeMeasured = false;
+    bool             m_hasBlade = false;
 
     // Set while the game creates a projectile aimed with the hand, so that
     // its auto-aim leaves it alone
@@ -244,6 +279,8 @@ namespace dxvk {
 
     void updateGrip(GripKind kind, bool canHold, const VrVector3& support);
 
+    void measureBlade(const uint8_t* weapon, const VrGameCameraPose& hand);
+
     void placeOtherHand(
             uint8_t*              root,
             uint8_t*              otherHand,
@@ -259,6 +296,12 @@ namespace dxvk {
     void showArms(uint8_t* root);
 
     bool holdsWeapon(const uint8_t* player) const;
+
+    const uint8_t* weaponForm(const uint8_t* player) const;
+
+    int8_t weaponType(const uint8_t* player) const;
+
+    static bool isMelee(const uint8_t* weapon);
 
     GripKind weaponGrip(const uint8_t* player) const;
 

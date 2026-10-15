@@ -63,6 +63,17 @@ namespace dxvk {
     }
 
     /**
+     * \brief Keeps the attack control from the game from the next frame on
+     *
+     * \param [in] hand Whether the melee weapon in the hand is swung with
+     *    the hand (see VrMeleeSwing), so that the game does not swing it
+     *    with its own animation as well
+     */
+    void setSwingsWithHand(bool hand) {
+      m_swingsWithHand = hand;
+    }
+
+    /**
      * \brief Clicks the menu's back button from the next frame on
      *
      * Closes the Pip-Boy the way the player's back button does: the game
@@ -131,6 +142,7 @@ namespace dxvk {
     VrInputContext              m_context = VrInputContext::Game;
 
     bool                        m_gameAim = false;
+    bool                        m_swingsWithHand = false;
     bool                        m_menuBack = false;
     bool                        m_menuBackDown = false;
 

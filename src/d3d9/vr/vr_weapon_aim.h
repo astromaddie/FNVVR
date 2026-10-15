@@ -58,6 +58,122 @@ namespace dxvk {
     const VrGameCameraPose& hand);
 
   /**
+   * \brief Computes how to move the first-person model to hold the weapon still
+   *
+   * Unlike vrComputeRigToHand, what the game animates on the weapon is
+   * undone: the weapon keeps the same rotation relative to the hand, and
+   * the arms follow it. A melee weapon is swung by the hand, so the game's
+   * idle, walking and block animations must not turn it.
+   *
+   * \param [in] weaponRotation World rotation the game animated the weapon to
+   * \param [in] weaponPosition Position of the weapon node
+   * \param [in] held Weapon rotation relative to the hand's rotation
+   *    (vrCameraRotation), see vrComputeHeldRotation
+   * \param [in] hand Hand pose: forward is where it points
+   * \returns Transform to apply on the left of the model's root
+   */
+  VrGameTransform vrComputeRigHoldingWeapon(
+    const VrGameRotation&   weaponRotation,
+    const VrVector3&        weaponPosition,
+    const VrGameRotation&   held,
+    const VrGameCameraPose& hand);
+
+  /**
+   * \brief Rotation of the weapon relative to the hand under vrComputeRigToHand
+   *
+   * \param [in] gameCamera Camera the game placed the model for
+   * \param [in] weaponRotation World rotation the game animated the weapon to
+   */
+  VrGameRotation vrComputeHeldRotation(
+    const VrGameCameraPose& gameCamera,
+    const VrGameRotation&   weaponRotation);
+
+  /**
+   * \brief Angle of the rotation that turns one rotation into another
+   *
+   * \returns The angle in radians, from 0 to pi
+   */
+  float vrRotationAngle(const VrGameRotation& a, const VrGameRotation& b);
+
+  /**
+   * \brief Waits for the game to settle a weapon before it is held still
+   *
+   * A melee weapon is held still in the hand at the angle the game gives it
+   * relative to its camera, see vrComputeHeldRotation. Right after a weapon
+   * is equipped, from the Pip-Boy for instance, the game still blends the
+   * arms from its previous animation for a while, so the angle of the first
+   * frame can be far from the idle one. The angle is taken once it has
+   * stayed within \ref Tolerance for \ref SettleTime, or after \ref MaxWait
+   * if the game keeps animating the weapon.
+   */
+  class VrHeldRotationSettle {
+
+  public:
+
+    /// How long the angle must stay steady, in seconds
+    constexpr static float SettleTime = 0.25f;
+
+    /// How far the angle may move while steady, in radians (3 degrees)
+    constexpr static float Tolerance = 0.0524f;
+
+    /// Longest wait before the angle is taken anyway, in seconds
+    constexpr static float MaxWait = 1.5f;
+
+    /**
+     * \brief Waits again, for a weapon that was just drawn
+     */
+    void reset();
+
+    /**
+     * \brief Follows the angle the game gives the weapon in a frame
+     *
+     * \param [in] held Weapon rotation relative to the game's camera, see
+     *    vrComputeHeldRotation
+     * \param [in] dt Time since the previous frame, in seconds
+     * \returns \c true in the frame the angle is taken
+     */
+    bool update(const VrGameRotation& held, float dt);
+
+    /**
+     * \brief Whether the angle is taken
+     */
+    bool settled() const {
+      return m_settled;
+    }
+
+    /**
+     * \brief Whether the angle was taken because the wait was too long
+     */
+    bool timedOut() const {
+      return m_settled && m_steadyTime < SettleTime;
+    }
+
+    /**
+     * \brief The angle taken, valid once settled
+     */
+    const VrGameRotation& rotation() const {
+      return m_rotation;
+    }
+
+    /**
+     * \brief Time waited since the weapon was drawn, in seconds
+     */
+    float waited() const {
+      return m_waited;
+    }
+
+  private:
+
+    VrGameRotation m_start;
+    VrGameRotation m_rotation;
+    bool           m_hasStart   = false;
+    bool           m_settled    = false;
+    float          m_steadyTime = 0.0f;
+    float          m_waited     = 0.0f;
+
+  };
+
+  /**
    * \brief Turns the hand holding the weapon towards the supporting hand
    *
    * With both hands on the weapon, the line between the hands decides

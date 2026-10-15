@@ -59,6 +59,9 @@ namespace dxvk {
     constexpr float BracedGripDistance = 0.2f * VrGameUnitsPerMetre;
 
     // Animation types of the game's weapons, see findings/weapon.md
+    constexpr int8_t WeaponTypeNone         = -1;
+    constexpr int8_t WeaponTypeOneHandMelee = 1;
+    constexpr int8_t WeaponTypeTwoHandMelee = 2;
     constexpr int8_t WeaponTypePistol       = 3;
     constexpr int8_t WeaponTypePistolEnergy = 4;
     constexpr int8_t WeaponTypeRifle        = 5;
@@ -426,9 +429,13 @@ namespace dxvk {
     const VrGameCameraPose*     hand,
     const VrGameCameraPose*     otherHand,
           bool                  grip,
-          VrFirstPersonMode     mode) {
+          VrFirstPersonMode     mode,
+          float                 dt) {
     if (mode != VrFirstPersonMode::Hands)
       hand = nullptr;
+
+    m_frameTime         = dt;
+    m_heldSettleUpdated = false;
 
     m_gameCamera   = gameCamera;
     m_hasHand      = hand != nullptr;
@@ -652,6 +659,7 @@ namespace dxvk {
 
     if (m_mode == VrFirstPersonMode::Hidden) {
       m_hasAim    = false;
+      m_hasBlade  = false;
       m_twoHanded = false;
       m_braced    = false;
       hideModel(root);
@@ -664,6 +672,7 @@ namespace dxvk {
 
     if (m_mode == VrFirstPersonMode::PipBoy) {
       m_hasAim    = false;
+      m_hasBlade  = false;
       m_twoHanded = false;
       m_braced    = false;
       placePipBoyArm(root, shift, updateData);
@@ -675,6 +684,7 @@ namespace dxvk {
 
     if (!weapon) {
       m_hasAim    = false;
+      m_hasBlade  = false;
       m_twoHanded = false;
       m_braced    = false;
       showArms(root);
@@ -692,7 +702,38 @@ namespace dxvk {
     VrGameCameraPose hand = m_hand;
     hand.position = hand.position - shift;
 
-    VrGameTransform rig = vrComputeRigToHand(m_gameCamera, drawnWeapon, hand);
+    // A melee weapon is swung by the hand: it keeps the angle in the hand
+    // that the game gives it in its idle pose, whatever the game animates
+    // on it later, such as blocking. Until the game has settled a weapon
+    // just drawn, it follows the game's animation as other weapons do.
+    const uint8_t* form = weaponForm(object);
+    bool melee = isMelee(form);
+    VrGameRotation weaponRotation = readRotation(weapon, VrGame::ObjectWorldRotation);
+
+    if (!melee)
+      m_heldForm = nullptr;
+
+    if (melee && (weapon != m_heldWeapon || form != m_heldForm)) {
+      m_heldWeapon = weapon;
+      m_heldForm   = form;
+      m_heldSettle.reset();
+      m_bladeMeasured = false;
+    }
+
+    if (melee && !m_heldSettleUpdated) {
+      m_heldSettleUpdated = true;
+
+      if (m_heldSettle.update(vrComputeHeldRotation(m_gameCamera, weaponRotation), m_frameTime)) {
+        Logger::info(str::format("VR: The melee weapon is held still in the hand after ", m_heldSettle.waited(), " s",
+          m_heldSettle.timedOut() ? ", the game kept animating it" : ", once the game settled it"));
+      }
+    }
+
+    bool held = melee && m_heldSettle.settled();
+
+    VrGameTransform rig = held
+      ? vrComputeRigHoldingWeapon(weaponRotation, drawnWeapon, m_heldSettle.rotation(), hand)
+      : vrComputeRigToHand(m_gameCamera, drawnWeapon, hand);
 
     // With both hands on the weapon, it points along the line between them
     VrVector3 support = rig.rotate * (drawnHand - drawnWeapon);
@@ -720,6 +761,12 @@ namespace dxvk {
 
     if (forearm && m_hasOtherHand && !m_twoHanded && !m_braced)
       placeOtherHand(root, otherHand, shift, updateData);
+
+    // Held still, the blade does not move in the hand
+    if (held && !m_bladeMeasured)
+      measureBlade(weapon, hand);
+
+    m_hasBlade = held && m_bladeMeasured;
 
     hideArms(root, false);
 
@@ -1097,22 +1144,49 @@ namespace dxvk {
   }
 
 
-  VrWeaponHand::GripKind VrWeaponHand::weaponGrip(const uint8_t* player) const {
+  void VrWeaponHand::measureBlade(const uint8_t* weapon, const VrGameCameraPose& hand) {
+    auto bound = readField<const uint8_t*>(weapon, VrGame::ObjectWorldBound);
+
+    // The hand and the weapon's bound are both where the model is drawn
+    m_bladeMeasured = bound
+      && vrMeasureBlade(hand, readVector(bound, 0), readField<float>(bound, sizeof(VrVector3)), m_blade);
+
+    if (m_bladeMeasured) {
+      Logger::info(str::format("VR: Melee weapon blade ", vrLength(m_blade.tip - m_blade.base) / VrGameUnitsPerMetre,
+        " m long, tip at ", m_blade.tip.x, ", ", m_blade.tip.y, ", ", m_blade.tip.z, " units in the hand's frame"));
+    }
+  }
+
+
+  const uint8_t* VrWeaponHand::weaponForm(const uint8_t* player) const {
     auto process = readField<uint8_t*>(player, VrGame::ActorProcess);
 
     if (!process)
-      return GripKind::None;
+      return nullptr;
 
     auto vtable = readField<const uint8_t*>(process, 0);
     auto getWeaponInfo = reinterpret_cast<GetWeaponInfoFn>(readField<uintptr_t>(vtable, VrGame::ProcessWeaponInfoSlot));
-    auto entry  = getWeaponInfo(process, nullptr);
-    auto weapon = entry ? field<uint8_t*>(entry, VrGame::InventoryEntryForm) : nullptr;
+    auto entry = getWeaponInfo(process, nullptr);
 
-    if (!weapon)
-      return GripKind::None;
+    return entry ? field<uint8_t*>(entry, VrGame::InventoryEntryForm) : nullptr;
+  }
 
+
+  int8_t VrWeaponHand::weaponType(const uint8_t* player) const {
+    const uint8_t* weapon = weaponForm(player);
+    return weapon ? readField<int8_t>(weapon, VrGame::WeaponAnimationType) : WeaponTypeNone;
+  }
+
+
+  bool VrWeaponHand::isMelee(const uint8_t* weapon) {
+    int8_t type = weapon ? readField<int8_t>(weapon, VrGame::WeaponAnimationType) : WeaponTypeNone;
+    return type == WeaponTypeOneHandMelee || type == WeaponTypeTwoHandMelee;
+  }
+
+
+  VrWeaponHand::GripKind VrWeaponHand::weaponGrip(const uint8_t* player) const {
     // Melee, thrown and placed weapons are left to the game's animation
-    int8_t type = readField<int8_t>(weapon, VrGame::WeaponAnimationType);
+    int8_t type = weaponType(player);
 
     if (type == WeaponTypePistol || type == WeaponTypePistolEnergy)
       return GripKind::Braced;

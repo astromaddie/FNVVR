@@ -64,6 +64,12 @@ namespace dxvk {
     // Pip-Boy control cannot reopen it after the gaze pressed back
     constexpr uint32_t PipBoyBackReleaseFrames = 3;
 
+    // Pulse on the right controller when a melee swing hits, stronger for a
+    // power attack, with its duration in nanoseconds
+    constexpr float   MeleeHitHaptic      = 0.5f;
+    constexpr float   MeleePowerHaptic    = 1.0f;
+    constexpr int64_t MeleeHapticDuration = 40'000'000;
+
     /**
      * \brief Checks whether a state has no 3D scene and is shown on the panel
      */
@@ -125,7 +131,8 @@ namespace dxvk {
           bool                  weaponInHand,
     const VrGameTimerConfig&    timer,
     const VrRenderPassConfig&   passes,
-          bool                  developerMode) {
+          bool                  developerMode,
+    const VrSwingConfig&        swing) {
     if (g_stereoRenderer)
       return nullptr;
 
@@ -194,6 +201,13 @@ namespace dxvk {
 
     if (weaponInHand)
       renderer->m_weaponHand = VrWeaponHand::install();
+
+    // The blade is measured where the weapon is drawn in the hand
+    if (renderer->m_weaponHand)
+      renderer->m_meleeSwing = VrMeleeSwing::install(swing);
+
+    if (!renderer->m_meleeSwing)
+      Logger::info("VR: Melee weapons are swung by the game's animation, as with a gamepad");
 
     renderer->m_handPick = VrHandActivatePick::install();
 
@@ -423,9 +437,12 @@ namespace dxvk {
     }
 
     // The weapon hand decided on the previous frame whether the game aims,
-    // and the gaze whether the Pip-Boy closes
+    // the melee guard whether it blocks (the same control), and the gaze
+    // whether the Pip-Boy closes
     if (m_weaponHand)
-      m_controls.setGameAim(m_weaponHand->wantsGameAim());
+      m_controls.setGameAim(m_weaponHand->wantsGameAim() || (m_meleeSwing && m_meleeSwing->wantsBlock()));
+
+    m_controls.setSwingsWithHand(m_meleeSwing && m_meleeSwing->swingsWithHand());
 
     m_controls.setMenuBack(m_closePipBoy);
 
@@ -459,7 +476,8 @@ namespace dxvk {
 
     // The game turned its camera with the head already
     m_controls.adjustCamera(m_gameCameraPose);
-    updateWeaponHand(input, state, modelCamera);
+    updateWeaponHand(input, state, modelCamera, dt);
+    updateMeleeSwing(input, state, dt);
     updateHandPick(input, state);
     updatePipBoyGaze(input, state, dt);
 
@@ -713,7 +731,8 @@ namespace dxvk {
   void VrStereoRenderer::updateWeaponHand(
     const VrInputState&         input,
           VrGameStateKind       state,
-    const VrGameCameraPose&     gameCamera) {
+    const VrGameCameraPose&     gameCamera,
+          float                 dt) {
     if (!m_weaponHand)
       return;
 
@@ -722,7 +741,7 @@ namespace dxvk {
 
     if (state == VrGameStateKind::PipBoy && m_hasReference && left.isActive) {
       VrGameCameraPose otherHand = handInGame(left);
-      m_weaponHand->beginFrame(gameCamera, nullptr, &otherHand, false, VrFirstPersonMode::PipBoy);
+      m_weaponHand->beginFrame(gameCamera, nullptr, &otherHand, false, VrFirstPersonMode::PipBoy, dt);
       return;
     }
 
@@ -731,12 +750,12 @@ namespace dxvk {
     // and shows the weapon as the game does.
     if (state == VrGameStateKind::Menu && input.hasActions
      && !*reinterpret_cast<const uint32_t*>(VrGame::VatsCameraState)) {
-      m_weaponHand->beginFrame(gameCamera, nullptr, nullptr, false, VrFirstPersonMode::Hidden);
+      m_weaponHand->beginFrame(gameCamera, nullptr, nullptr, false, VrFirstPersonMode::Hidden, dt);
       return;
     }
 
     if (state != VrGameStateKind::InGame || !m_hasReference || !right.isActive) {
-      m_weaponHand->beginFrame(gameCamera, nullptr, nullptr, false, VrFirstPersonMode::Hands);
+      m_weaponHand->beginFrame(gameCamera, nullptr, nullptr, false, VrFirstPersonMode::Hands, dt);
       return;
     }
 
@@ -744,7 +763,32 @@ namespace dxvk {
     VrGameCameraPose otherHand = handInGame(left);
 
     m_weaponHand->beginFrame(gameCamera, &hand, left.isActive ? &otherHand : nullptr,
-      input.hasActions && input.actions.isPressed(VrAction::TwoHandGrip), VrFirstPersonMode::Hands);
+      input.hasActions && input.actions.isPressed(VrAction::TwoHandGrip), VrFirstPersonMode::Hands, dt);
+  }
+
+
+  void VrStereoRenderer::updateMeleeSwing(
+    const VrInputState&         input,
+          VrGameStateKind       state,
+          float                 dt) {
+    if (!m_meleeSwing)
+      return;
+
+    const VrControllerState& right = input.controllers[uint32_t(VrHand::Right)];
+
+    if (state != VrGameStateKind::InGame || !m_hasReference || !right.isActive || !input.isHeadTracked) {
+      m_meleeSwing->update(nullptr, nullptr, m_gameCameraPose, m_gameCameraPose, dt);
+      return;
+    }
+
+    VrGameCameraPose hand = handInGame(right);
+    VrGameCameraPose head = vrComputeEyeCameraPose(m_gameCameraPose,
+      vrComputeEyeInReference(m_reference, input.headPose), VrGameUnitsPerMetre);
+
+    VrMeleeHit hit = m_meleeSwing->update(&hand, m_weaponHand->blade(), head, m_gameCameraPose, dt);
+
+    if (hit.count)
+      m_backend.applyHaptic(VrHand::Right, hit.power ? MeleePowerHaptic : MeleeHitHaptic, MeleeHapticDuration);
   }
 
 

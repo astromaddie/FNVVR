@@ -1055,6 +1055,33 @@ namespace dxvk {
     constexpr uintptr_t InventoryObjectCount       = 0x004C8F30;
     constexpr uint8_t   InventoryObjectCountPrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x14, 0x89, 0x4D, 0xF0, 0xC7, 0x45, 0xF4 };
 
+    /**
+     * Melee hits, see findings/melee.md §8. Actor::CombatHit(target, power,
+     * projectile, meleeEffect) is __thiscall with four stack arguments,
+     * the bytes read as bytes (ret 0x10); Actor::MeleeAttack calls it with
+     * no projectile when the swing animation reaches its Hit key. Checked
+     * by its prologue (SEH frame with handler 0x00F14D56).
+     */
+    constexpr uintptr_t CombatHit = 0x00899CB0;
+    constexpr uint8_t   CombatHitPrologue[] = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x56, 0x4D, 0xF1, 0x00,
+                                                0x64, 0xA1, 0x00, 0x00, 0x00, 0x00 };
+
+    /**
+     * ReferenceProcessLists (0x011E0E80, as CombatUtilities::GetFacingTarget
+     * reads it): its process array at +4 starts with a NiTArray of actors
+     * (data pointer at +4) and holds the end index of each process level at
+     * +0x20 + level * 4. High-process actors come first, up to the end of
+     * level 0. The player is not in it.
+     */
+    constexpr uintptr_t ProcessActors      = 0x011E0E88;
+    constexpr uintptr_t ProcessHighEnd     = 0x011E0EA4;
+
+    /**
+     * TESObjectREFR::IsActor vtable slot, __thiscall without arguments,
+     * returns a bool (called by GetFacingTarget on each process entry).
+     */
+    constexpr uintptr_t RefIsActorSlot     = 0x100;
+
   }
 
 }
