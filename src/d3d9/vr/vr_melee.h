@@ -111,8 +111,9 @@ namespace dxvk {
 
   public:
 
-    /// Shortest time between two hits on the same target, in seconds
-    constexpr static float RehitTime = 0.4f;
+    /// Shortest time between two hits on the same target, in seconds (at
+    /// most three hits per second)
+    constexpr static float RehitTime = 1.0f / 3.0f;
 
     explicit VrSwingTracker(const VrSwingConfig& config)
     : m_config(config) { }
