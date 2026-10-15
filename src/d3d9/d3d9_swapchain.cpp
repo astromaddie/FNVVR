@@ -127,7 +127,9 @@ namespace dxvk {
       return D3D_OK;
 
     // The VR layer draws a frame per eye and presents only the last one
-    if (VrSystem::onPresent(this))
+    VrPresentMode vrPresent = VrSystem::onPresent(this);
+
+    if (vrPresent == VrPresentMode::Drop)
       return D3D_OK;
 
     uint32_t presentInterval = m_presentParams.PresentationInterval;
@@ -138,6 +140,9 @@ namespace dxvk {
     presentInterval = std::max(presentInterval, 1u);
 
     if (presentInterval == D3DPRESENT_INTERVAL_IMMEDIATE || (dwFlags & D3DPRESENT_FORCEIMMEDIATE))
+      presentInterval = 0;
+
+    if (vrPresent == VrPresentMode::Immediate)
       presentInterval = 0;
 
     auto options = m_parent->GetOptions();
