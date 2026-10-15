@@ -62,6 +62,9 @@ namespace dxvk {
     if (m_menuBackDown)
       actions.setPressed(VrAction::MenuBack, true);
 
+    if (m_swingsWithHand && m_context == VrInputContext::Game)
+      actions.setPressed(VrAction::Attack, false);
+
     VrPointerState pointer = updatePointer(input, actions, menuPanel, dt);
     VrGamepadHook::setCursorMode(pointer.cursorActive);
     VrMenuCursor::update(pointer);

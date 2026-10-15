@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 
+#include "vr_melee.h"
 #include "vr_weapon_aim.h"
 
 namespace dxvk {
@@ -125,6 +126,20 @@ namespace dxvk {
       return m_hasPipBoyScreen ? &m_pipBoyScreen : nullptr;
     }
 
+    /**
+     * \brief Blade of the melee weapon in the right hand
+     *
+     * Measured from the weapon's bound each time the weapon is drawn in the
+     * hand, see vrMeasureBlade, and given in the hand's frame, so that it
+     * can be placed on the hand pose of a later frame.
+     *
+     * \returns The blade, or \c nullptr if the hand holds no one- or
+     *    two-handed melee weapon
+     */
+    const VrBlade* blade() const {
+      return m_hasBlade ? &m_blade : nullptr;
+    }
+
   private:
 
     enum class GripKind {
@@ -174,6 +189,10 @@ namespace dxvk {
     VrVector3        m_aimDirection;
     bool             m_hasAim = false;
 
+    // Blade of the melee weapon in the hand, in the hand's frame
+    VrBlade          m_blade;
+    bool             m_hasBlade = false;
+
     // Set while the game creates a projectile aimed with the hand, so that
     // its auto-aim leaves it alone
     bool             m_handAimedShot = false;
@@ -181,6 +200,9 @@ namespace dxvk {
     // Weapon node whose barrel angle was last logged, compared but not
     // dereferenced
     const uint8_t*   m_loggedBarrelWeapon = nullptr;
+
+    // Weapon node whose blade was last logged, compared but not dereferenced
+    const uint8_t*   m_loggedBladeWeapon = nullptr;
 
     bool             m_loggedActive = false;
     bool             m_loggedFrame  = false;
@@ -244,6 +266,8 @@ namespace dxvk {
 
     void updateGrip(GripKind kind, bool canHold, const VrVector3& support);
 
+    void measureBlade(const uint8_t* player, const uint8_t* weapon, const VrGameCameraPose& hand);
+
     void placeOtherHand(
             uint8_t*              root,
             uint8_t*              otherHand,
@@ -259,6 +283,8 @@ namespace dxvk {
     void showArms(uint8_t* root);
 
     bool holdsWeapon(const uint8_t* player) const;
+
+    int8_t weaponType(const uint8_t* player) const;
 
     GripKind weaponGrip(const uint8_t* player) const;
 

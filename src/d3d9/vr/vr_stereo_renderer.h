@@ -19,6 +19,7 @@
 #include "vr_hand_activate_pick.h"
 #include "vr_hand_hud.h"
 #include "vr_hud_layers.h"
+#include "vr_melee_swing.h"
 #include "vr_menu_scenes.h"
 #include "vr_pipboy_animation.h"
 #include "vr_weapon_drawn.h"
@@ -130,6 +131,7 @@ namespace dxvk {
      * \param [in] timer How the game's frame timer is driven
      * \param [in] passes Which render passes both eyes share
      * \param [in] developerMode Give god mode and every playable weapon after each loading screen
+     * \param [in] swing How fast a melee weapon is swung to hit
      * \returns \c nullptr if the executable is not the supported version
      */
     static std::unique_ptr<VrStereoRenderer> install(
@@ -141,7 +143,8 @@ namespace dxvk {
             bool                  weaponInHand,
       const VrGameTimerConfig&    timer,
       const VrRenderPassConfig&   passes,
-            bool                  developerMode);
+            bool                  developerMode,
+      const VrSwingConfig&        swing);
 
     /**
      * \brief Called when the game presents, before the image is shown
@@ -284,6 +287,9 @@ namespace dxvk {
 
     // The first-person weapon, drawn in the hand when it is installed
     std::unique_ptr<VrWeaponHand> m_weaponHand;
+
+    // Hits dealt by swinging the melee weapon in the hand
+    std::unique_ptr<VrMeleeSwing> m_meleeSwing;
 
     // The activation target, picked along the hands instead of the view
     std::unique_ptr<VrHandActivatePick> m_handPick;
@@ -445,6 +451,8 @@ namespace dxvk {
       const VrGameCameraPose& gameCamera);
 
     void updateHandPick(const VrInputState& input, VrGameStateKind state);
+
+    void updateMeleeSwing(const VrInputState& input, VrGameStateKind state, float dt);
 
     VrGameCameraPose handInGame(const VrControllerState& controller) const;
 

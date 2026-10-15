@@ -59,6 +59,9 @@ namespace dxvk {
     constexpr float BracedGripDistance = 0.2f * VrGameUnitsPerMetre;
 
     // Animation types of the game's weapons, see findings/weapon.md
+    constexpr int8_t WeaponTypeNone         = -1;
+    constexpr int8_t WeaponTypeOneHandMelee = 1;
+    constexpr int8_t WeaponTypeTwoHandMelee = 2;
     constexpr int8_t WeaponTypePistol       = 3;
     constexpr int8_t WeaponTypePistolEnergy = 4;
     constexpr int8_t WeaponTypeRifle        = 5;
@@ -652,6 +655,7 @@ namespace dxvk {
 
     if (m_mode == VrFirstPersonMode::Hidden) {
       m_hasAim    = false;
+      m_hasBlade  = false;
       m_twoHanded = false;
       m_braced    = false;
       hideModel(root);
@@ -664,6 +668,7 @@ namespace dxvk {
 
     if (m_mode == VrFirstPersonMode::PipBoy) {
       m_hasAim    = false;
+      m_hasBlade  = false;
       m_twoHanded = false;
       m_braced    = false;
       placePipBoyArm(root, shift, updateData);
@@ -675,6 +680,7 @@ namespace dxvk {
 
     if (!weapon) {
       m_hasAim    = false;
+      m_hasBlade  = false;
       m_twoHanded = false;
       m_braced    = false;
       showArms(root);
@@ -720,6 +726,8 @@ namespace dxvk {
 
     if (forearm && m_hasOtherHand && !m_twoHanded && !m_braced)
       placeOtherHand(root, otherHand, shift, updateData);
+
+    measureBlade(object, weapon, hand);
 
     hideArms(root, false);
 
@@ -1097,22 +1105,40 @@ namespace dxvk {
   }
 
 
-  VrWeaponHand::GripKind VrWeaponHand::weaponGrip(const uint8_t* player) const {
+  void VrWeaponHand::measureBlade(const uint8_t* player, const uint8_t* weapon, const VrGameCameraPose& hand) {
+    int8_t type = weaponType(player);
+    auto bound  = readField<const uint8_t*>(weapon, VrGame::ObjectWorldBound);
+
+    // The hand and the weapon's bound are both where the model is drawn
+    m_hasBlade = (type == WeaponTypeOneHandMelee || type == WeaponTypeTwoHandMelee) && bound
+      && vrMeasureBlade(hand, readVector(bound, 0), readField<float>(bound, sizeof(VrVector3)), m_blade);
+
+    if (m_hasBlade && weapon != m_loggedBladeWeapon) {
+      Logger::info(str::format("VR: Melee weapon blade ", vrLength(m_blade.tip - m_blade.base) / VrGameUnitsPerMetre,
+        " m long, tip at ", m_blade.tip.x, ", ", m_blade.tip.y, ", ", m_blade.tip.z, " units in the hand's frame"));
+      m_loggedBladeWeapon = weapon;
+    }
+  }
+
+
+  int8_t VrWeaponHand::weaponType(const uint8_t* player) const {
     auto process = readField<uint8_t*>(player, VrGame::ActorProcess);
 
     if (!process)
-      return GripKind::None;
+      return WeaponTypeNone;
 
     auto vtable = readField<const uint8_t*>(process, 0);
     auto getWeaponInfo = reinterpret_cast<GetWeaponInfoFn>(readField<uintptr_t>(vtable, VrGame::ProcessWeaponInfoSlot));
     auto entry  = getWeaponInfo(process, nullptr);
     auto weapon = entry ? field<uint8_t*>(entry, VrGame::InventoryEntryForm) : nullptr;
 
-    if (!weapon)
-      return GripKind::None;
+    return weapon ? readField<int8_t>(weapon, VrGame::WeaponAnimationType) : WeaponTypeNone;
+  }
 
+
+  VrWeaponHand::GripKind VrWeaponHand::weaponGrip(const uint8_t* player) const {
     // Melee, thrown and placed weapons are left to the game's animation
-    int8_t type = readField<int8_t>(weapon, VrGame::WeaponAnimationType);
+    int8_t type = weaponType(player);
 
     if (type == WeaponTypePistol || type == WeaponTypePistolEnergy)
       return GripKind::Braced;
