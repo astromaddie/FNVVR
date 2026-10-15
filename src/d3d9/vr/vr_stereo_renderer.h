@@ -32,6 +32,20 @@
 namespace dxvk {
 
   /**
+   * \brief What a swap chain does with a present
+   */
+  enum class VrPresentMode {
+    /// Present as the game asked
+    Game,
+    /// Present without waiting for the window's vertical blank. The VR
+    /// runtime already paced the frame, and waiting for the desktop
+    /// display would cap the game at the monitor's refresh rate.
+    Immediate,
+    /// Drop the present (first eye's frame)
+    Drop,
+  };
+
+  /**
    * \brief Where the panels are placed
    *
    * Set by \c d3d9.vrPanelDistance, \c d3d9.vrPanelWidth,
@@ -137,10 +151,13 @@ namespace dxvk {
      * gamepad to let the player skip the movie. The controllers are read
      * here for those frames, see \ref updateBlockedInput.
      *
+     * Frames drawn by the game's main loop were paced by the runtime, so
+     * they are presented without waiting for the desktop display.
+     *
      * \param [in] swapchain Swap chain being presented
-     * \returns \c true if the present must be dropped
+     * \returns What the swap chain does with the present
      */
-    bool onPresent(IDirect3DSwapChain9* swapchain);
+    VrPresentMode onPresent(IDirect3DSwapChain9* swapchain);
 
     /**
      * \brief Changes how the turning stick turns
@@ -306,6 +323,9 @@ namespace dxvk {
     // comes from a loop of the game that blocks the main loop.
     DWORD  m_mainThread    = 0;
     bool   m_swapped       = false;
+    // Whether the runtime paced the current frame of the main loop
+    bool   m_paced         = false;
+    bool   m_loggedImmediatePresent = false;
     high_resolution_clock::time_point m_blockedInputTime;
     bool   m_blockedInput  = false;
     bool   m_loggedBlockedInput = false;

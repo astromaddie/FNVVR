@@ -93,6 +93,9 @@ namespace dxvk {
    */
   struct VrFrameTiming {
     bool     shouldRender         = false;
+    /// The wait blocked until the display wanted the frame, so the frame
+    /// needs no other pacing (false for the emulator's virtual time)
+    bool     paced                = false;
     int64_t  predictedDisplayTime = 0;
     int64_t  predictedPeriod      = 0;
   };

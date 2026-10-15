@@ -85,6 +85,7 @@ namespace dxvk {
       sleepUntilDisplayTime(m_displayTime);
 
     timing.shouldRender         = true;
+    timing.paced                = m_config.realtime;
     timing.predictedDisplayTime = m_displayTime;
     timing.predictedPeriod      = m_periodNs;
     return timing;

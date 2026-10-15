@@ -757,6 +757,7 @@ namespace dxvk {
     // The runtime predicts the poses itself, so the display time is only a
     // frame counter for the callers
     timing.shouldRender         = m_runtime->compositor->CanRenderScene();
+    timing.paced                = true;
     timing.predictedDisplayTime = ++m_frameCounter;
     return timing;
   }
