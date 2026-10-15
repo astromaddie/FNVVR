@@ -28,8 +28,11 @@ namespace dxvk {
    * turning with the weapon held still does not hit. When it touches one while its tip moves at least at the hit
    * speed, the game's Actor::CombatHit deals the hit as if the player's
    * swing animation had reached it: the game computes the damage,
-   * criticals, sounds, reaction and crime. The blade held still across the
-   * front of the head is a guard, which holds the game's block control.
+   * criticals, sounds, reaction and crime. The limb it hits is the one the
+   * blade touched, not the one the game would pick along the view, and the
+   * blood and reaction follow the blade's contact and motion. The blade held
+   * still across the front of the head is a guard, which holds the game's
+   * block control.
    *
    * Only used on the game's main thread.
    */
@@ -86,8 +89,23 @@ namespace dxvk {
     explicit VrMeleeSwing(const VrSwingConfig& config)
     : m_swing(config) { }
 
+    /**
+     * \brief Where the blade touched the actor being hit
+     */
+    struct Contact {
+      uintptr_t  actor = 0;
+      uintptr_t  bone  = 0;
+      float      time  = 0.0f;
+      float      distance = 0.0f;
+      VrBladeHit hit;
+    };
+
     VrSwingTracker m_swing;
     VrGuardTracker m_guard;
+
+    // Contact of the hit being dealt, while Actor::CombatHit runs
+    Contact        m_contact;
+    bool           m_dealing = false;
 
     // Blade on the previous frame, in the body's frame
     VrSegment      m_blade;
@@ -95,10 +113,17 @@ namespace dxvk {
 
     uint32_t       m_loggedHits = 0;
     uint32_t       m_loggedGuards = 0;
+    uint32_t       m_loggedLimbs = 0;
 
     uint32_t hitActors(uint8_t* player, const VrSegment& from, const VrSegment& to, bool power);
 
-    bool touches(uintptr_t actor, const VrSegment& from, const VrSegment& to) const;
+    bool findContact(uintptr_t actor, const VrSegment& from, const VrSegment& to, Contact& contact) const;
+
+    bool setTargetedLimb(uintptr_t hitData, void* projectile);
+
+    int32_t limbOfContact(uintptr_t bodyParts) const;
+
+    static void __fastcall setTargetedLimbHook(uintptr_t hitData, void* unused, void* projectile);
 
   };
 
