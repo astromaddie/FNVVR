@@ -1092,6 +1092,61 @@ namespace dxvk {
      */
     constexpr uintptr_t RefIsActorSlot     = 0x100;
 
+    /**
+     * Hit limb, see findings/melee.md §10. HitData::SetTargetedLimb
+     * (Projectile*), __thiscall, ret 4, picks the limb of a melee hit along
+     * the attacker's view; the non-projectile HitData::InitializeHitData
+     * calls it once, after the damage, critical and armour are computed.
+     * The callees it uses are checked by their calls inside it.
+     */
+    constexpr uintptr_t SetTargetedLimb         = 0x009B6620;
+    constexpr uintptr_t SetTargetedLimbCallSite = 0x009B562D;
+
+    /// Actor::GetActorBase, __thiscall without arguments
+    constexpr uintptr_t ActorGetBase            = 0x004181E0;
+    constexpr uintptr_t ActorGetBaseCallSite    = 0x009B6693;
+    /// TESActorBase::GetBodyPartData, virtual, __thiscall without arguments
+    constexpr uintptr_t ActorBaseBodyPartDataSlot = 0x180;
+    /// Actor::GetDamageLocation(NiNode*), __thiscall, ret 4: the limb of a
+    /// bone (walking up its parents), 14 for the weapon or -1
+    constexpr uintptr_t ActorGetDamageLocation  = 0x008B3EF0;
+    constexpr uintptr_t ActorGetDamageLocationCallSite = 0x009B6AA9;
+    /// BaseProcess::GetDamageNode(LIMB_ENUM), virtual, __thiscall, ret 4
+    constexpr uintptr_t ProcessDamageNodeSlot   = 0x6D0;
+    /// BGSBodyPartData::GetBodyPart(LIMB_ENUM), __thiscall, ret 4
+    constexpr uintptr_t BodyPartDataGetPart     = 0x005E50F0;
+    constexpr uintptr_t BodyPartDataGetPartCallSite = 0x009B6AFB;
+    /// BGSBodyPart::GetPartType, __thiscall without arguments
+    constexpr uintptr_t BodyPartGetType         = 0x005E5300;
+    constexpr uintptr_t BodyPartGetTypeCallSite = 0x009B6ED7;
+    /// CombatFormulas::CalcTargetedLimbDamage(ActorValueOwner*, BGSBodyPart*,
+    /// float), __cdecl, float in ST0
+    constexpr uintptr_t CalcTargetedLimbDamage  = 0x00647A30;
+    constexpr uintptr_t CalcTargetedLimbDamageCallSite = 0x009B6F42;
+    /// TESObjectWEAP::GetLimbDamageMult, __thiscall without arguments, float in ST0
+    constexpr uintptr_t WeaponGetLimbDamageMult = 0x009B7040;
+    constexpr uintptr_t WeaponGetLimbDamageMultCallSite = 0x009B6FC5;
+    /// HitData::SetBonusMult(float), __thiscall, ret 4: keeps the largest
+    constexpr uintptr_t HitDataSetBonusMult     = 0x009B7840;
+    constexpr uintptr_t HitDataSetBonusMultCallSite = 0x009B6FE3;
+
+    /// Actor's ActorValueOwner base
+    constexpr uintptr_t ActorValueOwnerBase     = 0xA4;
+
+    /// HitData fields
+    constexpr uintptr_t HitAggressor            = 0x00;
+    constexpr uintptr_t HitTarget               = 0x04;
+    constexpr uintptr_t HitDamageLimb           = 0x10;
+    constexpr uintptr_t HitHealthDamage         = 0x14;
+    constexpr uintptr_t HitLimbDamage           = 0x20;
+    constexpr uintptr_t HitWeapon               = 0x30;
+    constexpr uintptr_t HitLocation             = 0x38;
+    constexpr uintptr_t HitDirection            = 0x44;
+    constexpr uintptr_t HitVatsCommand          = 0x54;
+
+    /// BGSBodyPart::LIMB_ENUM: torso 0 to brain 13, then the weapon
+    constexpr int32_t   LimbWeapon              = 14;
+
   }
 
 }

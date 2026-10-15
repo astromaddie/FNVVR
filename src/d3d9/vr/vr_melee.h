@@ -77,23 +77,80 @@ namespace dxvk {
   VrSegment vrBladeInWorld(const VrGameCameraPose& hand, const VrBlade& blade);
 
   /**
+   * \brief Closest points of two segments
+   */
+  struct VrSegmentClosest {
+    /// Distance between the closest points
+    float distance = 0.0f;
+    /// Fraction along the first segment of its closest point
+    float s = 0.0f;
+    /// Fraction along the second segment of its closest point
+    float t = 0.0f;
+  };
+
+  /**
+   * \brief Finds the closest points of two segments
+   */
+  VrSegmentClosest vrSegmentClosest(const VrSegment& s, const VrSegment& t);
+
+  /**
    * \brief Shortest distance between two segments
    */
   float vrSegmentDistance(const VrSegment& s, const VrSegment& t);
 
   /**
-   * \brief Shortest distance between a moving segment and a fixed one
+   * \brief Where a moving segment first comes near a fixed one
+   */
+  struct VrSweepContact {
+    /// Whether the moving segment comes within the distance at all
+    bool      touches = false;
+    /// Fraction of the sweep where it does first, 0 at \c from, 1 at \c to
+    float     time = 0.0f;
+    /// Distance between the segments there
+    float     distance = 0.0f;
+    /// Point of the fixed segment closest to the moving one there
+    VrVector3 fixedPoint;
+    /// Point of the moving segment closest to the fixed one there
+    VrVector3 movingPoint;
+    /// How far that point of the moving segment goes over the whole sweep
+    VrVector3 motion;
+  };
+
+  /**
+   * \brief Finds where a moving segment first comes within a distance of a fixed one
    *
    * The moving segment's ends go in straight lines from \c from to \c to, and
    * it is compared with \c fixed at \c steps evenly spaced positions after
    * \c from, \c to included, so that a fast swing cannot pass through a
-   * thin bone between two frames.
+   * thin bone between two frames. The first position within \c radius is
+   * the contact.
    */
-  float vrSweptSegmentDistance(
+  VrSweepContact vrSweptSegmentContact(
     const VrSegment&            from,
     const VrSegment&            to,
     const VrSegment&            fixed,
-          uint32_t              steps);
+          uint32_t              steps,
+          float                 radius);
+
+  /**
+   * \brief Where and in which direction a blade hits a limb
+   */
+  struct VrBladeHit {
+    /// Point on the surface of the limb's capsule, towards the blade
+    VrVector3 location;
+    /// Unit direction of the blade's motion at the contact
+    VrVector3 direction;
+  };
+
+  /**
+   * \brief Places the hit of a blade on a bone's capsule
+   *
+   * \param [in] contact Contact of the blade with the bone, see vrSweptSegmentContact
+   * \param [in] radius Radius of the capsule around the bone
+   * \returns The hit; its direction is the blade's motion, or from the blade
+   *    to the bone if the touching point of the blade did not move
+   */
+  VrBladeHit vrComputeBladeHit(const VrSweepContact& contact, float radius);
 
   /**
    * \brief Follows the swings of a blade, frame after frame

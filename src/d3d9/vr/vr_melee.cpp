@@ -69,7 +69,7 @@ namespace dxvk {
   }
 
 
-  float vrSegmentDistance(const VrSegment& s, const VrSegment& t) {
+  VrSegmentClosest vrSegmentClosest(const VrSegment& s, const VrSegment& t) {
     // Closest points of two segments, after Ericson, Real-Time Collision Detection 5.1.9
     VrVector3 d1 = s.b - s.a;
     VrVector3 d2 = t.b - t.a;
@@ -81,11 +81,15 @@ namespace dxvk {
 
     constexpr float Epsilon = 1e-8f;
 
+    VrSegmentClosest result;
+
+    if (a <= Epsilon && e <= Epsilon) {
+      result.distance = vrLength(r);
+      return result;
+    }
+
     float u = 0.0f;
     float v = 0.0f;
-
-    if (a <= Epsilon && e <= Epsilon)
-      return vrLength(r);
 
     if (a <= Epsilon) {
       v = clamp01(f / e);
@@ -111,26 +115,70 @@ namespace dxvk {
       }
     }
 
-    return vrLength((s.a + d1 * u) - (t.a + d2 * v));
+    result.distance = vrLength((s.a + d1 * u) - (t.a + d2 * v));
+    result.s = u;
+    result.t = v;
+    return result;
   }
 
 
-  float vrSweptSegmentDistance(
+  float vrSegmentDistance(const VrSegment& s, const VrSegment& t) {
+    return vrSegmentClosest(s, t).distance;
+  }
+
+
+  VrSweepContact vrSweptSegmentContact(
     const VrSegment&            from,
     const VrSegment&            to,
     const VrSegment&            fixed,
-          uint32_t              steps) {
+          uint32_t              steps,
+          float                 radius) {
     steps = std::max(steps, 1u);
 
-    float distance = vrSegmentDistance(to, fixed);
+    VrSweepContact contact;
 
-    for (uint32_t i = 1; i < steps; i++) {
-      float t = float(i) / float(steps);
-      VrSegment moving = { lerp(from.a, to.a, t), lerp(from.b, to.b, t) };
-      distance = std::min(distance, vrSegmentDistance(moving, fixed));
+    for (uint32_t i = 1; i <= steps && !contact.touches; i++) {
+      float time = float(i) / float(steps);
+      VrSegment moving = { lerp(from.a, to.a, time), lerp(from.b, to.b, time) };
+      VrSegmentClosest closest = vrSegmentClosest(moving, fixed);
+
+      if (closest.distance > radius)
+        continue;
+
+      contact.touches     = true;
+      contact.time        = time;
+      contact.distance    = closest.distance;
+      contact.fixedPoint  = lerp(fixed.a, fixed.b, closest.t);
+      contact.movingPoint = lerp(moving.a, moving.b, closest.s);
+      contact.motion      = lerp(to.a, to.b, closest.s) - lerp(from.a, from.b, closest.s);
     }
 
-    return distance;
+    return contact;
+  }
+
+
+  VrBladeHit vrComputeBladeHit(const VrSweepContact& contact, float radius) {
+    constexpr float MinLength = 1e-4f;
+
+    VrVector3 outward = contact.movingPoint - contact.fixedPoint;
+    float outwardLength = vrLength(outward);
+
+    VrBladeHit hit;
+    hit.location = contact.fixedPoint;
+
+    if (outwardLength > MinLength)
+      hit.location = hit.location + outward * (std::min(radius, outwardLength) / outwardLength);
+
+    float motionLength = vrLength(contact.motion);
+
+    if (motionLength > MinLength)
+      hit.direction = contact.motion * (1.0f / motionLength);
+    else if (outwardLength > MinLength)
+      hit.direction = outward * (-1.0f / outwardLength);
+    else
+      hit.direction = { 0.0f, 0.0f, -1.0f };
+
+    return hit;
   }
 
 

@@ -129,8 +129,54 @@ TEST_CASE(melee_sweep_catches_bone_between_frames) {
 
   CHECK(vrSegmentDistance(from, bone) > 19.0f);
   CHECK(vrSegmentDistance(to, bone) > 19.0f);
-  CHECK(vrSweptSegmentDistance(from, to, bone, 4) < 1e-3f);
-  CHECK(vrSweptSegmentDistance(from, to, bone, 1) > 19.0f);
+  CHECK(vrSweptSegmentContact(from, to, bone, 4, 1.0f).touches);
+  CHECK(!vrSweptSegmentContact(from, to, bone, 1, 1.0f).touches);
+}
+
+
+TEST_CASE(melee_sweep_contact_is_the_first_touch) {
+  // A vertical bone at the origin, and a blade along Y that moves along X
+  // from 40 units before it to 40 units past it
+  VrSegment bone = segment({ 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 50.0f });
+  VrSegment from = segment({ -40.0f, -10.0f, 20.0f }, { -40.0f, 30.0f, 20.0f });
+  VrSegment to   = segment({ 40.0f, -10.0f, 20.0f }, { 40.0f, 30.0f, 20.0f });
+
+  VrSweepContact contact = vrSweptSegmentContact(from, to, bone, 8, 12.0f);
+
+  // Positions are 10 units apart: the first within 12 units is at -10
+  CHECK(contact.touches);
+  CHECK_NEAR(contact.time, 3.0f / 8.0f, 1e-5);
+  CHECK_NEAR(contact.distance, 10.0f, 1e-4);
+  checkVector(contact.fixedPoint, 0.0f, 0.0f, 20.0f);
+  checkVector(contact.movingPoint, -10.0f, 0.0f, 20.0f);
+  checkVector(contact.motion, 80.0f, 0.0f, 0.0f);
+
+  VrBladeHit hit = vrComputeBladeHit(contact, 5.0f);
+  checkVector(hit.location, -5.0f, 0.0f, 20.0f);
+  checkVector(hit.direction, 1.0f, 0.0f, 0.0f);
+
+  // Within the capsule, the hit is where the blade is
+  hit = vrComputeBladeHit(contact, 15.0f);
+  checkVector(hit.location, -10.0f, 0.0f, 20.0f);
+}
+
+
+TEST_CASE(melee_blade_hit_without_motion) {
+  VrSweepContact contact;
+  contact.touches     = true;
+  contact.fixedPoint  = { 0.0f, 0.0f, 0.0f };
+  contact.movingPoint = { 0.0f, 4.0f, 0.0f };
+
+  // A still blade hits towards the bone
+  VrBladeHit hit = vrComputeBladeHit(contact, 2.0f);
+  checkVector(hit.location, 0.0f, 2.0f, 0.0f);
+  checkVector(hit.direction, 0.0f, -1.0f, 0.0f);
+
+  // On the bone, downwards
+  contact.movingPoint = contact.fixedPoint;
+  hit = vrComputeBladeHit(contact, 2.0f);
+  checkVector(hit.location, 0.0f, 0.0f, 0.0f);
+  checkVector(hit.direction, 0.0f, 0.0f, -1.0f);
 }
 
 
