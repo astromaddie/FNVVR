@@ -61,10 +61,11 @@ namespace dxvk {
      * Safe to call when VR is disabled.
      *
      * \param [in] swapchain Swap chain being presented
-     * \returns \c true if the present must be dropped, which is the case
-     *    for the first eye's frame
+     * \returns What the swap chain does with the present: the first eye's
+     *    frame is dropped, and a frame paced by the runtime does not wait
+     *    for the desktop display
      */
-    static bool onPresent(IDirect3DSwapChain9* swapchain);
+    static VrPresentMode onPresent(IDirect3DSwapChain9* swapchain);
 
     IVRBackend& backend() { return *m_backend; }
 

@@ -242,8 +242,11 @@ namespace dxvk {
   }
 
 
-  bool VrSystem::onPresent(IDirect3DSwapChain9* swapchain) {
-    return g_vrSystem && g_vrSystem->m_stereoRenderer && g_vrSystem->m_stereoRenderer->onPresent(swapchain);
+  VrPresentMode VrSystem::onPresent(IDirect3DSwapChain9* swapchain) {
+    if (!g_vrSystem || !g_vrSystem->m_stereoRenderer)
+      return VrPresentMode::Game;
+
+    return g_vrSystem->m_stereoRenderer->onPresent(swapchain);
   }
 
 

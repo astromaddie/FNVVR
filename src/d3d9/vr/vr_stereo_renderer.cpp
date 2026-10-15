@@ -313,9 +313,11 @@ namespace dxvk {
   }
 
 
-  bool VrStereoRenderer::onPresent(IDirect3DSwapChain9* swapchain) {
+  VrPresentMode VrStereoRenderer::onPresent(IDirect3DSwapChain9* swapchain) {
     if (m_eye == 0)
-      return true;
+      return VrPresentMode::Drop;
+
+    bool paced = m_swapped && m_paced;
 
     if (m_eye == NoEye) {
       if (!m_swapped && m_mainThread == GetCurrentThreadId())
@@ -325,13 +327,22 @@ namespace dxvk {
       updatePanel(swapchain);
     }
 
-    return false;
+    if (!paced)
+      return VrPresentMode::Game;
+
+    if (!m_loggedImmediatePresent) {
+      Logger::info("VR: Frames paced by the headset are presented to the window without waiting for its vertical blank");
+      m_loggedImmediatePresent = true;
+    }
+
+    return VrPresentMode::Immediate;
   }
 
 
   void VrStereoRenderer::renderFrame(void* main) {
     m_mainThread   = GetCurrentThreadId();
     m_swapped      = true;
+    m_paced        = false;
     m_blockedInput = false;
 
     disableStaticMenuBackground();
@@ -371,6 +382,7 @@ namespace dxvk {
 
     VrFrameTiming timing = m_backend.waitFrame();
     VrD3D9Bridge::beginFrame(m_device, m_backend);
+    m_paced = timing.paced;
 
     if (!timing.shouldRender) {
       VrD3D9Bridge::submitEmptyFrame(m_device, m_backend, timing.predictedDisplayTime);
@@ -481,6 +493,7 @@ namespace dxvk {
     // headset and provides the head pose the panel is placed with.
     VrFrameTiming timing = m_backend.waitFrame();
     VrD3D9Bridge::beginFrame(m_device, m_backend);
+    m_paced = timing.paced;
     VrInputState input = m_backend.pollInput(timing.predictedDisplayTime);
     trackHead(input);
 
