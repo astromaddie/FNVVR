@@ -419,9 +419,18 @@ namespace dxvk {
     // The prompt's hand was chosen on the previous frame too
     m_controls.setPromptAtLeftHand(m_promptShown && m_promptAt == VrHand::Left);
 
+    // The right grip switches the Pip-Boy light while the right hand is at it
+    m_rightHandAtPipBoy = isRightHandAtPipBoy(input, state);
+    m_controls.setRightHandAtPipBoy(m_rightHandAtPipBoy ? m_pipBoyControl.lightHoldTime() : 0.0f);
+
     float dt = float(timing.predictedPeriod) * 1e-9f;
 
     m_controls.update(input, state, m_hasReference ? &m_reference : nullptr, menuPanel(), dt);
+
+    if (m_controls.switchesPipBoyLight() && !m_loggedPipBoyLight) {
+      Logger::info("VR: The right grip at the Pip-Boy holds the Pip-Boy control to switch the light");
+      m_loggedPipBoyLight = true;
+    }
 
     auto views = m_backend.locateViews(timing.predictedDisplayTime);
 
@@ -750,7 +759,9 @@ namespace dxvk {
     gaze.head     = input.isHeadTracked ? &input.headPose : nullptr;
     gaze.screen   = left.isActive && offset ? &screen : nullptr;
     gaze.state    = m_pipBoyControl.state();
-    gaze.canOpen  = state == VrGameStateKind::InGame && !gripped;
+    // The right hand at the Pip-Boy reaches for its light, not its screen
+    gaze.canOpen  = state == VrGameStateKind::InGame && !gripped
+                 && !m_rightHandAtPipBoy && !m_controls.switchesPipBoyLight();
     gaze.canClose = state == VrGameStateKind::PipBoy && !m_menuOverPipBoy;
     gaze.dt       = dt;
 
@@ -788,6 +799,26 @@ namespace dxvk {
       m_pipBoyBackFrames -= 1;
 
     m_pipBoyControl.blockGameOpen(m_pipBoyBackFrames != 0);
+  }
+
+
+  bool VrStereoRenderer::isRightHandAtPipBoy(
+    const VrInputState&         input,
+          VrGameStateKind       state) {
+    if (!m_pipBoyGazeAvailable || state != VrGameStateKind::InGame
+     || m_pipBoyControl.state() != VrPipBoyState::Closed)
+      return false;
+
+    const VrControllerState& left  = input.controllers[uint32_t(VrHand::Left)];
+    const VrControllerState& right = input.controllers[uint32_t(VrHand::Right)];
+    const VrVector3* offset = m_weaponHand->pipBoyScreen();
+
+    // With both hands on the weapon, the right hand is close to the left
+    // one and a squeeze of its grip does not reach for the light
+    bool gripped = input.hasActions && input.actions.isPressed(VrAction::TwoHandGrip);
+
+    return left.isActive && right.isActive && offset && !gripped
+        && vrIsHandAtPipBoy(right, vrComputeControllerPoint(left, *offset));
   }
 
 

@@ -82,6 +82,16 @@ TEST_CASE(controller_point_uses_the_aim_frame) {
 }
 
 
+TEST_CASE(hand_is_at_the_pipboy_within_reach) {
+  VrControllerState hand;
+  hand.isActive = true;
+  hand.gripPose.position = { 0.1f, 1.0f, -0.3f };
+
+  CHECK(vrIsHandAtPipBoy(hand, { 0.1f, 1.0f, -0.3f + 0.9f * VrPipBoyHandReach }));
+  CHECK(!vrIsHandAtPipBoy(hand, { 0.1f, 1.0f, -0.3f + 1.1f * VrPipBoyHandReach }));
+}
+
+
 TEST_CASE(gaze_opens_after_a_delay) {
   Gaze g;
   g.run(Away, 0.1f);

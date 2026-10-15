@@ -49,6 +49,16 @@ namespace dxvk {
     void open() const;
 
     /**
+     * \brief How long the game's Pip-Boy control is held to switch the light
+     *
+     * The game switches the Pip-Boy light itself when its Pip-Boy control
+     * is held that long while the Pip-Boy is closed, see findings/pipboy.md §6.
+     *
+     * \returns Duration in seconds, or 0 if the light cannot be switched
+     */
+    float lightHoldTime() const;
+
+    /**
      * \brief Blocks the game's own Pip-Boy control from opening it
      * \param [in] blocked Whether the control's requests are dropped
      */
@@ -59,6 +69,7 @@ namespace dxvk {
   private:
 
     bool m_available = false;
+    bool m_lightAvailable = false;
     bool m_gameOpenBlocked = false;
     bool m_loggedBlockedOpen = false;
 

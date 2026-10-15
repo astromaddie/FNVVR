@@ -87,6 +87,24 @@ namespace dxvk {
     }
 
     /**
+     * \brief Makes the right grip switch the Pip-Boy light
+     *
+     * \param [in] holdTime How long the game's Pip-Boy control is held to
+     *    switch the light, or 0 while the right hand is not at the Pip-Boy,
+     *    see VrActionFilter
+     */
+    void setRightHandAtPipBoy(float holdTime) {
+      m_filter.setGrabLightHoldTime(holdTime);
+    }
+
+    /**
+     * \brief Whether the Pip-Boy control is held to switch the light
+     */
+    bool switchesPipBoyLight() const {
+      return m_filter.holdsPipBoyControl();
+    }
+
+    /**
      * \brief See VrHeadLook::adjustCamera
      */
     bool adjustCamera(VrGameCameraPose& pose) const;

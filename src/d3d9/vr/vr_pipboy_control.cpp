@@ -44,6 +44,13 @@ namespace dxvk {
         Logger::warn("VR: The Pip-Boy control was not found, closing the Pip-Boy by looking away may reopen it");
     }
 
+    m_lightAvailable = VrGameMemory::matches(VrGame::PipBoyLightTimerReadSite,
+        VrGame::PipBoyLightTimerRead, sizeof(VrGame::PipBoyLightTimerRead))
+      && VrGameMemory::readable(VrGame::PipBoyLightTimerSetting + VrGame::SettingValue, sizeof(float));
+
+    if (!m_lightAvailable)
+      Logger::warn("VR: The Pip-Boy light setting was not found, the light cannot be switched with the hand");
+
     return m_available;
   }
 
@@ -59,6 +66,14 @@ namespace dxvk {
       case 3:  return VrPipBoyState::Open;
       default: return VrPipBoyState::Changing;
     }
+  }
+
+
+  float VrPipBoyControl::lightHoldTime() const {
+    if (!m_lightAvailable)
+      return 0.0f;
+
+    return *reinterpret_cast<const float*>(VrGame::PipBoyLightTimerSetting + VrGame::SettingValue);
   }
 
 

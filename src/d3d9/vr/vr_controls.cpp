@@ -71,6 +71,11 @@ namespace dxvk {
     if (m_gameAim && m_context == VrInputContext::Game)
       vrPressGameControl(pad, VrGameControl::Aim, gameBindings());
 
+    // The game switches the light once its Pip-Boy control is held long
+    // enough, and does not open the Pip-Boy on that release
+    if (m_filter.holdsPipBoyControl() && m_context == VrInputContext::Game)
+      vrPressGameControl(pad, VrGameControl::MenuMode, gameBindings());
+
     VrGamepadHook::setControllerPad(input.hasActions, pad);
 
     if (m_headLook) {

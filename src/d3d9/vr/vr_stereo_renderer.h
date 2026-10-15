@@ -326,6 +326,8 @@ namespace dxvk {
     bool                m_menuOverPipBoy = false;
     bool                m_loggedPipBoyGaze = false;
     bool                m_loggedPipBoyGazeAway = false;
+    bool                m_rightHandAtPipBoy = false;
+    bool                m_loggedPipBoyLight = false;
 
     // Thread that runs the game's main loop, and whether Main::Swap ran
     // since the previous present. A present on that thread without a swap
@@ -448,6 +450,10 @@ namespace dxvk {
       const VrInputState&         input,
             VrGameStateKind       state,
             float                 dt);
+
+    bool isRightHandAtPipBoy(
+      const VrInputState&         input,
+            VrGameStateKind       state);
 
     /**
      * \brief Logs the frustum the game set for its camera when it changes

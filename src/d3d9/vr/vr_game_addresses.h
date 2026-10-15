@@ -371,6 +371,21 @@ namespace dxvk {
                                                  0x6A, 0x04, 0x8B, 0x0D, 0x3C, 0xEA, 0x1D, 0x01 };
 
     /**
+     * The fPlayerPipBoyLightTimer game setting (Setting object, float value
+     * at SettingValue, 0.8 s by default): PlayerCharacter::UpdateMenuModeButton
+     * (0x009673D0) switches the Pip-Boy light once the Pip-Boy control has
+     * been held longer than this, and its release then does not open the
+     * Pip-Boy, see findings/pipboy.md §6. The checked bytes are where the
+     * function tests the control's release and reads the setting.
+     */
+    constexpr uintptr_t PipBoyLightTimerSetting  = 0x011CD098;
+    constexpr uintptr_t PipBoyLightTimerReadSite = 0x00967411;
+    constexpr uint8_t   PipBoyLightTimerRead[] = {
+      0x6A, 0x02, 0x6A, 0x0E, 0x8B, 0x4D, 0xF0, 0xE8, 0x43, 0xD2, 0x0B, 0x00, 0x85, 0xC0, 0x74, 0x2D,
+      0xB9, 0x98, 0xD0, 0x1C, 0x01, 0xE8, 0xF5, 0xC9, 0xA9, 0xFF,
+    };
+
+    /**
      * The two waits on the arm animation in InterfaceManager::UpdatePipboy
      * (0x0070EE80), see findings/pipboy.md §3.6.
      *

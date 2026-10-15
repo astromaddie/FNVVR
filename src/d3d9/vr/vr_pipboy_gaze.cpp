@@ -30,6 +30,13 @@ namespace dxvk {
   }
 
 
+  bool vrIsHandAtPipBoy(
+    const VrControllerState&    hand,
+    const VrVector3&            screen) {
+    return vrLength(hand.gripPose.position - screen) <= VrPipBoyHandReach;
+  }
+
+
   VrPipBoyRequest VrPipBoyGaze::update(const VrPipBoyGazeInput& input) {
     m_looking = input.head && input.screen
       && vrIsLookingAt(*input.head, *input.screen, MaxAngle, MaxDistance);
