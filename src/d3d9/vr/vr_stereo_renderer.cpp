@@ -419,7 +419,7 @@ namespace dxvk {
     // The prompt's hand was chosen on the previous frame too
     m_controls.setPromptAtLeftHand(m_promptShown && m_promptAt == VrHand::Left);
 
-    // The right trigger switches the Pip-Boy light while the right hand is at it
+    // The right grip switches the Pip-Boy light while the right hand is at it
     m_rightHandAtPipBoy = isRightHandAtPipBoy(input, state);
     m_controls.setRightHandAtPipBoy(m_rightHandAtPipBoy ? m_pipBoyControl.lightHoldTime() : 0.0f);
 
@@ -428,7 +428,7 @@ namespace dxvk {
     m_controls.update(input, state, m_hasReference ? &m_reference : nullptr, menuPanel(), dt);
 
     if (m_controls.switchesPipBoyLight() && !m_loggedPipBoyLight) {
-      Logger::info("VR: The right trigger at the Pip-Boy holds the Pip-Boy control to switch the light");
+      Logger::info("VR: The right grip at the Pip-Boy holds the Pip-Boy control to switch the light");
       m_loggedPipBoyLight = true;
     }
 
@@ -814,7 +814,7 @@ namespace dxvk {
     const VrVector3* offset = m_weaponHand->pipBoyScreen();
 
     // With both hands on the weapon, the right hand is close to the left
-    // one and its trigger shoots
+    // one and a squeeze of its grip does not reach for the light
     bool gripped = input.hasActions && input.actions.isPressed(VrAction::TwoHandGrip);
 
     return left.isActive && right.isActive && offset && !gripped

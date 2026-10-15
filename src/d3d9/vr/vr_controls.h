@@ -87,14 +87,14 @@ namespace dxvk {
     }
 
     /**
-     * \brief Makes the right trigger switch the Pip-Boy light
+     * \brief Makes the right grip switch the Pip-Boy light
      *
      * \param [in] holdTime How long the game's Pip-Boy control is held to
      *    switch the light, or 0 while the right hand is not at the Pip-Boy,
      *    see VrActionFilter
      */
     void setRightHandAtPipBoy(float holdTime) {
-      m_filter.setAttackLightHoldTime(holdTime);
+      m_filter.setGrabLightHoldTime(holdTime);
     }
 
     /**

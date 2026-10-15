@@ -30,13 +30,13 @@ namespace dxvk {
    *   and kept until it is released, so a press never turns into the other
    *   control when the prompt moves to the other hand.
    *
-   * - While the right hand is at the Pip-Boy on the left forearm, an
-   *   Attack press (the right trigger) switches the Pip-Boy light instead
-   *   of attacking: the game's Pip-Boy control is held for the time the
+   * - While the right hand is at the Pip-Boy on the left forearm, a
+   *   Grab press (the right grip) switches the Pip-Boy light instead of
+   *   grabbing: the game's Pip-Boy control is held for the time the
    *   game needs to switch the light (see VrPipBoyControl::lightHoldTime)
-   *   plus \ref LightMargin, whether the trigger stays down or not. As for
-   *   Reload, the press is decided when it starts, and Attack stays off
-   *   until the trigger is released.
+   *   plus \ref LightMargin, whether the grip stays down or not. As for
+   *   Reload, the press is decided when it starts, and Grab stays off
+   *   until the grip is released.
    */
   class VrActionFilter {
 
@@ -72,13 +72,13 @@ namespace dxvk {
     }
 
     /**
-     * \brief Makes the Attack action switch the Pip-Boy light from the next press on
+     * \brief Makes the Grab action switch the Pip-Boy light from the next press on
      *
      * \param [in] holdTime How long the game's Pip-Boy control is held to
      *    switch the light, in seconds, or 0 while the right hand is not at
      *    the Pip-Boy (or the light cannot be switched)
      */
-    void setAttackLightHoldTime(float holdTime) {
+    void setGrabLightHoldTime(float holdTime) {
       m_lightHoldTime = holdTime;
     }
 
@@ -108,7 +108,7 @@ namespace dxvk {
 
     float m_lightHoldTime   = 0.0f;
     float m_lightTime       = 0.0f;
-    bool  m_attackDown      = false;
+    bool  m_grabDown      = false;
     bool  m_pressLights     = false;
 
     void updateHold(bool down, float dt);

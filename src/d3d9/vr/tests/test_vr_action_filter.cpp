@@ -155,20 +155,20 @@ TEST_CASE(a_held_reload_keeps_what_it_did_when_the_prompt_moves) {
 }
 
 
-TEST_CASE(attack_at_the_pipboy_holds_the_pipboy_control_once) {
+TEST_CASE(grab_at_the_pipboy_holds_the_pipboy_control_once) {
   VrActionFilter filter;
-  filter.setAttackLightHoldTime(0.8f);
+  filter.setGrabLightHoldTime(0.8f);
 
   // A short press holds the control for the whole light time
   uint32_t heldFrames = 0;
 
   for (uint32_t i = 0; i < 5; i++) {
-    VrActionState result = filter.update(pressed(VrAction::Attack), VrInputContext::Game, Frame);
-    CHECK(!result.isPressed(VrAction::Attack));
+    VrActionState result = filter.update(pressed(VrAction::Grab), VrInputContext::Game, Frame);
+    CHECK(!result.isPressed(VrAction::Grab));
     heldFrames += filter.holdsPipBoyControl() ? 1 : 0;
   }
 
-  filter.setAttackLightHoldTime(0.0f);
+  filter.setGrabLightHoldTime(0.0f);
 
   for (uint32_t i = 0; i < 180; i++) {
     filter.update(VrActionState(), VrInputContext::Game, Frame);
@@ -179,32 +179,32 @@ TEST_CASE(attack_at_the_pipboy_holds_the_pipboy_control_once) {
   CHECK(heldTime >= 0.8f + VrActionFilter::LightMargin - 2.0f * Frame);
   CHECK(heldTime <= 0.8f + VrActionFilter::LightMargin + 2.0f * Frame);
 
-  // Away from the Pip-Boy the trigger attacks again
-  VrActionState result = filter.update(pressed(VrAction::Attack), VrInputContext::Game, Frame);
-  CHECK(result.isPressed(VrAction::Attack));
+  // Away from the Pip-Boy the grip grabs again
+  VrActionState result = filter.update(pressed(VrAction::Grab), VrInputContext::Game, Frame);
+  CHECK(result.isPressed(VrAction::Grab));
   CHECK(!filter.holdsPipBoyControl());
 }
 
 
-TEST_CASE(a_held_attack_keeps_what_it_did_when_the_hand_moves) {
+TEST_CASE(a_held_grab_keeps_what_it_did_when_the_hand_moves) {
   VrActionFilter filter;
 
-  // Started away from the Pip-Boy, the press keeps attacking
-  filter.update(pressed(VrAction::Attack), VrInputContext::Game, Frame);
-  filter.setAttackLightHoldTime(0.8f);
+  // Started away from the Pip-Boy, the press keeps grabbing
+  filter.update(pressed(VrAction::Grab), VrInputContext::Game, Frame);
+  filter.setGrabLightHoldTime(0.8f);
 
-  VrActionState result = filter.update(pressed(VrAction::Attack), VrInputContext::Game, Frame);
-  CHECK(result.isPressed(VrAction::Attack));
+  VrActionState result = filter.update(pressed(VrAction::Grab), VrInputContext::Game, Frame);
+  CHECK(result.isPressed(VrAction::Grab));
   CHECK(!filter.holdsPipBoyControl());
 
-  // Started at the Pip-Boy, it does not attack after the hand left
+  // Started at the Pip-Boy, it does not grab after the hand left
   filter.update(VrActionState(), VrInputContext::Game, Frame);
-  filter.update(pressed(VrAction::Attack), VrInputContext::Game, Frame);
-  filter.setAttackLightHoldTime(0.0f);
+  filter.update(pressed(VrAction::Grab), VrInputContext::Game, Frame);
+  filter.setGrabLightHoldTime(0.0f);
 
   for (uint32_t i = 0; i < 180; i++) {
-    result = filter.update(pressed(VrAction::Attack), VrInputContext::Game, Frame);
-    CHECK(!result.isPressed(VrAction::Attack));
+    result = filter.update(pressed(VrAction::Grab), VrInputContext::Game, Frame);
+    CHECK(!result.isPressed(VrAction::Grab));
   }
 
   CHECK(!filter.holdsPipBoyControl());
@@ -213,9 +213,9 @@ TEST_CASE(a_held_attack_keeps_what_it_did_when_the_hand_moves) {
 
 TEST_CASE(a_menu_stops_holding_the_pipboy_control) {
   VrActionFilter filter;
-  filter.setAttackLightHoldTime(0.8f);
+  filter.setGrabLightHoldTime(0.8f);
 
-  filter.update(pressed(VrAction::Attack), VrInputContext::Game, Frame);
+  filter.update(pressed(VrAction::Grab), VrInputContext::Game, Frame);
   CHECK(filter.holdsPipBoyControl());
 
   filter.update(VrActionState(), VrInputContext::Menu, Frame);

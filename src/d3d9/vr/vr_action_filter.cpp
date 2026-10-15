@@ -15,7 +15,7 @@ namespace dxvk {
       m_holdPulse  = 0.0f;
       m_tapPulse   = 0.0f;
       m_reloadDown = false;
-      m_attackDown = false;
+      m_grabDown = false;
       m_lightTime  = 0.0f;
     }
 
@@ -80,9 +80,9 @@ namespace dxvk {
   void VrActionFilter::updateLight(VrActionState& actions, float dt) {
     m_lightTime = std::max(m_lightTime - dt, 0.0f);
 
-    bool down = actions.isPressed(VrAction::Attack);
+    bool down = actions.isPressed(VrAction::Grab);
 
-    if (down && !m_attackDown) {
+    if (down && !m_grabDown) {
       // A press while the light is still being switched switches nothing
       m_pressLights = m_lightHoldTime > 0.0f || m_lightTime > 0.0f;
 
@@ -90,10 +90,10 @@ namespace dxvk {
         m_lightTime = m_lightHoldTime + LightMargin;
     }
 
-    m_attackDown = down;
+    m_grabDown = down;
 
     if (down && m_pressLights)
-      actions.setPressed(VrAction::Attack, false);
+      actions.setPressed(VrAction::Grab, false);
   }
 
 }
