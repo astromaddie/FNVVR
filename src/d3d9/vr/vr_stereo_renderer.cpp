@@ -476,7 +476,7 @@ namespace dxvk {
 
     // The game turned its camera with the head already
     m_controls.adjustCamera(m_gameCameraPose);
-    updateWeaponHand(input, state, modelCamera);
+    updateWeaponHand(input, state, modelCamera, dt);
     updateMeleeSwing(input, state, dt);
     updateHandPick(input, state);
     updatePipBoyGaze(input, state, dt);
@@ -731,7 +731,8 @@ namespace dxvk {
   void VrStereoRenderer::updateWeaponHand(
     const VrInputState&         input,
           VrGameStateKind       state,
-    const VrGameCameraPose&     gameCamera) {
+    const VrGameCameraPose&     gameCamera,
+          float                 dt) {
     if (!m_weaponHand)
       return;
 
@@ -740,7 +741,7 @@ namespace dxvk {
 
     if (state == VrGameStateKind::PipBoy && m_hasReference && left.isActive) {
       VrGameCameraPose otherHand = handInGame(left);
-      m_weaponHand->beginFrame(gameCamera, nullptr, &otherHand, false, VrFirstPersonMode::PipBoy);
+      m_weaponHand->beginFrame(gameCamera, nullptr, &otherHand, false, VrFirstPersonMode::PipBoy, dt);
       return;
     }
 
@@ -749,12 +750,12 @@ namespace dxvk {
     // and shows the weapon as the game does.
     if (state == VrGameStateKind::Menu && input.hasActions
      && !*reinterpret_cast<const uint32_t*>(VrGame::VatsCameraState)) {
-      m_weaponHand->beginFrame(gameCamera, nullptr, nullptr, false, VrFirstPersonMode::Hidden);
+      m_weaponHand->beginFrame(gameCamera, nullptr, nullptr, false, VrFirstPersonMode::Hidden, dt);
       return;
     }
 
     if (state != VrGameStateKind::InGame || !m_hasReference || !right.isActive) {
-      m_weaponHand->beginFrame(gameCamera, nullptr, nullptr, false, VrFirstPersonMode::Hands);
+      m_weaponHand->beginFrame(gameCamera, nullptr, nullptr, false, VrFirstPersonMode::Hands, dt);
       return;
     }
 
@@ -762,7 +763,7 @@ namespace dxvk {
     VrGameCameraPose otherHand = handInGame(left);
 
     m_weaponHand->beginFrame(gameCamera, &hand, left.isActive ? &otherHand : nullptr,
-      input.hasActions && input.actions.isPressed(VrAction::TwoHandGrip), VrFirstPersonMode::Hands);
+      input.hasActions && input.actions.isPressed(VrAction::TwoHandGrip), VrFirstPersonMode::Hands, dt);
   }
 
 

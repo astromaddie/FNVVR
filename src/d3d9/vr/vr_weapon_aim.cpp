@@ -93,6 +93,41 @@ namespace dxvk {
   }
 
 
+  float vrRotationAngle(const VrGameRotation& a, const VrGameRotation& b) {
+    VrGameRotation r = vrTranspose(a) * b;
+    float cosine = 0.5f * (r.m[0][0] + r.m[1][1] + r.m[2][2] - 1.0f);
+    return std::acos(std::clamp(cosine, -1.0f, 1.0f));
+  }
+
+
+  void VrHeldRotationSettle::reset() {
+    *this = VrHeldRotationSettle();
+  }
+
+
+  bool VrHeldRotationSettle::update(const VrGameRotation& held, float dt) {
+    if (m_settled)
+      return false;
+
+    m_waited += dt;
+
+    if (!m_hasStart || vrRotationAngle(m_start, held) > Tolerance) {
+      m_start      = held;
+      m_hasStart   = true;
+      m_steadyTime = 0.0f;
+    } else {
+      m_steadyTime += dt;
+    }
+
+    if (m_steadyTime < SettleTime && m_waited < MaxWait)
+      return false;
+
+    m_rotation = held;
+    m_settled  = true;
+    return true;
+  }
+
+
   VrGameCameraPose vrComputeTwoHandedPose(
     const VrGameCameraPose& hand,
     const VrVector3&        support,

@@ -429,9 +429,13 @@ namespace dxvk {
     const VrGameCameraPose*     hand,
     const VrGameCameraPose*     otherHand,
           bool                  grip,
-          VrFirstPersonMode     mode) {
+          VrFirstPersonMode     mode,
+          float                 dt) {
     if (mode != VrFirstPersonMode::Hands)
       hand = nullptr;
+
+    m_frameTime         = dt;
+    m_heldSettleUpdated = false;
 
     m_gameCamera   = gameCamera;
     m_hasHand      = hand != nullptr;
@@ -699,21 +703,36 @@ namespace dxvk {
     hand.position = hand.position - shift;
 
     // A melee weapon is swung by the hand: it keeps the angle in the hand
-    // that the game gave it when it was first drawn there, whatever the
-    // game animates on it later, such as blocking
+    // that the game gives it in its idle pose, whatever the game animates
+    // on it later, such as blocking. Until the game has settled a weapon
+    // just drawn, it follows the game's animation as other weapons do.
     const uint8_t* form = weaponForm(object);
     bool melee = isMelee(form);
     VrGameRotation weaponRotation = readRotation(weapon, VrGame::ObjectWorldRotation);
 
+    if (!melee)
+      m_heldForm = nullptr;
+
     if (melee && (weapon != m_heldWeapon || form != m_heldForm)) {
-      m_heldRotation = vrComputeHeldRotation(m_gameCamera, weaponRotation);
-      m_heldWeapon   = weapon;
-      m_heldForm     = form;
+      m_heldWeapon = weapon;
+      m_heldForm   = form;
+      m_heldSettle.reset();
       m_bladeMeasured = false;
     }
 
-    VrGameTransform rig = melee
-      ? vrComputeRigHoldingWeapon(weaponRotation, drawnWeapon, m_heldRotation, hand)
+    if (melee && !m_heldSettleUpdated) {
+      m_heldSettleUpdated = true;
+
+      if (m_heldSettle.update(vrComputeHeldRotation(m_gameCamera, weaponRotation), m_frameTime)) {
+        Logger::info(str::format("VR: The melee weapon is held still in the hand after ", m_heldSettle.waited(), " s",
+          m_heldSettle.timedOut() ? ", the game kept animating it" : ", once the game settled it"));
+      }
+    }
+
+    bool held = melee && m_heldSettle.settled();
+
+    VrGameTransform rig = held
+      ? vrComputeRigHoldingWeapon(weaponRotation, drawnWeapon, m_heldSettle.rotation(), hand)
       : vrComputeRigToHand(m_gameCamera, drawnWeapon, hand);
 
     // With both hands on the weapon, it points along the line between them
@@ -744,10 +763,10 @@ namespace dxvk {
       placeOtherHand(root, otherHand, shift, updateData);
 
     // Held still, the blade does not move in the hand
-    if (melee && !m_bladeMeasured)
+    if (held && !m_bladeMeasured)
       measureBlade(weapon, hand);
 
-    m_hasBlade = melee && m_bladeMeasured;
+    m_hasBlade = held && m_bladeMeasured;
 
     hideArms(root, false);
 

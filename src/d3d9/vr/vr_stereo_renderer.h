@@ -448,7 +448,7 @@ namespace dxvk {
     void setScreenPass(const VrVector3* shift);
 
     void updateWeaponHand(const VrInputState& input, VrGameStateKind state,
-      const VrGameCameraPose& gameCamera);
+      const VrGameCameraPose& gameCamera, float dt);
 
     void updateHandPick(const VrInputState& input, VrGameStateKind state);
 
