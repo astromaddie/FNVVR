@@ -11,6 +11,7 @@
 #include "vr_game_nodes.h"
 #include "vr_math.h"
 #include "vr_stereo_renderer.h"
+#include "vr_weapon_types.h"
 
 namespace dxvk {
 
@@ -131,7 +132,7 @@ namespace dxvk {
           bool                  weaponInHand,
     const VrGameTimerConfig&    timer,
     const VrRenderPassConfig&   passes,
-          bool                  developerMode,
+    const VrDeveloperConfig&    developer,
     const VrSwingConfig&        swing) {
     if (g_stereoRenderer)
       return nullptr;
@@ -242,12 +243,20 @@ namespace dxvk {
     if (!renderer->m_weaponDrawn)
       Logger::info("VR: The weapon draw code was not found, the weapon is drawn and holstered as in the game");
 
-    if (developerMode) {
-      renderer->m_developerMode = VrDeveloperMode::install();
+    if (developer.enabled) {
+      renderer->m_developerMode = VrDeveloperMode::install(developer.weaponTypes);
 
-      if (renderer->m_developerMode)
-        Logger::info("VR: Developer mode is on: god mode and every playable weapon after each loading screen");
-      else
+      if (renderer->m_developerMode) {
+        std::string types;
+
+        for (uint32_t type = 0; type < VrWeaponTypeCount; type++) {
+          if (developer.weaponTypes & (1u << type))
+            types += str::format(types.empty() ? "" : ", ", vrWeaponTypeName(type));
+        }
+
+        Logger::info(str::format("VR: Developer mode is on: god mode, unlimited ammunition and the weapons of type ",
+          types.empty() ? "(none)" : types, " after each loading screen"));
+      } else
         Logger::warn("VR: The functions the developer mode calls were not found, it is off");
     }
 

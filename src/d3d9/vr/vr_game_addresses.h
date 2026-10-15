@@ -1028,7 +1028,11 @@ namespace dxvk {
      * (__thiscall, object, count, extra) and handed to the player with
      * AddContainerToReference (__thiscall, reference, silent).
      * GetInventoryChanges (__cdecl, reference) and GetObjectCount
-     * (__thiscall, object) count an item in an inventory.
+     * (__thiscall, object) count an item in an inventory. A weapon's type
+     * is WeaponAnimationType (0 HandToHandMelee to 13 OneHandThrown), its
+     * BGSAmmoForm is at +0xA4 and its clip size a byte at +0xB0 (getter
+     * 0x00525BE0). GetAmmo (BGSAmmoForm::GetAmmoHelper, __thiscall on the
+     * BGSAmmoForm) returns the ammo, or an entry of the ammo list.
      */
     constexpr uintptr_t SetGodMode                 = 0x009526A0;
     constexpr uint8_t   SetGodModeCode[]           = { 0x55, 0x8B, 0xEC, 0x8A, 0x45, 0x08, 0xA2, 0xBA, 0x07, 0x1E, 0x01 };
@@ -1054,6 +1058,12 @@ namespace dxvk {
     constexpr uint8_t   GetInventoryChangesPrologue[] = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x13, 0x12, 0xEF, 0x00, 0x64, 0xA1 };
     constexpr uintptr_t InventoryObjectCount       = 0x004C8F30;
     constexpr uint8_t   InventoryObjectCountPrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x14, 0x89, 0x4D, 0xF0, 0xC7, 0x45, 0xF4 };
+    constexpr uint8_t   FormTypeAmmo               = 0x29;
+    constexpr uintptr_t WeaponAmmoForm             = 0xA4;
+    constexpr uintptr_t WeaponClipRounds           = 0xB0;
+    constexpr uintptr_t AmmoFormGetAmmo            = 0x00474920;
+    constexpr uint8_t   AmmoFormGetAmmoPrologue[]  = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x14, 0x89, 0x4D, 0xEC,
+                                                     0xC7, 0x45, 0xFC, 0x00, 0x00, 0x00, 0x00 };
 
     /**
      * Melee hits, see findings/melee.md §8. Actor::CombatHit(target, power,
