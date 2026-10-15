@@ -182,7 +182,6 @@ namespace dxvk {
 
     VrRenderPassConfig passes;
     passes.shareShadows = config.getOption<bool>("d3d9.vrShareShadows", passes.shareShadows);
-    passes.shareWater   = config.getOption<bool>("d3d9.vrShareWaterReflections", passes.shareWater);
 
     g_vrSystem.reset(new VrSystem(std::move(backend), showPreview, panel, turn, weaponInHand, headsetResolution,
       timer, passes));

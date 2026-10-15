@@ -98,8 +98,8 @@ namespace dxvk {
 
     VrRenderPassConfig used = config;
 
-    used.shareWater = redirect(VrGame::WaterPassCallSite, VrGame::DrawWorldUpdateWater,
-      reinterpret_cast<const void*>(&VrRenderPasses::waterHook), "water reflection") && used.shareWater;
+    redirect(VrGame::WaterPassCallSite, VrGame::DrawWorldUpdateWater,
+      reinterpret_cast<const void*>(&VrRenderPasses::waterHook), "water reflection");
     used.shareShadows = redirect(VrGame::ShadowPassCallSite, VrGame::DrawWorldShadows,
       reinterpret_cast<const void*>(&VrRenderPasses::shadowsHook), "shadow map") && used.shareShadows;
 
@@ -113,9 +113,6 @@ namespace dxvk {
     if (used.shareShadows)
       Logger::info("VR: Shadow maps are drawn once per frame for both eyes");
 
-    if (used.shareWater)
-      Logger::info("VR: Water reflections are drawn once per frame, for the left eye, and reused by the right eye");
-
     std::unique_ptr<VrRenderPasses> passes(new VrRenderPasses(used, std::move(view)));
     g_renderPasses = passes.get();
     return passes;
@@ -127,7 +124,7 @@ namespace dxvk {
     m_eyeStart = high_resolution_clock::now();
 
     if (eye == 0)
-      m_drawnForLeft = { };
+      m_shadowsDrawnForLeft = false;
   }
 
 
@@ -145,7 +142,7 @@ namespace dxvk {
     if (m_profile.endFrame()) {
       logWindow();
       m_profile.reset();
-      m_reused = { };
+      m_shadowsReused = 0;
     }
   }
 
@@ -166,18 +163,14 @@ namespace dxvk {
 
 
   template<typename Fn>
-  uintptr_t VrRenderPasses::runShared(Shared shared, VrRenderPass pass, Fn&& fn) {
-    uint32_t index = uint32_t(shared);
+  uintptr_t VrRenderPasses::runShadows(Fn&& fn) {
+    if (m_eye == NoEye || !sharesShadows())
+      return runPass(VrRenderPass::Shadows, std::forward<Fn>(fn));
 
-    if (m_eye == NoEye || !shares(shared))
-      return runPass(pass, std::forward<Fn>(fn));
-
-    // The right eye keeps what the pass left for the left eye
-    if (m_eye == 1 && m_drawnForLeft[index]) {
-      if (shared == Shared::Shadows)
-        forgetShadowClipPlanes();
-
-      m_reused[index] += 1;
+    // The right eye keeps the maps drawn for the left eye
+    if (m_eye == 1 && m_shadowsDrawnForLeft) {
+      forgetShadowClipPlanes();
+      m_shadowsReused += 1;
       return 0;
     }
 
@@ -187,29 +180,27 @@ namespace dxvk {
     VrGameCameraPose pose;
     VrGameFrustum frustum;
 
-    bool moved = shared == Shared::Shadows && m_camera.acquire()
-      && m_view && m_view(pose, frustum);
+    bool moved = m_camera.acquire() && m_view && m_view(pose, frustum);
 
     if (moved) {
       saved = m_camera.save();
       m_camera.apply(pose, frustum);
     }
 
-    uintptr_t result = runPass(pass, std::forward<Fn>(fn));
+    uintptr_t result = runPass(VrRenderPass::Shadows, std::forward<Fn>(fn));
 
     if (moved)
       m_camera.restore(saved);
 
     if (m_eye == 0)
-      m_drawnForLeft[index] = true;
+      m_shadowsDrawnForLeft = true;
 
     return result;
   }
 
 
-  bool VrRenderPasses::shares(Shared shared) const {
-    bool enabled = shared == Shared::Shadows ? m_config.shareShadows : m_config.shareWater;
-    return enabled && !multiThreadedRendering();
+  bool VrRenderPasses::sharesShadows() const {
+    return m_config.shareShadows && !multiThreadedRendering();
   }
 
 
@@ -228,8 +219,7 @@ namespace dxvk {
       ", first person ", times(VrRenderPass::FirstPerson),
       ", image space ", times(VrRenderPass::ImageSpace),
       ", rest of the eye ", fixed(m_profile.otherMs(0)), " | ", fixed(m_profile.otherMs(1)),
-      ". Reused by the right eye: shadow maps in ", m_reused[uint32_t(Shared::Shadows)],
-      " frames, water in ", m_reused[uint32_t(Shared::Water)], " frames"));
+      ". Shadow maps reused by the right eye in ", m_shadowsReused, " frames"));
   }
 
 
@@ -239,7 +229,7 @@ namespace dxvk {
     if (!g_renderPasses)
       return original(main, nullptr);
 
-    return g_renderPasses->runShared(Shared::Water, VrRenderPass::Water,
+    return g_renderPasses->runPass(VrRenderPass::Water,
       [&] { return original(main, nullptr); });
   }
 
@@ -250,7 +240,7 @@ namespace dxvk {
     if (!g_renderPasses)
       return original(main, nullptr);
 
-    return g_renderPasses->runShared(Shared::Shadows, VrRenderPass::Shadows,
+    return g_renderPasses->runShadows(
       [&] { return original(main, nullptr); });
   }
 

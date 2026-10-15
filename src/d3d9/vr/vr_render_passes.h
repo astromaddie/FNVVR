@@ -1,6 +1,5 @@
 #pragma once
 
-#include <array>
 #include <functional>
 #include <memory>
 
@@ -14,13 +13,11 @@ namespace dxvk {
   /**
    * \brief Which render passes are drawn once for both eyes
    *
-   * Set by \c d3d9.vrShareShadows and \c d3d9.vrShareWaterReflections.
+   * Set by \c d3d9.vrShareShadows.
    */
   struct VrRenderPassConfig {
     /// Shadow maps are drawn for the left eye only and reused by the right
     bool shareShadows = true;
-    /// Water reflections are drawn for the left eye only and reused
-    bool shareWater   = false;
   };
 
   /**
@@ -34,12 +31,12 @@ namespace dxvk {
    *   decides which shadows are kept, so they are drawn once, for the left
    *   eye, with the world camera moved to the head and widened to the view
    *   of both eyes, and the right eye uses the same maps;
-   * - water reflections are drawn from the eye's camera, so sharing them
-   *   makes the right eye see the left eye's reflection; off by default.
+   * - water reflections are not shared: the water shader reads them at the
+   *   pixel's position on the eye's screen, so each eye needs its own.
    *
-   * The main loop's calls to those passes and to the scene, the first-person
-   * model and the image space effects are redirected and timed; a summary
-   * per eye is logged every few hundred frames.
+   * The main loop's calls to the shadow and water passes, the scene, the
+   * first-person model and the image space effects are redirected and
+   * timed; a summary per eye is logged every few hundred frames.
    *
    * Only used on the game's main thread.
    */
@@ -82,9 +79,6 @@ namespace dxvk {
 
   private:
 
-    enum class Shared : uint32_t { Shadows, Water };
-    static constexpr uint32_t SharedCount = 2;
-
     VrRenderPasses(const VrRenderPassConfig& config, ViewFn view);
 
     VrRenderPassConfig m_config;
@@ -95,16 +89,16 @@ namespace dxvk {
     uint32_t m_eye = NoEye;
     high_resolution_clock::time_point m_eyeStart;
 
-    std::array<bool, SharedCount>     m_drawnForLeft = { };
-    std::array<uint32_t, SharedCount> m_reused       = { };
+    bool     m_shadowsDrawnForLeft = false;
+    uint32_t m_shadowsReused       = 0;
 
     template<typename Fn>
     uintptr_t runPass(VrRenderPass pass, Fn&& fn);
 
     template<typename Fn>
-    uintptr_t runShared(Shared shared, VrRenderPass pass, Fn&& fn);
+    uintptr_t runShadows(Fn&& fn);
 
-    bool shares(Shared shared) const;
+    bool sharesShadows() const;
 
     void logWindow();
 
