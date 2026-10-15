@@ -129,7 +129,7 @@ namespace dxvk {
      * \param [in] weaponInHand Draw the weapon in the right hand and shoot along it
      * \param [in] timer How the game's frame timer is driven
      * \param [in] passes Which render passes both eyes share
-     * \param [in] developerMode Give god mode and every playable weapon after each loading screen
+     * \param [in] developer What the developer mode gives after each loading screen
      * \returns \c nullptr if the executable is not the supported version
      */
     static std::unique_ptr<VrStereoRenderer> install(
@@ -141,7 +141,7 @@ namespace dxvk {
             bool                  weaponInHand,
       const VrGameTimerConfig&    timer,
       const VrRenderPassConfig&   passes,
-            bool                  developerMode);
+      const VrDeveloperConfig&    developer);
 
     /**
      * \brief Called when the game presents, before the image is shown
@@ -308,7 +308,7 @@ namespace dxvk {
     // The player's weapon stays drawn, without the draw and holster animations
     std::unique_ptr<VrWeaponDrawn> m_weaponDrawn;
 
-    // God mode and every playable weapon, for testing (d3d9.vrDeveloperMode)
+    // God mode, weapons and ammunition, for testing (d3d9.vrDeveloperMode)
     std::unique_ptr<VrDeveloperMode> m_developerMode;
 
     // The game's frame timer, measured against real time

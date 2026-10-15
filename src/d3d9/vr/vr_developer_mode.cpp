@@ -1,3 +1,5 @@
+#include <algorithm>
+
 #include "../../util/log/log.h"
 #include "../../util/util_string.h"
 
@@ -17,6 +19,7 @@ namespace dxvk {
                                          uint8_t* reference, bool silent);
     using GetChangesFn      = uint8_t* (__cdecl*)(uint8_t* reference);
     using ObjectCountFn     = int32_t  (__fastcall*)(uint8_t* changes, void* unused, uint8_t* object);
+    using GetAmmoFn         = uint8_t* (__fastcall*)(uint8_t* ammoForm, void* unused);
 
     bool g_installed = false;
 
@@ -32,12 +35,16 @@ namespace dxvk {
   }
 
 
+  VrDeveloperMode::VrDeveloperMode(uint32_t weaponTypes)
+  : m_weaponTypes(weaponTypes) { }
+
+
   VrDeveloperMode::~VrDeveloperMode() {
     g_installed = false;
   }
 
 
-  std::unique_ptr<VrDeveloperMode> VrDeveloperMode::install() {
+  std::unique_ptr<VrDeveloperMode> VrDeveloperMode::install(uint32_t weaponTypes) {
     if (g_installed)
       return nullptr;
 
@@ -55,13 +62,15 @@ namespace dxvk {
         VrGame::GetInventoryChangesPrologue, sizeof(VrGame::GetInventoryChangesPrologue))
       && VrGameMemory::matches(VrGame::InventoryObjectCount,
         VrGame::InventoryObjectCountPrologue, sizeof(VrGame::InventoryObjectCountPrologue))
+      && VrGameMemory::matches(VrGame::AmmoFormGetAmmo,
+        VrGame::AmmoFormGetAmmoPrologue, sizeof(VrGame::AmmoFormGetAmmoPrologue))
       && VrGameMemory::readable(VrGame::DataHandler, sizeof(uintptr_t));
 
     if (!found)
       return nullptr;
 
     g_installed = true;
-    return std::unique_ptr<VrDeveloperMode>(new VrDeveloperMode());
+    return std::unique_ptr<VrDeveloperMode>(new VrDeveloperMode(weaponTypes));
   }
 
 
@@ -82,7 +91,7 @@ namespace dxvk {
     m_pending = false;
 
     enableGodMode();
-    addPlayableWeapons();
+    addWeaponsAndAmmo();
   }
 
 
@@ -92,12 +101,12 @@ namespace dxvk {
   }
 
 
-  void VrDeveloperMode::addPlayableWeapons() {
+  void VrDeveloperMode::addWeaponsAndAmmo() {
     const uint8_t* dataHandler = *reinterpret_cast<const uint8_t* const*>(VrGame::DataHandler);
     const uint8_t* objects = dataHandler ? field<const uint8_t*>(dataHandler, VrGame::DataHandlerObjectList) : nullptr;
 
     if (!objects) {
-      Logger::warn("VR: Developer mode: the game's object list is empty, no weapon was added");
+      Logger::warn("VR: Developer mode: the game's object list is empty, no weapon or ammunition was added");
       return;
     }
 
@@ -106,6 +115,8 @@ namespace dxvk {
 
     alignas(uint32_t) uint8_t container[VrGame::ContainerSize];
     reinterpret_cast<ContainerFn>(VrGame::ContainerConstruct)(container, nullptr);
+
+    std::vector<uint8_t*> ammoAdded;
 
     uint32_t added       = 0;
     uint32_t owned       = 0;
@@ -122,22 +133,47 @@ namespace dxvk {
         continue;
       }
 
+      uint32_t type = field<uint8_t>(object, VrGame::WeaponAnimationType);
+
       if (changes && reinterpret_cast<ObjectCountFn>(VrGame::InventoryObjectCount)(changes, nullptr, object) != 0) {
         owned += 1;
+      } else if (type < 32 && (m_weaponTypes & (1u << type))) {
+        reinterpret_cast<AddObjectFn>(VrGame::ContainerAddObject)(container, nullptr, object, 1, nullptr);
+        added += 1;
+      } else {
         continue;
       }
 
-      reinterpret_cast<AddObjectFn>(VrGame::ContainerAddObject)(container, nullptr, object, 1, nullptr);
-      added += 1;
+      addAmmo(container, changes, object, ammoAdded);
     }
 
-    if (added)
+    if (added || !ammoAdded.empty())
       reinterpret_cast<AddToReferenceFn>(VrGame::ContainerAddToReference)(container, nullptr, actor, true);
 
     reinterpret_cast<ContainerFn>(VrGame::ContainerDestruct)(container, nullptr);
 
-    Logger::info(str::format("VR: Developer mode: ", added, " playable weapons added to the inventory, ",
-      owned, " already there, ", notPlayable, " not playable left out"));
+    Logger::info(str::format("VR: Developer mode: ", added, " weapons of the chosen types added to the inventory, ",
+      owned, " weapons already there, ", notPlayable, " not playable left out, ",
+      ammoAdded.size(), " kinds of ammunition added"));
+  }
+
+
+  void VrDeveloperMode::addAmmo(uint8_t* container, uint8_t* changes, uint8_t* weapon, std::vector<uint8_t*>& added) {
+    uint8_t* ammo = reinterpret_cast<GetAmmoFn>(VrGame::AmmoFormGetAmmo)(weapon + VrGame::WeaponAmmoForm, nullptr);
+
+    if (!ammo || field<uint8_t>(ammo, VrGame::FormType) != VrGame::FormTypeAmmo)
+      return;
+
+    if (std::find(added.begin(), added.end(), ammo) != added.end())
+      return;
+
+    if (changes && reinterpret_cast<ObjectCountFn>(VrGame::InventoryObjectCount)(changes, nullptr, ammo) != 0)
+      return;
+
+    int32_t count = std::max<int32_t>(field<uint8_t>(weapon, VrGame::WeaponClipRounds), 1);
+    reinterpret_cast<AddObjectFn>(VrGame::ContainerAddObject)(container, nullptr, ammo, count, nullptr);
+
+    added.push_back(ammo);
   }
 
 }

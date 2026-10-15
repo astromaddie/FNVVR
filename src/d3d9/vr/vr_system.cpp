@@ -24,6 +24,7 @@
 #include "vr_options_menu.h"
 #include "vr_stereo_renderer.h"
 #include "vr_system.h"
+#include "vr_weapon_types.h"
 
 namespace dxvk {
 
@@ -81,7 +82,7 @@ namespace dxvk {
 
   VrSystem::VrSystem(std::unique_ptr<IVRBackend> backend, bool showPreview,
     const VrPanelConfig& panel, const VrTurnConfig& turn, bool weaponInHand, bool headsetResolution,
-    const VrGameTimerConfig& timer, const VrRenderPassConfig& passes, bool developerMode)
+    const VrGameTimerConfig& timer, const VrRenderPassConfig& passes, const VrDeveloperConfig& developer)
   : m_backend(std::move(backend)),
     m_extensionProvider(std::make_unique<VrExtensionProvider>(*m_backend)),
     m_showPreview(showPreview),
@@ -90,7 +91,7 @@ namespace dxvk {
     m_weaponInHand(weaponInHand),
     m_timerConfig(timer),
     m_passConfig(passes),
-    m_developerMode(developerMode),
+    m_developerConfig(developer),
     m_headsetResolution(headsetResolution) { }
 
 
@@ -184,10 +185,19 @@ namespace dxvk {
     VrRenderPassConfig passes;
     passes.shareShadows = config.getOption<bool>("d3d9.vrShareShadows", passes.shareShadows);
 
-    bool developerMode = config.getOption<bool>("d3d9.vrDeveloperMode", false);
+    VrDeveloperConfig developer;
+    developer.enabled = config.getOption<bool>("d3d9.vrDeveloperMode", developer.enabled);
+
+    if (developer.enabled) {
+      std::vector<std::string> unknown;
+      developer.weaponTypes = vrParseWeaponTypes(config.getOption<std::string>("d3d9.vrDeveloperWeapons", ""), unknown);
+
+      for (const auto& name : unknown)
+        Logger::warn(str::format("VR: d3d9.vrDeveloperWeapons: '", name, "' is not a weapon type, it is ignored"));
+    }
 
     g_vrSystem.reset(new VrSystem(std::move(backend), showPreview, panel, turn, weaponInHand, headsetResolution,
-      timer, passes, developerMode));
+      timer, passes, developer));
     DxvkInstance::registerExtensionProvider(g_vrSystem->m_extensionProvider.get());
 
     VrOptionsMenu::install(options, [] (const VrOptions& changed) {
@@ -279,7 +289,7 @@ namespace dxvk {
     }
 
     m_stereoRenderer = VrStereoRenderer::install(*m_backend, device, m_showPreview, m_panelConfig, m_turnConfig,
-      m_weaponInHand, m_timerConfig, m_passConfig, m_developerMode);
+      m_weaponInHand, m_timerConfig, m_passConfig, m_developerConfig);
     return true;
   }
 
