@@ -68,6 +68,19 @@ namespace dxvk {
     const VrControllerState&    controller,
     const VrVector3&            offset);
 
+  /// Largest distance between a hand's grip and the Pip-Boy screen for the hand to be at the Pip-Boy, in metres
+  constexpr float VrPipBoyHandReach = 0.15f;
+
+  /**
+   * \brief Whether a hand is at the Pip-Boy on the other forearm
+   *
+   * \param [in] hand Tracked controller of the hand
+   * \param [in] screen Pip-Boy screen in tracking space
+   */
+  bool vrIsHandAtPipBoy(
+    const VrControllerState&    hand,
+    const VrVector3&            screen);
+
   /**
    * \brief Opens the Pip-Boy when the player looks at it
    *

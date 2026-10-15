@@ -1,3 +1,5 @@
+#include <algorithm>
+
 #include "vr_action_filter.h"
 
 namespace dxvk {
@@ -13,6 +15,8 @@ namespace dxvk {
       m_holdPulse  = 0.0f;
       m_tapPulse   = 0.0f;
       m_reloadDown = false;
+      m_attackDown = false;
+      m_lightTime  = 0.0f;
     }
 
     m_blocked &= actions.pressed;
@@ -25,6 +29,7 @@ namespace dxvk {
 
     updateHold(result.isPressed(VrAction::PauseHold), dt);
     updateReload(result);
+    updateLight(result, dt);
 
     result.setPressed(VrAction::PauseHold, false);
     result.setPressed(VrAction::Pause, m_holdPulse > 0.0f || result.isPressed(VrAction::Pause));
@@ -69,6 +74,26 @@ namespace dxvk {
       actions.setPressed(VrAction::Reload,   false);
       actions.setPressed(VrAction::Activate, true);
     }
+  }
+
+
+  void VrActionFilter::updateLight(VrActionState& actions, float dt) {
+    m_lightTime = std::max(m_lightTime - dt, 0.0f);
+
+    bool down = actions.isPressed(VrAction::Attack);
+
+    if (down && !m_attackDown) {
+      // A press while the light is still being switched switches nothing
+      m_pressLights = m_lightHoldTime > 0.0f || m_lightTime > 0.0f;
+
+      if (m_lightHoldTime > 0.0f && m_lightTime == 0.0f)
+        m_lightTime = m_lightHoldTime + LightMargin;
+    }
+
+    m_attackDown = down;
+
+    if (down && m_pressLights)
+      actions.setPressed(VrAction::Attack, false);
   }
 
 }
