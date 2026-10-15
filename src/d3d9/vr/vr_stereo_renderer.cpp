@@ -123,7 +123,8 @@ namespace dxvk {
     const VrPanelConfig&        panel,
     const VrTurnConfig&         turn,
           bool                  weaponInHand,
-    const VrGameTimerConfig&    timer) {
+    const VrGameTimerConfig&    timer,
+    const VrRenderPassConfig&   passes) {
     if (g_stereoRenderer)
       return nullptr;
 
@@ -222,6 +223,12 @@ namespace dxvk {
       Logger::info("VR: The weapon draw code was not found, the weapon is drawn and holstered as in the game");
 
     renderer->m_gameTimer = VrGameTimer::install(timer);
+
+    renderer->m_renderPasses = VrRenderPasses::install(passes,
+      [self] (VrGameCameraPose& pose, VrGameFrustum& frustum) { return self->sharedPassView(pose, frustum); });
+
+    if (!renderer->m_renderPasses)
+      Logger::info("VR: The world render's passes were not found, they are drawn for each eye and not timed");
 
     if (!renderer->m_gameTimer)
       Logger::info("VR: The game's frame timer update was not found, it is not measured");
@@ -433,6 +440,9 @@ namespace dxvk {
       renderEye(eye, views[eye], main);
     }
 
+    if (m_renderPasses)
+      m_renderPasses->endFrame();
+
     m_renderCamera.restore(m_gameCamera);
     m_gameTarget = nullptr;
 
@@ -621,7 +631,13 @@ namespace dxvk {
     if (m_skyAnchor)
       m_skyAnchor->setEye(&m_eyePosition);
 
+    if (m_renderPasses)
+      m_renderPasses->beginEye(eye);
+
     g_originalSwap(main, nullptr);
+
+    if (m_renderPasses)
+      m_renderPasses->endEye();
 
     if (m_skyAnchor)
       m_skyAnchor->setEye(nullptr);
@@ -783,6 +799,18 @@ namespace dxvk {
     m_controls.adjustCamera(pose);
 
     pose = vrComputeEyeCameraPose(pose,
+      vrComputeEyeInReference(m_reference, m_headPose), VrGameUnitsPerMetre);
+    frustum = vrComputeGameFrustum(m_cullingFov);
+    return true;
+  }
+
+
+  bool VrStereoRenderer::sharedPassView(VrGameCameraPose& pose, VrGameFrustum& frustum) {
+    // The head on the eyes' base camera, with the view of both eyes
+    if (!m_hasReference || !m_hasHeadPose || !m_hasCullingFov)
+      return false;
+
+    pose = vrComputeEyeCameraPose(m_gameCameraPose,
       vrComputeEyeInReference(m_reference, m_headPose), VrGameUnitsPerMetre);
     frustum = vrComputeGameFrustum(m_cullingFov);
     return true;

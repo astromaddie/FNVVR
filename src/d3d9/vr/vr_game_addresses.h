@@ -818,7 +818,47 @@ namespace dxvk {
      * has not, so the value reads 0 while the VR layer draws the world there.
      */
     constexpr uintptr_t DrawSceneThreadsCallSite = 0x008743B0;
+
+    /**
+     * Calls of the world render (LaTerreur::RenderSubfonction, 0x00870BD0)
+     * that the VR layer times per eye, see findings/render.md "Passes drawn
+     * per eye". All __thiscall on Main:
+     * - DrawWorld_UpdateWater (no stack argument): water reflections from
+     *   the world camera (TESWaterSystem::UpdateWaterSystem);
+     * - DrawWorld_UpdateOffscreenBuffers (no stack argument): chooses the
+     *   actors that cast shadows, culls them against the world camera and
+     *   draws their shadow maps (ShadowSceneNode::UpdateDynamicShadows),
+     *   then the Pip-Boy's offscreen menu;
+     * - DrawWorld_DrawScene (sun, draw hands, wireframe, VATS);
+     * - the first-person render (renderer, geometry, sun, target);
+     * - DrawWorld_ImageSpace (multisampling, target, renderer, destination).
+     * Both update functions also step the render threads' stages, which only
+     * do something with bMTRendering:Display set (byte below, 0 by default).
+     */
+    constexpr uintptr_t WaterPassCallSite        = 0x00870C29;
+    constexpr uintptr_t ShadowPassCallSite       = 0x00870C3C;
+    constexpr uintptr_t DrawWorldShadows         = 0x00871290;
+    constexpr uintptr_t ScenePassCallSite        = 0x00870E18;
+    constexpr uintptr_t FirstPersonPassCallSite  = 0x00870F74;
+    constexpr uintptr_t DrawWorldFirstPerson     = 0x00875110;
+    constexpr uintptr_t ImageSpacePassCallSite   = 0x008710E4;
+    constexpr uintptr_t DrawWorldImageSpace      = 0x00875FD0;
+    constexpr uintptr_t MultiThreadedRendering   = 0x011F94B4;
     constexpr uintptr_t SettingInt               = 0x0043D4D0;
+
+    /**
+     * Shadow lights of the world shadow scene node (ShadowSceneNodes[0]):
+     * the list's first item, each item being { next, previous, light }.
+     * A shadow light keeps the planes of its shadow box in the clip space of
+     * the camera that drew the first shadowed geometry, and only renders
+     * again with fresh planes once the flag below is cleared, which
+     * ShadowSceneLight::MTRenderFrustumDepthMap (0x00B9F780) does after
+     * drawing the light's shadow map.
+     */
+    constexpr uint32_t ShadowSceneNodeShadowLightsOffset   = 0xC0;
+    constexpr uint32_t ShadowListItemNextOffset            = 0x00;
+    constexpr uint32_t ShadowListItemLightOffset           = 0x08;
+    constexpr uint32_t ShadowLightClipPlanesReadyOffset    = 0x208;
 
     /**
      * The first-person model is drawn with its root's translation set to

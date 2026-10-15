@@ -81,7 +81,7 @@ namespace dxvk {
 
   VrSystem::VrSystem(std::unique_ptr<IVRBackend> backend, bool showPreview,
     const VrPanelConfig& panel, const VrTurnConfig& turn, bool weaponInHand, bool headsetResolution,
-    const VrGameTimerConfig& timer)
+    const VrGameTimerConfig& timer, const VrRenderPassConfig& passes)
   : m_backend(std::move(backend)),
     m_extensionProvider(std::make_unique<VrExtensionProvider>(*m_backend)),
     m_showPreview(showPreview),
@@ -89,6 +89,7 @@ namespace dxvk {
     m_turnConfig(turn),
     m_weaponInHand(weaponInHand),
     m_timerConfig(timer),
+    m_passConfig(passes),
     m_headsetResolution(headsetResolution) { }
 
 
@@ -179,7 +180,11 @@ namespace dxvk {
     timer.preciseStep   = config.getOption<bool>("d3d9.vrPreciseGameTimer", timer.preciseStep);
     timer.havokPerFrame = config.getOption<bool>("d3d9.vrHavokStepPerFrame", timer.havokPerFrame);
 
-    g_vrSystem.reset(new VrSystem(std::move(backend), showPreview, panel, turn, weaponInHand, headsetResolution, timer));
+    VrRenderPassConfig passes;
+    passes.shareShadows = config.getOption<bool>("d3d9.vrShareShadows", passes.shareShadows);
+
+    g_vrSystem.reset(new VrSystem(std::move(backend), showPreview, panel, turn, weaponInHand, headsetResolution,
+      timer, passes));
     DxvkInstance::registerExtensionProvider(g_vrSystem->m_extensionProvider.get());
 
     VrOptionsMenu::install(options, [] (const VrOptions& changed) {
@@ -271,7 +276,7 @@ namespace dxvk {
     }
 
     m_stereoRenderer = VrStereoRenderer::install(*m_backend, device, m_showPreview, m_panelConfig, m_turnConfig,
-      m_weaponInHand, m_timerConfig);
+      m_weaponInHand, m_timerConfig, m_passConfig);
     return true;
   }
 
