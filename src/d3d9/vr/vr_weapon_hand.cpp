@@ -770,6 +770,7 @@ namespace dxvk {
       measureBlade(weapon, hand);
 
     m_hasBlade = held && m_bladeMeasured;
+    m_bladeAutomatic = form && (readField<uint8_t>(form, VrGame::WeaponFlags) & VrGame::WeaponFlagAutomatic);
 
     hideArms(root, false);
 

@@ -145,6 +145,16 @@ namespace dxvk {
       return m_hasBlade ? &m_blade : nullptr;
     }
 
+    /**
+     * \brief Whether the melee weapon of the blade is automatic
+     *
+     * Automatic melee weapons (chainsaw, thermic lance...) run while the
+     * attack control is held, see findings/melee.md §11.
+     */
+    bool bladeIsAutomatic() const {
+      return m_hasBlade && m_bladeAutomatic;
+    }
+
   private:
 
     enum class GripKind {
@@ -210,6 +220,7 @@ namespace dxvk {
     VrBlade          m_blade;
     bool             m_bladeMeasured = false;
     bool             m_hasBlade = false;
+    bool             m_bladeAutomatic = false;
 
     // Set while the game creates a projectile aimed with the hand, so that
     // its auto-aim leaves it alone

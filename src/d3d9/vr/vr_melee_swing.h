@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <memory>
 
 #include "vr_melee.h"
@@ -32,6 +33,13 @@ namespace dxvk {
    * still across the front of the head is a guard, which holds the game's
    * block control.
    *
+   * Automatic melee weapons (chainsaw, thermic lance...) also run while the
+   * attack control is held, as in the game: the control is passed to the
+   * game, which plays the weapon's attack and decides when it hits, and
+   * each of those hits lands on what the blade touches at that moment,
+   * however slowly it moves, instead of the actor the game would pick in
+   * front of the head. See findings/melee.md §11.
+   *
    * Only used on the game's main thread.
    */
   class VrMeleeSwing {
@@ -53,6 +61,7 @@ namespace dxvk {
      *    world, or \c nullptr if it is not tracked or not in game
      * \param [in] blade Blade of the weapon in the hand, or \c nullptr if
      *    the hand holds no melee weapon
+     * \param [in] automatic Whether that weapon is automatic
      * \param [in] head Head pose in the game world
      * \param [in] body Pose the eyes and hands are placed on in the game
      *    world, which moves and turns with the player
@@ -61,18 +70,20 @@ namespace dxvk {
     VrMeleeHit update(
       const VrGameCameraPose*     hand,
       const VrBlade*              blade,
+            bool                  automatic,
       const VrGameCameraPose&     head,
       const VrGameCameraPose&     body,
             float                 dt);
 
     /**
-     * \brief Whether a melee weapon is swung with the hand
+     * \brief Whether the game's attack control is held back
      *
-     * The game's attack control is then left alone, so that the game does
-     * not swing the weapon with its own animation as well.
+     * A melee weapon swung with the hand is not swung by the game's own
+     * animation as well. Automatic melee weapons keep the control, which
+     * runs them.
      */
     bool swingsWithHand() const {
-      return m_hasBlade;
+      return m_hasBlade && !m_automatic;
     }
 
     /**
@@ -84,8 +95,8 @@ namespace dxvk {
 
   private:
 
-    explicit VrMeleeSwing(const VrSwingConfig& config)
-    : m_swing(config) { }
+    VrMeleeSwing(const VrSwingConfig& config, bool motorFound)
+    : m_swing(config), m_motorFound(motorFound) { }
 
     /**
      * \brief Where the blade touched the actor being hit
@@ -100,6 +111,9 @@ namespace dxvk {
 
     VrSwingTracker m_swing;
     VrGuardTracker m_guard;
+
+    // Whether the game's melee hits can be taken over, see meleeAttackHook
+    bool           m_motorFound = false;
 
     /**
      * \brief What the game computed for the hit being dealt, for the log
@@ -122,13 +136,22 @@ namespace dxvk {
     VrSegment      m_blade;
     bool           m_hasBlade = false;
 
+    // An automatic melee weapon is in the hand, and the hits the game
+    // decided for it since the last frame. The game may decide them on
+    // another thread.
+    std::atomic<bool>     m_automatic = { false };
+    std::atomic<uint32_t> m_motorHits = { 0 };
+
     uint32_t       m_loggedHits = 0;
     uint32_t       m_loggedGuards = 0;
     uint32_t       m_loggedDamage = 0;
+    uint32_t       m_loggedMotorHits = 0;
 
     void logDealt(uintptr_t actor);
 
-    uint32_t hitActors(uint8_t* player, const VrSegment& from, const VrSegment& to);
+    uint32_t hitActors(uint8_t* player, const VrSegment& from, const VrSegment& to, bool motor);
+
+    uint32_t hitWithMotor(uint8_t* player, const VrSegment& blade);
 
     bool findContact(uintptr_t actor, const VrSegment& from, const VrSegment& to, Contact& contact) const;
 
@@ -137,6 +160,8 @@ namespace dxvk {
     int32_t limbOfContact(uintptr_t bodyParts) const;
 
     static void __fastcall setTargetedLimbHook(uintptr_t hitData, void* unused, void* projectile);
+
+    static void __fastcall meleeAttackHook(uintptr_t actor, void* unused, uint32_t power, uint32_t inCombat);
 
   };
 

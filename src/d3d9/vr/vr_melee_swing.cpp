@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstring>
 #include <string>
 
@@ -13,6 +14,9 @@
 namespace dxvk {
 
   namespace {
+
+    // Actor::MeleeAttack, see VrGame::MeleeAttack
+    using MeleeAttackFn = void (__fastcall*)(uintptr_t actor, void* unused, uint32_t power, uint32_t inCombat);
 
     // Actor::CombatHit, see VrGame::CombatHit
     using CombatHitFn = void (__fastcall*)(void* attacker, void* unused,
@@ -66,6 +70,10 @@ namespace dxvk {
     constexpr float MaxDamageNodeDistance = 1.5f * VrGameUnitsPerMetre;
 
     constexpr uint32_t MaxLoggedHits = 200;
+
+    // Hits the game decided for a running automatic weapon that are dealt
+    // in one frame at most, the rest are dropped
+    constexpr uint32_t MaxMotorHitsPerFrame = 4;
 
     // BGSBodyPart::LIMB_ENUM, torso to brain
     constexpr const char* LimbNames[] = {
@@ -194,7 +202,17 @@ namespace dxvk {
     if (!limbFound)
       Logger::warn("VR: The limb of melee hits could not be patched, the game picks it along the view");
 
-    std::unique_ptr<VrMeleeSwing> swing(new VrMeleeSwing(config));
+    // Without it, automatic melee weapons are swung like the others and
+    // the attack control is held back
+    bool motorFound = VrGameMemory::redirectCall(VrGame::MeleeAttackCallSite, VrGame::MeleeAttack,
+      reinterpret_cast<const void*>(&VrMeleeSwing::meleeAttackHook));
+
+    if (motorFound)
+      Logger::info("VR: Automatic melee weapons run while the trigger is held and hit what the blade touches");
+    else
+      Logger::warn("VR: The game's melee hits could not be patched, automatic melee weapons are only swung");
+
+    std::unique_ptr<VrMeleeSwing> swing(new VrMeleeSwing(config, motorFound));
     g_meleeSwing = swing.get();
     return swing;
   }
@@ -203,6 +221,7 @@ namespace dxvk {
   VrMeleeHit VrMeleeSwing::update(
     const VrGameCameraPose*     hand,
     const VrBlade*              blade,
+          bool                  automatic,
     const VrGameCameraPose&     head,
     const VrGameCameraPose&     body,
           float                 dt) {
@@ -211,7 +230,9 @@ namespace dxvk {
     auto player = *reinterpret_cast<uint8_t* const*>(VrGame::Player);
 
     if (!hand || !blade || !player) {
-      m_hasBlade = false;
+      m_hasBlade  = false;
+      m_automatic = false;
+      m_motorHits = 0;
       m_swing.reset();
       m_guard.reset();
       return result;
@@ -228,6 +249,7 @@ namespace dxvk {
 
     m_blade    = { vrPointToHand(body, current.a), vrPointToHand(body, current.b) };
     m_hasBlade = true;
+    m_automatic = automatic && m_motorFound;
 
     bool wasGuarding = m_guard.guarding();
 
@@ -239,14 +261,22 @@ namespace dxvk {
       m_loggedGuards++;
     }
 
+    // Hits the game decided since the last frame, dropped if the weapon in
+    // the hand is no longer automatic
+    uint32_t motorHits = std::min(m_motorHits.exchange(0), MaxMotorHitsPerFrame);
+
+    for (uint32_t i = 0; i < motorHits && m_automatic; i++)
+      result.count += hitWithMotor(player, current);
+
     if (!hadBlade || !m_swing.swinging())
       return result;
 
-    result.count = hitActors(player, previous, current);
+    uint32_t swingHits = hitActors(player, previous, current, false);
+    result.count += swingHits;
 
-    if (result.count && m_loggedHits < MaxLoggedHits) {
-      Logger::info(str::format("VR: Melee swing at ", m_swing.speed(), " m/s hit ", result.count,
-        result.count > 1 ? " actors" : " actor"));
+    if (swingHits && m_loggedHits < MaxLoggedHits) {
+      Logger::info(str::format("VR: Melee swing at ", m_swing.speed(), " m/s hit ", swingHits,
+        swingHits > 1 ? " actors" : " actor"));
       m_loggedHits++;
     }
 
@@ -254,7 +284,21 @@ namespace dxvk {
   }
 
 
-  uint32_t VrMeleeSwing::hitActors(uint8_t* player, const VrSegment& from, const VrSegment& to) {
+  uint32_t VrMeleeSwing::hitWithMotor(uint8_t* player, const VrSegment& blade) {
+    // The blade where it is now, however slowly it moves
+    uint32_t count = hitActors(player, blade, blade, true);
+
+    if (count && m_loggedMotorHits < MaxLoggedHits) {
+      Logger::info(str::format("VR: The running automatic melee weapon hit ", count,
+        count > 1 ? " actors" : " actor"));
+      m_loggedMotorHits++;
+    }
+
+    return count;
+  }
+
+
+  uint32_t VrMeleeSwing::hitActors(uint8_t* player, const VrSegment& from, const VrSegment& to, bool motor) {
     auto actors = *reinterpret_cast<const uintptr_t* const*>(VrGame::ProcessActors);
     auto end    = *reinterpret_cast<const uint32_t*>(VrGame::ProcessHighEnd);
 
@@ -267,7 +311,9 @@ namespace dxvk {
     for (uint32_t i = 0; i < end; i++) {
       uintptr_t actor = actors[i];
 
-      if (!actor || actor == reinterpret_cast<uintptr_t>(player) || m_swing.hasHit(reinterpret_cast<void*>(actor)))
+      // The running weapon hits at the game's pace, a swing once per target
+      if (!actor || actor == reinterpret_cast<uintptr_t>(player)
+       || (!motor && m_swing.hasHit(reinterpret_cast<void*>(actor))))
         continue;
 
       auto vtable = readField<uintptr_t>(actor, 0);
@@ -345,6 +391,20 @@ namespace dxvk {
     });
 
     return found;
+  }
+
+
+  void __fastcall VrMeleeSwing::meleeAttackHook(uintptr_t actor, void* unused, uint32_t power, uint32_t inCombat) {
+    auto player = *reinterpret_cast<const uintptr_t*>(VrGame::Player);
+
+    // The player's hit with an automatic weapon in the hand lands where the
+    // blade is on the next frame, not on the actor in front of the head
+    if (g_meleeSwing && actor == player && g_meleeSwing->m_automatic) {
+      g_meleeSwing->m_motorHits++;
+      return;
+    }
+
+    reinterpret_cast<MeleeAttackFn>(VrGame::MeleeAttack)(actor, nullptr, power, inCombat);
   }
 
 

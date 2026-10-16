@@ -1115,6 +1115,9 @@ namespace dxvk {
     constexpr uint8_t   FormTypeWeapon             = 0x28;
     constexpr uintptr_t WeaponFlags                = 0x100;
     constexpr uint8_t   WeaponFlagNotPlayable      = 0x80;
+    /// TESObjectWEAP::IsAutomaticWeapon (0x00524B40) tests this bit of the
+    /// same flags, see findings/melee.md §11
+    constexpr uint8_t   WeaponFlagAutomatic        = 0x02;
     constexpr size_t    ContainerSize              = 0x0C;
     constexpr uintptr_t ContainerConstruct         = 0x00481610;
     constexpr uintptr_t ContainerDestruct          = 0x00481680;
@@ -1144,6 +1147,15 @@ namespace dxvk {
     constexpr uintptr_t CombatHit = 0x00899CB0;
     constexpr uint8_t   CombatHitPrologue[] = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x56, 0x4D, 0xF1, 0x00,
                                                 0x64, 0xA1, 0x00, 0x00, 0x00, 0x00 };
+
+    /**
+     * Actor::MeleeAttack(power, inCombat), __thiscall, two byte arguments
+     * (ret 8). Actor::HandlePostAnimationActions calls it at this site for
+     * the player when the swing animation reaches its Hit key, see
+     * findings/melee.md §11.
+     */
+    constexpr uintptr_t MeleeAttack         = 0x00899200;
+    constexpr uintptr_t MeleeAttackCallSite = 0x008BAEFE;
 
     /**
      * ReferenceProcessLists (0x011E0E80, as CombatUtilities::GetFacingTarget
