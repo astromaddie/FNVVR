@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -159,7 +160,8 @@ namespace dxvk {
    * speed. Each target is hit once per swing, and not again before
    * \ref RehitTime, so that shaking the blade against a target does not
    * hit it at every shake. A swing is a power attack once its tip has
-   * reached the power speed.
+   * reached the power speed over two of the last three frames, so that a
+   * single frame of tracking noise does not make one.
    *
    * The tip is followed in the player's frame, not in the world, so that
    * walking, running or turning with a still hand is no swing.
@@ -197,6 +199,8 @@ namespace dxvk {
 
     /**
      * \brief Fastest speed of the tip in the current swing, in metres per second
+     *
+     * Each frame counts the second fastest of its last three frames.
      */
     float peakSpeed() const {
       return m_peakSpeed;
@@ -244,6 +248,9 @@ namespace dxvk {
     bool      m_hasTip    = false;
     float     m_speed     = 0.0f;
     float     m_peakSpeed = 0.0f;
+
+    // Speeds of the last frames, the newest first
+    std::array<float, 3> m_recent = { };
 
     // Counts the swings, to tell the hits of the current one
     uint32_t  m_swing = 0;
