@@ -197,7 +197,7 @@ namespace dxvk {
            reinterpret_cast<const void*>(&VrMeleeSwing::setTargetedLimbHook));
 
     Logger::info(str::format("VR: Melee weapons hit when swung faster than ", config.hitSpeed,
-      " m/s, with normal attacks only"));
+      " m/s, power attacks when charged"));
 
     if (!limbFound)
       Logger::warn("VR: The limb of melee hits could not be patched, the game picks it along the view");
@@ -222,6 +222,7 @@ namespace dxvk {
     const VrGameCameraPose*     hand,
     const VrBlade*              blade,
           bool                  automatic,
+          bool                  power,
     const VrGameCameraPose&     head,
     const VrGameCameraPose&     body,
           float                 dt) {
@@ -271,12 +272,13 @@ namespace dxvk {
     if (!hadBlade || !m_swing.swinging())
       return result;
 
-    uint32_t swingHits = hitActors(player, previous, current, false);
+    uint32_t swingHits = hitActors(player, previous, current, false, power);
     result.count += swingHits;
+    result.power  = swingHits && power;
 
     if (swingHits && m_loggedHits < MaxLoggedHits) {
       Logger::info(str::format("VR: Melee swing at ", m_swing.speed(), " m/s hit ", swingHits,
-        swingHits > 1 ? " actors" : " actor"));
+        swingHits > 1 ? " actors" : " actor", power ? " with a power attack" : ""));
       m_loggedHits++;
     }
 
@@ -286,7 +288,7 @@ namespace dxvk {
 
   uint32_t VrMeleeSwing::hitWithMotor(uint8_t* player, const VrSegment& blade) {
     // The blade where it is now, however slowly it moves
-    uint32_t count = hitActors(player, blade, blade, true);
+    uint32_t count = hitActors(player, blade, blade, true, false);
 
     if (count && m_loggedMotorHits < MaxLoggedHits) {
       Logger::info(str::format("VR: The running automatic melee weapon hit ", count,
@@ -298,7 +300,7 @@ namespace dxvk {
   }
 
 
-  uint32_t VrMeleeSwing::hitActors(uint8_t* player, const VrSegment& from, const VrSegment& to, bool motor) {
+  uint32_t VrMeleeSwing::hitActors(uint8_t* player, const VrSegment& from, const VrSegment& to, bool motor, bool power) {
     auto actors = *reinterpret_cast<const uintptr_t* const*>(VrGame::ProcessActors);
     auto end    = *reinterpret_cast<const uint32_t*>(VrGame::ProcessHighEnd);
 
@@ -332,8 +334,8 @@ namespace dxvk {
       m_contact = contact;
       m_dealt   = Dealt();
       m_dealing = true;
-      // Never a power attack, see findings/melee.md §9.7
-      combatHit(player, nullptr, reinterpret_cast<void*>(actor), 0, nullptr, 0);
+      // A power attack only when charged, see findings/melee.md §12
+      combatHit(player, nullptr, reinterpret_cast<void*>(actor), power ? 1 : 0, nullptr, 0);
       m_dealing = false;
 
       logDealt(actor);

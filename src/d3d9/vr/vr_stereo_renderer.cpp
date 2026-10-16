@@ -68,10 +68,17 @@ namespace dxvk {
     // Pip-Boy control cannot reopen it after the gaze pressed back
     constexpr uint32_t PipBoyBackReleaseFrames = 3;
 
-    // Pulse on the right controller when a melee swing hits, with its
-    // duration in nanoseconds
+    // Pulse on the right controller when a melee swing hits, stronger for
+    // a power attack, with its duration in nanoseconds
     constexpr float   MeleeHitHaptic      = 0.5f;
+    constexpr float   MeleePowerHaptic    = 1.0f;
     constexpr int64_t MeleeHapticDuration = 40'000'000;
+
+    // Short tick on the right controller when a power attack is charged
+    constexpr float   ChargedHaptic         = 0.3f;
+    constexpr int64_t ChargedHapticDuration = 15'000'000;
+
+    constexpr uint32_t MaxLoggedPowerHits = 200;
 
     /**
      * \brief Checks whether a state has no 3D scene and is shown on the panel
@@ -217,6 +224,13 @@ namespace dxvk {
 
     if (!renderer->m_meleeSwing)
       Logger::info("VR: Melee weapons are swung by the game's animation, as with a gamepad");
+    else
+      renderer->m_powerRules = VrPowerAttackRules::install(swing.powerCost);
+
+    if (renderer->m_meleeSwing && !renderer->m_powerRules)
+      Logger::warn("VR: The game's power attack rules were not found, melee swings are never power attacks");
+
+    renderer->m_chargeRing = std::make_unique<VrChargeRing>(device, backend);
 
     renderer->m_handPick = VrHandActivatePick::install();
 
@@ -417,6 +431,11 @@ namespace dxvk {
       m_layer = InterfaceLayer::None;
       hideHud();
       hideHandHud();
+      m_powerCharge.reset();
+
+      if (m_chargeRing)
+        m_chargeRing->hide();
+
       renderPanelFrame(main, state);
       return;
     }
@@ -814,18 +833,65 @@ namespace dxvk {
     const VrControllerState& right = input.controllers[uint32_t(VrHand::Right)];
 
     if (state != VrGameStateKind::InGame || !m_hasReference || !right.isActive || !input.isHeadTracked) {
-      m_meleeSwing->update(nullptr, nullptr, false, m_gameCameraPose, m_gameCameraPose, dt);
+      m_meleeSwing->update(nullptr, nullptr, false, false, m_gameCameraPose, m_gameCameraPose, dt);
+      m_powerCharge.reset();
+      m_chargeRing->hide();
       return;
     }
+
+    int32_t cost = 0;
+    bool charged = updatePowerCharge(input, cost);
 
     VrGameCameraPose hand = handInGame(right);
     VrGameCameraPose head = vrComputeEyeCameraPose(m_gameCameraPose,
       vrComputeEyeInReference(m_reference, input.headPose), VrGameUnitsPerMetre);
 
-    VrMeleeHit hit = m_meleeSwing->update(&hand, m_weaponHand->blade(), m_weaponHand->bladeIsAutomatic(), head, m_gameCameraPose, dt);
+    VrMeleeHit hit = m_meleeSwing->update(&hand, m_weaponHand->blade(), m_weaponHand->bladeIsAutomatic(),
+      charged, head, m_gameCameraPose, dt);
+
+    // One power attack spends the charge and its action points, however
+    // many actors the swing hit
+    if (hit.power) {
+      m_powerRules->spend(cost);
+      m_powerCharge.spend();
+
+      if (m_loggedPowerHits < MaxLoggedPowerHits) {
+        Logger::info(str::format("VR: The charged swing made a power attack for ", cost, " action points"));
+        m_loggedPowerHits++;
+      }
+    }
 
     if (hit.count)
-      m_backend.applyHaptic(VrHand::Right, MeleeHitHaptic, MeleeHapticDuration);
+      m_backend.applyHaptic(VrHand::Right, hit.power ? MeleePowerHaptic : MeleeHitHaptic, MeleeHapticDuration);
+
+    if (m_powerCharge.charging())
+      m_chargeRing->show(vrComputeChargeRingPose(right, input.headPose), m_powerCharge.fill(), m_powerCharge.charged());
+    else
+      m_chargeRing->hide();
+  }
+
+
+  bool VrStereoRenderer::updatePowerCharge(
+    const VrInputState&         input,
+          int32_t&              cost) {
+    // Only melee weapons swung with the hand charge: the trigger runs
+    // automatic ones and fires the others
+    bool swung = m_meleeSwing->swingsWithHand();
+    bool held  = swung && input.hasActions && input.actions.isPressed(VrAction::Attack);
+    bool allowed = held && m_powerRules && m_powerRules->allowed(cost);
+    bool wasCharged = m_powerCharge.charged();
+
+    if (!m_powerRules) {
+      m_powerCharge.reset();
+      return false;
+    }
+
+    m_powerCharge.update(held, allowed, m_powerRules->frameTime(), m_powerRules->holdTime());
+
+    if (m_powerCharge.charged() && !wasCharged)
+      m_backend.applyHaptic(VrHand::Right, ChargedHaptic, ChargedHapticDuration);
+
+    return m_powerCharge.charged();
   }
 
 

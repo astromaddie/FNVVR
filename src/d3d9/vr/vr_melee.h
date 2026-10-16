@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "vr_game_space.h"
+#include "vr_power_attack.h"
 
 namespace dxvk {
 
@@ -29,11 +30,14 @@ namespace dxvk {
   /**
    * \brief Speed that makes a swing hit, see findings/melee.md §9
    *
-   * Every hit is a normal attack, whatever the speed, see findings/melee.md §9.7.
+   * The speed never makes a power attack (findings/melee.md §9.7); a swing made
+   * while a power attack is charged with the trigger does (§12).
    */
   struct VrSwingConfig {
     /// Blade tip speed above which a contact hits, in metres per second
     float hitSpeed = 2.0f;
+    /// Action points of a power attack, see VrPowerAttackRules
+    VrPowerAttackCost powerCost;
   };
 
   /**

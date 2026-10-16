@@ -21,6 +21,7 @@
 #include "vr_hand_hud.h"
 #include "vr_hud_layers.h"
 #include "vr_hud_meters.h"
+#include "vr_charge_ring.h"
 #include "vr_melee_swing.h"
 #include "vr_menu_scenes.h"
 #include "vr_npc_gaze.h"
@@ -28,6 +29,7 @@
 #include "vr_weapon_drawn.h"
 #include "vr_pipboy_control.h"
 #include "vr_pipboy_gaze.h"
+#include "vr_power_attack_rules.h"
 #include "vr_pipboy_render.h"
 #include "vr_preview_window.h"
 #include "vr_prompt_icon.h"
@@ -297,6 +299,13 @@ namespace dxvk {
     // Hits dealt by swinging the melee weapon in the hand
     std::unique_ptr<VrMeleeSwing> m_meleeSwing;
 
+    // Power attacks charged by holding the trigger, and their ring beside
+    // the hand
+    std::unique_ptr<VrPowerAttackRules> m_powerRules;
+    std::unique_ptr<VrChargeRing>       m_chargeRing;
+    VrPowerCharge       m_powerCharge;
+    uint32_t            m_loggedPowerHits = 0;
+
     // The activation target, picked along the hands instead of the view
     std::unique_ptr<VrHandActivatePick> m_handPick;
     VrVector3           m_eyePosition;
@@ -467,6 +476,8 @@ namespace dxvk {
     void updateNpcGaze();
 
     void updateMeleeSwing(const VrInputState& input, VrGameStateKind state, float dt);
+
+    bool updatePowerCharge(const VrInputState& input, int32_t& cost);
 
     VrGameCameraPose handInGame(const VrControllerState& controller) const;
 
