@@ -676,6 +676,16 @@ namespace dxvk {
     constexpr uint32_t  TileTraitXpMeterBaseY  = 0x1007;
 
     /**
+     * RadiationMeter group (radiation bar and rads per second).
+     * HUDMainMenu::Create stores it at the given site and sets its x and y
+     * from the screen size; no other HUD code moves it. See
+     * findings/hud.md §12.
+     */
+    constexpr uintptr_t HudRadiationMeter = 0x11C;
+    constexpr uintptr_t HudRadiationMeterStoreSite = 0x0076CB86;
+    constexpr uint8_t   HudRadiationMeterStore[]   = { 0x8B, 0x0D, 0xC0, 0x96, 0x1D, 0x01, 0x89, 0x81, 0x1C, 0x01, 0x00, 0x00 };
+
+    /**
      * HUDMainMenu fields holding the HUD groups shown on the hands: HitPoints
      * (health bar and compass), ActionPoints (action points, ammunition and
      * weapon condition), with AmmoTypeLabel and CNDArrows, which are placed

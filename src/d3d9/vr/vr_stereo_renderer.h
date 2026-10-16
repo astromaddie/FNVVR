@@ -20,6 +20,7 @@
 #include "vr_hand_activate_pick.h"
 #include "vr_hand_hud.h"
 #include "vr_hud_layers.h"
+#include "vr_hud_meters.h"
 #include "vr_melee_swing.h"
 #include "vr_menu_scenes.h"
 #include "vr_npc_gaze.h"
@@ -34,7 +35,6 @@
 #include "vr_sky_anchor.h"
 #include "vr_tile_texture_retry.h"
 #include "vr_weapon_hand.h"
-#include "vr_xp_meter.h"
 
 namespace dxvk {
 
@@ -232,9 +232,9 @@ namespace dxvk {
     // draws the HUD elements the game still shows.
     VrHudLayers            m_hudLayers;
     VrTileTextureRetry     m_tileTextureRetry;
-    VrXpMeter              m_xpMeter;
-    bool   m_xpMeterAvailable = false;
-    bool   m_xpMeterPlaced    = false;
+    VrHudMeters            m_hudMeters;
+    bool              m_hudMetersAvailable = false;
+    VrHudMetersPlaced m_hudMetersPlaced;
     Com<IDirect3DTexture9> m_hudTexture;
     Com<IDirect3DTexture9> m_hudPanelTexture;
     Com<IDirect3DTexture9> m_menuTexture;

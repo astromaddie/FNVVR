@@ -18,6 +18,17 @@ namespace dxvk {
   }
 
 
+  VrInterfaceRect vrComputeRadiationMeterCrop(
+    const VrInterfaceRect&      group,
+    const VrVector2&            size) {
+    return {
+      std::clamp(group.left,                          0.0f, size.x),
+      std::clamp(group.top,                           0.0f, size.y),
+      size.x,
+      std::clamp(group.top + VrRadiationMeterHeight,  0.0f, size.y) };
+  }
+
+
   VrInterfaceRect vrComputeXpMeterCrop(
     const VrInterfaceRect&      group,
     const VrVector2&            size) {
@@ -29,10 +40,36 @@ namespace dxvk {
   }
 
 
+  bool vrComputeHudMetersCrop(
+    const VrInterfaceRect*      radiation,
+    const VrInterfaceRect*      xp,
+    const VrVector2&            size,
+          VrInterfaceRect&      crop) {
+    if (radiation && xp) {
+      VrInterfaceRect a = vrComputeRadiationMeterCrop(*radiation, size);
+      VrInterfaceRect b = vrComputeXpMeterCrop(*xp, size);
+
+      crop = {
+        std::min(a.left,   b.left),
+        std::min(a.top,    b.top),
+        std::max(a.right,  b.right),
+        std::max(a.bottom, b.bottom) };
+    } else if (radiation) {
+      crop = vrComputeRadiationMeterCrop(*radiation, size);
+    } else if (xp) {
+      crop = vrComputeXpMeterCrop(*xp, size);
+    } else {
+      return false;
+    }
+
+    return true;
+  }
+
+
   VrHeadHudLayout vrComputeHeadHudLayout(
     const VrVector2&            size,
           float                 shift,
-    const VrInterfaceRect*      xpMeter) {
+    const VrInterfaceRect*      meters) {
     VrHeadHudLayout layout;
 
     float split = std::floor(0.5f * size.y);
@@ -42,21 +79,21 @@ namespace dxvk {
       { 0.0f, split, size.x, size.y },
       { 0.0f, split, size.x, size.y } };
 
-    // The upper half without the XP meter's columns, so that the meter is
+    // The upper half without the meters' columns, so that the meters are
     // not copied twice
     float upperRight = size.x - shift;
 
-    if (xpMeter)
-      upperRight = std::min(upperRight, xpMeter->left);
+    if (meters)
+      upperRight = std::min(upperRight, meters->left);
 
     layout.copies[layout.count++] = {
       { 0.0f,  0.0f, upperRight,         split },
       { shift, 0.0f, upperRight + shift, split } };
 
-    if (xpMeter) {
+    if (meters) {
       VrInterfaceRect source = {
-        xpMeter->left, std::max(xpMeter->top, 0.0f),
-        std::min(xpMeter->right, size.x), std::min(xpMeter->bottom, split) };
+        meters->left, std::max(meters->top, 0.0f),
+        std::min(meters->right, size.x), std::min(meters->bottom, split) };
 
       if (!source.isEmpty()) {
         layout.copies[layout.count++] = { source,
