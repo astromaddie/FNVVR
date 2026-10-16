@@ -52,6 +52,7 @@ vr_dxvk_src = files([
   'vr_hud_layers.cpp',
   'vr_melee_swing.cpp',
   'vr_menu_scenes.cpp',
+  'vr_npc_gaze.cpp',
   'vr_pipboy_animation.cpp',
   'vr_pipboy_control.cpp',
   'vr_pipboy_render.cpp',

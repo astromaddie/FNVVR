@@ -196,6 +196,18 @@ namespace dxvk {
     constexpr uintptr_t ProcessIsWeaponOutSlot = 0x454;
 
     /**
+     * PlayerCharacter::GetLookingAtLocation, the point other actors look at
+     * (Actor::ProcessTracking aims their look-at IK at it): __thiscall with
+     * a NiPoint3* result on the stack (ret 4), returns the result. Its only
+     * table entry, in the PlayerCharacter vtable, and the current view flag
+     * it tests (b3rdPerson): in first person it gives the world position of
+     * the first-person camera node (0x011E07D0), see findings/npc-gaze.md.
+     */
+    constexpr uintptr_t PlayerLookingAtSlot      = 0x0108ABD0;
+    constexpr uintptr_t PlayerLookingAt          = 0x00952FF0;
+    constexpr uintptr_t PlayerCurrentThirdPerson = 0x64A;
+
+    /**
      * Equipped weapon: the process's virtual function at this slot returns
      * its inventory entry (HighProcess 0x008D81E0 reads +0x114), whose form
      * is at +0x08 (0x0044DDC0). The weapon's animation type is a byte at
