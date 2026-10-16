@@ -56,6 +56,11 @@ namespace dxvk {
      */
     void spend(int32_t cost) const;
 
+    /**
+     * \brief The player's current action points
+     */
+    float actionPoints() const;
+
   private:
 
     explicit VrPowerAttackRules(const VrPowerAttackCost& cost)
