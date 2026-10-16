@@ -10,6 +10,7 @@
 
 #include "vr_activate_target.h"
 #include "vr_backend.h"
+#include "vr_comfort_settings.h"
 #include "vr_controls.h"
 #include "vr_culling_camera.h"
 #include "vr_developer_mode.h"
@@ -317,6 +318,9 @@ namespace dxvk {
 
     // The player's weapon stays drawn, without the draw and holster animations
     std::unique_ptr<VrWeaponDrawn> m_weaponDrawn;
+
+    // The idle camera off and the kill camera in first person
+    std::unique_ptr<VrComfortSettings> m_comfortSettings;
 
     // God mode, weapons and ammunition, for testing (d3d9.vrDeveloperMode)
     std::unique_ptr<VrDeveloperMode> m_developerMode;

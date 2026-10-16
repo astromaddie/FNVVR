@@ -251,6 +251,11 @@ namespace dxvk {
     if (!renderer->m_weaponDrawn)
       Logger::info("VR: The weapon draw code was not found, the weapon is drawn and holstered as in the game");
 
+    renderer->m_comfortSettings = VrComfortSettings::install();
+
+    if (!renderer->m_comfortSettings)
+      Logger::info("VR: The idle and kill camera settings were not found, the game may leave the first person");
+
     if (developer.enabled) {
       renderer->m_developerMode = VrDeveloperMode::install(developer.weaponTypes);
 
@@ -396,6 +401,9 @@ namespace dxvk {
     m_tileTextureRetry.update();
 
     VrGameStateKind state = readGameState();
+
+    if (m_comfortSettings)
+      m_comfortSettings->update();
 
     if (m_developerMode)
       m_developerMode->update(state);
