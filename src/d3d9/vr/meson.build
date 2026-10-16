@@ -28,6 +28,7 @@ vr_dxvk_src = files([
   'vr_activate_target.cpp',
   'vr_prompt_icon.cpp',
   'vr_xp_meter.cpp',
+  'vr_comfort_settings.cpp',
   'vr_system.cpp',
   'vr_backend_factory.cpp',
   'vr_openvr_backend.cpp',

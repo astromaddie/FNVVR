@@ -563,6 +563,37 @@ namespace dxvk {
     constexpr uintptr_t GetIsFullscreen = 0x00446E10;
     constexpr uint8_t   GetIsFullscreenPrologue[] = { 0x55, 0x8B, 0xEC, 0xB9, 0xB4, 0x77, 0x1C, 0x01 };
 
+    /**
+     * The idle camera, see findings/camera.md §7. PlayerCharacter::Update
+     * counts the time without input and turns the third-person camera
+     * around the player past fVanityModeAutoDelay, unless the
+     * bDisableAutoVanityMode:General setting (bool value at SettingValue)
+     * is set. The checked site is where it reads the setting.
+     */
+    constexpr uintptr_t DisableAutoVanitySetting = 0x011E09E0;
+    constexpr uintptr_t AutoVanityCheckSite      = 0x0094358E;
+    constexpr uint8_t   AutoVanityCheck[] = { 0xB9, 0xE0, 0x09, 0x1E, 0x01, 0xE8, 0x98, 0x63, 0xB7, 0xFF };
+
+    /**
+     * The kill camera, see findings/camera.md §7. The player's mode
+     * (KILL_CAM_TYPE: 0 none, 1 player, 2 cinematic) is at
+     * PlayerKillCamMode, copied from iKillCamera:GamePlay by the player's
+     * constructor at the checked site. PlayerCharacter::SetKillCamModeCallback
+     * (__thiscall, mode) sets it and ends a kill camera of the old mode
+     * that is running.
+     */
+    constexpr uintptr_t PlayerKillCamMode      = 0x7C0;
+    constexpr int32_t   KillCamPlayer          = 1;
+    constexpr uintptr_t KillCamModeStoreSite   = 0x00938F73;
+    constexpr uint8_t   KillCamModeStore[] = {
+      0xB9, 0x7C, 0x08, 0x1E, 0x01, 0xE8, 0x53, 0x45, 0xB0, 0xFF,
+      0x8B, 0x8D, 0x54, 0xFF, 0xFF, 0xFF, 0x8B, 0x10, 0x89, 0x91, 0xC0, 0x07, 0x00, 0x00,
+    };
+    constexpr uintptr_t SetKillCamModeCallback = 0x007D12D0;
+    constexpr uint8_t   SetKillCamModeCallbackPrologue[] = {
+      0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x08, 0x89, 0x4D, 0xF8, 0x8B, 0x4D, 0xF8, 0xE8, 0x5F, 0x00, 0x00, 0x00,
+    };
+
     /** LoadingMenu*, not null while a loading screen is shown */
     constexpr uintptr_t LoadingMenu = 0x011DA0C0;
 
