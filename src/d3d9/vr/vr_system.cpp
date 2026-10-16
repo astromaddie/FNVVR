@@ -200,6 +200,9 @@ namespace dxvk {
 
     VrSwingConfig swing;
     swing.hitSpeed = config.getOption<float>("d3d9.vrMeleeHitSpeed", swing.hitSpeed);
+    swing.powerCost.base = config.getOption<int32_t>("d3d9.vrPowerAttackApCost", swing.powerCost.base);
+    swing.powerCost.max  = config.getOption<int32_t>("d3d9.vrPowerAttackApCostMax", swing.powerCost.max);
+    swing.powerCost.weightMult = config.getOption<float>("d3d9.vrPowerAttackApWeightMult", swing.powerCost.weightMult);
 
     g_vrSystem.reset(new VrSystem(std::move(backend), showPreview, panel, turn, weaponInHand, headsetResolution,
       timer, passes, developer, swing));

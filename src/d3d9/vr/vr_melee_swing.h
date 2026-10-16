@@ -13,6 +13,8 @@ namespace dxvk {
   struct VrMeleeHit {
     /// Number of actors hit
     uint32_t count = 0;
+    /// Whether the swing's hits were power attacks
+    bool     power = false;
   };
 
   /**
@@ -29,7 +31,8 @@ namespace dxvk {
    * swing animation had reached it: the game computes the damage,
    * criticals, sounds, reaction and crime. The limb it hits is the one the
    * blade touched, not the one the game would pick along the view, and the
-   * blood and reaction follow the blade's contact and motion. The blade held
+   * blood and reaction follow the blade's contact and motion. A swing made
+   * while a power attack is charged is a power attack. The blade held
    * still across the front of the head is a guard, which holds the game's
    * block control.
    *
@@ -62,6 +65,8 @@ namespace dxvk {
      * \param [in] blade Blade of the weapon in the hand, or \c nullptr if
      *    the hand holds no melee weapon
      * \param [in] automatic Whether that weapon is automatic
+     * \param [in] power Whether the swing's hits are power attacks, see
+     *    VrPowerCharge; the automatic weapon's hits never are
      * \param [in] head Head pose in the game world
      * \param [in] body Pose the eyes and hands are placed on in the game
      *    world, which moves and turns with the player
@@ -71,6 +76,7 @@ namespace dxvk {
       const VrGameCameraPose*     hand,
       const VrBlade*              blade,
             bool                  automatic,
+            bool                  power,
       const VrGameCameraPose&     head,
       const VrGameCameraPose&     body,
             float                 dt);
@@ -149,7 +155,7 @@ namespace dxvk {
 
     void logDealt(uintptr_t actor);
 
-    uint32_t hitActors(uint8_t* player, const VrSegment& from, const VrSegment& to, bool motor);
+    uint32_t hitActors(uint8_t* player, const VrSegment& from, const VrSegment& to, bool motor, bool power);
 
     uint32_t hitWithMotor(uint8_t* player, const VrSegment& blade);
 

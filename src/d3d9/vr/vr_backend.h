@@ -76,9 +76,11 @@ namespace dxvk {
     HudWrist,
     /// Interaction prompt, at the fingertip nearest the target
     HudPrompt,
+    /// Charge of a power attack, beside the right hand
+    HudCharge,
   };
 
-  constexpr uint32_t VrPanelCount = 4;
+  constexpr uint32_t VrPanelCount = 5;
 
   /**
    * \brief What a panel's pose is relative to

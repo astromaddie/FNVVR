@@ -21,6 +21,7 @@ vr_src = files([
   'vr_game_timer_step.cpp',
   'vr_render_profile.cpp',
   'vr_weapon_types.cpp',
+  'vr_power_attack.cpp',
 ])
 
 # Parts that depend on DXVK and Vulkan, only built into d3d9.dll
@@ -51,6 +52,8 @@ vr_dxvk_src = files([
   'vr_game_state.cpp',
   'vr_hud_layers.cpp',
   'vr_melee_swing.cpp',
+  'vr_power_attack_rules.cpp',
+  'vr_charge_ring.cpp',
   'vr_menu_scenes.cpp',
   'vr_npc_gaze.cpp',
   'vr_pipboy_animation.cpp',
@@ -94,6 +97,7 @@ if add_languages('cpp', native: true, required: false)
     'tests/test_vr_game_timer_step.cpp',
     'tests/test_vr_render_profile.cpp',
     'tests/test_vr_weapon_types.cpp',
+    'tests/test_vr_power_attack.cpp',
   ])
 
   vr_test = executable('vr_tests', vr_test_sources, vr_src,

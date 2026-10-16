@@ -1247,6 +1247,56 @@ namespace dxvk {
     /// BGSBodyPart::LIMB_ENUM: torso 0 to brain 13, then the weapon
     constexpr int32_t   LimbWeapon              = 14;
 
+    /**
+     * Charged (power) attacks, see findings/melee.md §12.
+     * PlayerCharacter::CheckUserInputAttacks adds the frame time (the
+     * application timer's step after the time multiplier, BSTimer::fDelta at
+     * +0x0C, BSTimer::GetSeconds 0x0084D030) to its power timer each frame
+     * the attack control stays held after the press, and makes the attack a
+     * power attack once the timer exceeds fPowerAttackDelay (Setting, value
+     * at SettingValue). Not while overencumbered (PlayerCharacter vtable
+     * slot below, __thiscall, returns a bool) nor while swimming
+     * (Actor::IsSwimming, __thiscall, returns a bool), called from the
+     * site below.
+     */
+    constexpr uintptr_t PowerAttackDelay        = 0x011CDDA8;
+    constexpr uintptr_t TimerDelta              = 0x0C;
+    constexpr uintptr_t PlayerOverEncumberedSlot = 0x358;
+    constexpr uintptr_t ActorIsSwimming         = 0x005A2030;
+    constexpr uintptr_t ActorIsSwimmingCallSite = 0x009495FD;
+
+    /**
+     * Action points of a power attack, see findings/melee.md §12.2.
+     * PlayerCharacter::DamageActionPoints(float) (__thiscall, ret 4) takes
+     * action points away, none in god mode or while a save loads.
+     * PlayerCharacter::IsGodMode (__cdecl, returns a bool): tgm or the
+     * demigod setting. The weapon's weight is what the inventory counts
+     * (InventoryChanges::GetInventoryWeight, calls below):
+     * TESObjectWEAP::GetWeight(bool modded) (__thiscall, ret 4, float in
+     * ST0) with ItemChange::HasModEffectActive(effect) (__thiscall, ret 4,
+     * returns a bool) for the weight mod (effect 4), then Pack Rat: if
+     * BGSEntryPoint::HandleEntryPoint (__cdecl, entry point, perk owner,
+     * float* result) gives Modify Light Items (0x37) a value above 0, an
+     * item no heavier than fPackRatThreshold weighs fPackRatModifier times
+     * its weight.
+     */
+    constexpr uintptr_t PlayerDamageActionPoints = 0x0093AB80;
+    constexpr uint8_t   PlayerDamageActionPointsPrologue[] = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0xE8, 0x24, 0x7B, 0x01, 0x00 };
+    constexpr uintptr_t PlayerIsGodMode         = 0x009526B0;
+    constexpr uint8_t   PlayerIsGodModePrologue[] = { 0x55, 0x8B, 0xEC, 0xB9, 0x94, 0x08, 0x1E, 0x01, 0xE8, 0xA3, 0x66, 0xAB };
+    constexpr uintptr_t WeaponGetWeight         = 0x004BE380;
+    constexpr uintptr_t WeaponGetWeightCallSite = 0x004D0A43;
+    constexpr uintptr_t ItemHasModEffect        = 0x004BDA70;
+    constexpr uintptr_t ItemHasModEffectCallSite = 0x004D0A37;
+    constexpr uint32_t  WeaponModDecreaseWeight = 4;
+    constexpr uintptr_t HandleEntryPoint        = 0x005E58F0;
+    constexpr uintptr_t HandleEntryPointCallSite = 0x004D094C;
+    constexpr uint32_t  EntryPointModifyLightItems = 0x37;
+    constexpr uintptr_t PackRatModifier         = 0x011C64A8;
+    constexpr uintptr_t PackRatThreshold        = 0x011C6478;
+    /// ActorValue::Index of ActionPoints
+    constexpr uint32_t  AvActionPoints          = 12;
+
   }
 
 }

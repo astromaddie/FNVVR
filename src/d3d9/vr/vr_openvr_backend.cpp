@@ -72,10 +72,10 @@ namespace dxvk {
     // order follows the index, so the HUD is drawn over the menu panel, and
     // the hand panels, which are nearer, over the HUD.
     constexpr std::array<const char*, VrPanelCount> PanelOverlayKeys  = {
-      "fnvvr.panel", "fnvvr.hud.head", "fnvvr.hud.wrist", "fnvvr.hud.prompt" };
+      "fnvvr.panel", "fnvvr.hud.head", "fnvvr.hud.wrist", "fnvvr.hud.prompt", "fnvvr.hud.charge" };
     constexpr std::array<const char*, VrPanelCount> PanelOverlayNames = {
       "Fallout: New Vegas", "Fallout: New Vegas HUD", "Fallout: New Vegas wrist HUD",
-      "Fallout: New Vegas interaction prompt" };
+      "Fallout: New Vegas interaction prompt", "Fallout: New Vegas power attack charge" };
 
     // Overlay key and name of each hand's laser, indexed by VrHand. Lasers
     // are drawn over the panels.
