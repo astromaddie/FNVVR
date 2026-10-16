@@ -615,6 +615,22 @@ namespace dxvk {
     constexpr uintptr_t HudQuestReminder = 0x124;
     constexpr uintptr_t HudMessages      = 0x134;
     constexpr uintptr_t HudSubtitles     = 0x13C;
+    constexpr uintptr_t HudXpMeter       = 0x144;
+
+    /**
+     * XPMeter group (XP gained and "LEVEL UP"). HUDMainMenu::Create stores
+     * it at the given site and sets its x, y and base height (trait
+     * TileTraitXpMeterBaseY) from the screen size; UpdateVisibilityState
+     * sets its y from that base, which is checked at the given site
+     * (push 0x1007 / mov edx,[HudMainMenu] / mov ecx,[edx+0x144]). See
+     * findings/hud.md §11.
+     */
+    constexpr uintptr_t HudXpMeterStoreSite = 0x0076E2D9;
+    constexpr uint8_t   HudXpMeterStore[]   = { 0x8B, 0x0D, 0xC0, 0x96, 0x1D, 0x01, 0x89, 0x81, 0x44, 0x01, 0x00, 0x00 };
+    constexpr uintptr_t HudXpMeterBaseReadSite = 0x00771BA3;
+    constexpr uint8_t   HudXpMeterBaseRead[]   = { 0x68, 0x07, 0x10, 0x00, 0x00, 0x8B, 0x15, 0xC0, 0x96, 0x1D, 0x01,
+                                                   0x8B, 0x8A, 0x44, 0x01, 0x00, 0x00 };
+    constexpr uint32_t  TileTraitXpMeterBaseY  = 0x1007;
 
     /**
      * HUDMainMenu fields holding the HUD groups shown on the hands: HitPoints
