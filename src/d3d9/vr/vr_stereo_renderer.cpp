@@ -814,7 +814,7 @@ namespace dxvk {
     const VrControllerState& right = input.controllers[uint32_t(VrHand::Right)];
 
     if (state != VrGameStateKind::InGame || !m_hasReference || !right.isActive || !input.isHeadTracked) {
-      m_meleeSwing->update(nullptr, nullptr, m_gameCameraPose, m_gameCameraPose, dt);
+      m_meleeSwing->update(nullptr, nullptr, false, m_gameCameraPose, m_gameCameraPose, dt);
       return;
     }
 
@@ -822,7 +822,7 @@ namespace dxvk {
     VrGameCameraPose head = vrComputeEyeCameraPose(m_gameCameraPose,
       vrComputeEyeInReference(m_reference, input.headPose), VrGameUnitsPerMetre);
 
-    VrMeleeHit hit = m_meleeSwing->update(&hand, m_weaponHand->blade(), head, m_gameCameraPose, dt);
+    VrMeleeHit hit = m_meleeSwing->update(&hand, m_weaponHand->blade(), m_weaponHand->bladeIsAutomatic(), head, m_gameCameraPose, dt);
 
     if (hit.count)
       m_backend.applyHaptic(VrHand::Right, MeleeHitHaptic, MeleeHapticDuration);
