@@ -20,13 +20,13 @@ namespace {
 TEST_CASE(power_cost_grows_with_weight_up_to_the_cap) {
   VrPowerAttackCost cost;
 
-  CHECK(vrComputePowerAttackCost(cost, 0.0f) == 5);
-  // A machete of 2 units: 5 + 4
-  CHECK(vrComputePowerAttackCost(cost, 2.0f) == 9);
+  CHECK(vrComputePowerAttackCost(cost, 0.0f) == 25);
+  // A machete of 2 units: 25 + 20
+  CHECK(vrComputePowerAttackCost(cost, 2.0f) == 45);
   // Truncated, not rounded
-  CHECK(vrComputePowerAttackCost(cost, 2.9f) == 10);
+  CHECK(vrComputePowerAttackCost(cost, 2.95f) == 54);
   // A sledgehammer of 20 units hits the cap
-  CHECK(vrComputePowerAttackCost(cost, 20.0f) == 30);
+  CHECK(vrComputePowerAttackCost(cost, 20.0f) == 150);
 }
 
 
