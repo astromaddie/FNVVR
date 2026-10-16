@@ -208,18 +208,34 @@ TEST_CASE(melee_swing_power_from_peak_speed) {
 
   swing.update({ 0.0f, 0.0f, 0.0f }, 0.01f);
   swing.update({ 0.06f * M, 0.0f, 0.0f }, 0.01f);  // 6 m/s
+  CHECK(!swing.powerful());
+  swing.update({ 0.12f * M, 0.0f, 0.0f }, 0.01f);  // 6 m/s
   CHECK(swing.powerful());
 
   // Slower but still swinging: the swing keeps its power
-  swing.update({ 0.09f * M, 0.0f, 0.0f }, 0.01f);  // 3 m/s
+  swing.update({ 0.15f * M, 0.0f, 0.0f }, 0.01f);  // 3 m/s
   CHECK(swing.swinging());
   CHECK(swing.powerful());
 
   // Stopped: the next swing starts without power
-  swing.update({ 0.09f * M, 0.0f, 0.0f }, 0.01f);
-  swing.update({ 0.12f * M, 0.0f, 0.0f }, 0.01f);  // 3 m/s
+  swing.update({ 0.15f * M, 0.0f, 0.0f }, 0.01f);
+  swing.update({ 0.18f * M, 0.0f, 0.0f }, 0.01f);  // 3 m/s
   CHECK(swing.swinging());
   CHECK(!swing.powerful());
+}
+
+
+TEST_CASE(melee_swing_power_ignores_one_frame_spike) {
+  VrSwingConfig config;
+  VrSwingTracker swing(config);
+
+  swing.update({ 0.0f, 0.0f, 0.0f }, 0.01f);
+  swing.update({ 0.03f * M, 0.0f, 0.0f }, 0.01f);  // 3 m/s
+  swing.update({ 0.83f * M, 0.0f, 0.0f }, 0.01f);  // 80 m/s for one frame
+  swing.update({ 0.86f * M, 0.0f, 0.0f }, 0.01f);  // 3 m/s
+  CHECK(swing.swinging());
+  CHECK(!swing.powerful());
+  CHECK_NEAR(swing.peakSpeed(), 3.0f, 1e-3);
 }
 
 
