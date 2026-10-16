@@ -735,11 +735,14 @@ namespace dxvk {
       ? vrComputeRigHoldingWeapon(weaponRotation, drawnWeapon, m_heldSettle.rotation(), hand)
       : vrComputeRigToHand(m_gameCamera, drawnWeapon, hand);
 
-    // With both hands on the weapon, it points along the line between them
+    // With both hands on a gun, it points along the line between them. A
+    // two-handed melee weapon is swung by the right hand, the left hand
+    // only rides on its handle.
     VrVector3 support = rig.rotate * (drawnHand - drawnWeapon);
-    updateGrip(weaponGrip(object), forearm != nullptr, support);
+    GripKind  grip    = weaponGrip(object);
+    updateGrip(grip, forearm != nullptr, support);
 
-    if (m_twoHanded) {
+    if (m_twoHanded && grip == GripKind::TwoHanded) {
       hand = vrComputeTwoHandedPose(hand, support, m_otherHand.position - m_hand.position);
       rig  = vrComputeRigToHand(m_gameCamera, drawnWeapon, hand);
     }
@@ -887,7 +890,7 @@ namespace dxvk {
     // game holds it, and keeps it until it is released. The game only
     // holds a one-handed weapon with both hands while it aims, so there
     // the other controller only has to come near the hand.
-    if (kind == GripKind::TwoHanded) {
+    if (kind == GripKind::TwoHanded || kind == GripKind::TwoHandedMelee) {
       m_braced = false;
 
       if (!m_twoHanded)
@@ -901,9 +904,14 @@ namespace dxvk {
       }
     }
 
-    if (m_twoHanded && !m_loggedTwoHanded) {
+    if (m_twoHanded && kind == GripKind::TwoHanded && !m_loggedTwoHanded) {
       Logger::info("VR: The weapon is held with both hands");
       m_loggedTwoHanded = true;
+    }
+
+    if (m_twoHanded && kind == GripKind::TwoHandedMelee && !m_loggedTwoHandedMelee) {
+      Logger::info("VR: The melee weapon is held with both hands, the right hand swings it");
+      m_loggedTwoHandedMelee = true;
     }
 
     if (m_braced && !m_loggedBraced) {
@@ -1185,8 +1193,12 @@ namespace dxvk {
 
 
   VrWeaponHand::GripKind VrWeaponHand::weaponGrip(const uint8_t* player) const {
-    // Melee, thrown and placed weapons are left to the game's animation
+    // One-handed melee, thrown and placed weapons are left to the game's
+    // animation
     int8_t type = weaponType(player);
+
+    if (type == WeaponTypeTwoHandMelee)
+      return GripKind::TwoHandedMelee;
 
     if (type == WeaponTypePistol || type == WeaponTypePistolEnergy)
       return GripKind::Braced;

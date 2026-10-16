@@ -34,10 +34,11 @@ namespace dxvk {
    *   again. The first-person camera is moved to the eye, so that the model
    *   is seen with the right parallax in each eye. The left forearm is
    *   then moved so that the left hand lands on the left controller, unless
-   *   the left hand holds the weapon: the weapon then points along the line
-   *   between the hands and the left hand stays where the game animates it
-   *   on the weapon. The meshes skinned to the upper arms are culled, so
-   *   that only the hands are drawn.
+   *   the left hand holds the weapon: the left hand then stays where the
+   *   game animates it on the weapon, and a gun points along the line
+   *   between the hands. A two-handed melee weapon still follows the right
+   *   hand alone, which swings it. The meshes skinned to the upper arms
+   *   are culled, so that only the hands are drawn.
    * - TESObjectWEAP::Fire creates the player's projectiles from the muzzle
    *   the game animated in front of its camera. They start from the muzzle
    *   drawn in the hand instead, along the barrel as it is drawn, with the
@@ -147,9 +148,10 @@ namespace dxvk {
   private:
 
     enum class GripKind {
-      None,       ///< The other hand does not hold the weapon
-      TwoHanded,  ///< Held with both hands, the line between them aims
-      Braced,     ///< One-handed, supported while the game aims
+      None,           ///< The other hand does not hold the weapon
+      TwoHanded,      ///< Held with both hands, the line between them aims
+      TwoHandedMelee, ///< Held with both hands, the right hand alone swings it
+      Braced,         ///< One-handed, supported while the game aims
     };
 
     VrWeaponHand() = default;
@@ -222,6 +224,7 @@ namespace dxvk {
     bool             m_loggedArms   = false;
     bool             m_loggedOtherHand = false;
     bool             m_loggedTwoHanded = false;
+    bool             m_loggedTwoHandedMelee = false;
     bool             m_loggedBraced = false;
     bool             m_loggedSnapAim = false;
     bool             m_loggedPipBoy = false;
