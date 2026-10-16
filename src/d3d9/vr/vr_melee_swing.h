@@ -103,8 +103,21 @@ namespace dxvk {
     VrSwingTracker m_swing;
     VrGuardTracker m_guard;
 
+    /**
+     * \brief What the game computed for the hit being dealt, for the log
+     */
+    struct Dealt {
+      bool        seen         = false;
+      bool        limbSet      = false;
+      const char* limb         = nullptr;
+      float       healthDamage = 0.0f;
+      float       limbDamage   = 0.0f;
+      uint32_t    flags        = 0;
+    };
+
     // Contact of the hit being dealt, while Actor::CombatHit runs
     Contact        m_contact;
+    Dealt          m_dealt;
     bool           m_dealing = false;
 
     // Blade on the previous frame, in the body's frame
@@ -113,7 +126,9 @@ namespace dxvk {
 
     uint32_t       m_loggedHits = 0;
     uint32_t       m_loggedGuards = 0;
-    uint32_t       m_loggedLimbs = 0;
+    uint32_t       m_loggedDamage = 0;
+
+    void logDealt(uintptr_t actor);
 
     uint32_t hitActors(uint8_t* player, const VrSegment& from, const VrSegment& to, bool power);
 

@@ -1,4 +1,5 @@
 #include <cstring>
+#include <string>
 
 #include "../../util/log/log.h"
 #include "../../util/util_string.h"
@@ -20,6 +21,12 @@ namespace dxvk {
     // TESObjectREFR::Get3D and IsActor, __thiscall without arguments
     using Get3DFn   = uintptr_t (__fastcall*)(uintptr_t reference, void* unused);
     using IsActorFn = uint32_t (__fastcall*)(uintptr_t reference, void* unused);
+
+    // Actor::IsDead(bool), __thiscall, returns a bool
+    using IsDeadFn  = uint32_t (__fastcall*)(uintptr_t actor, void* unused, uint32_t unknown);
+
+    // ActorValueOwner::GetBaseActorFloatValue and GetActorFloatValue
+    using GetAvFloatFn = float (__fastcall*)(uintptr_t owner, void* unused, uint32_t index);
 
     // Hit limb, see findings/melee.md §10 and VrGame::SetTargetedLimb
     using SetTargetedLimbFn   = void (__fastcall*)(uintptr_t hitData, void* unused, void* projectile);
@@ -58,7 +65,7 @@ namespace dxvk {
     // A damage node further than this from the contact is not the limb hit
     constexpr float MaxDamageNodeDistance = 1.5f * VrGameUnitsPerMetre;
 
-    constexpr uint32_t MaxLoggedHits = 50;
+    constexpr uint32_t MaxLoggedHits = 200;
 
     // BGSBodyPart::LIMB_ENUM, torso to brain
     constexpr const char* LimbNames[] = {
@@ -239,7 +246,8 @@ namespace dxvk {
     result.count = hitActors(player, previous, current, result.power);
 
     if (result.count && m_loggedHits < MaxLoggedHits) {
-      Logger::info(str::format("VR: Melee swing at ", m_swing.speed(), " m/s hit ", result.count,
+      Logger::info(str::format("VR: Melee swing at ", m_swing.speed(), " m/s (peak ", m_swing.peakSpeed(),
+        " m/s) hit ", result.count,
         result.count > 1 ? " actors" : " actor", result.power ? " with a power attack" : ""));
       m_loggedHits++;
     }
@@ -278,9 +286,12 @@ namespace dxvk {
 
       // The game asks for the limb while it computes the hit, see setTargetedLimb
       m_contact = contact;
+      m_dealt   = Dealt();
       m_dealing = true;
       combatHit(player, nullptr, reinterpret_cast<void*>(actor), power ? 1 : 0, nullptr, 0);
       m_dealing = false;
+
+      logDealt(actor);
 
       count++;
     }
@@ -356,6 +367,12 @@ namespace dxvk {
      || readField<uintptr_t>(hitData, VrGame::HitVatsCommand))
       return false;
 
+    // Damage after the power bonus, critical and armour, which the game
+    // computes before the limb, see findings/melee.md §10.1
+    m_dealt.seen         = true;
+    m_dealt.healthDamage = readField<float>(hitData, VrGame::HitHealthDamage);
+    m_dealt.flags        = readField<uint32_t>(hitData, VrGame::HitFlags);
+
     uintptr_t actor = m_contact.actor;
     uintptr_t actorBase = reinterpret_cast<GetActorBaseFn>(VrGame::ActorGetBase)(actor, nullptr);
 
@@ -401,15 +418,38 @@ namespace dxvk {
     // The game ignores the body part's damage multiplier for melee weapons
     reinterpret_cast<SetBonusMultFn>(VrGame::HitDataSetBonusMult)(hitData, nullptr, 1.0f);
 
-    if (m_loggedLimbs < MaxLoggedHits) {
-      const char* limbName = partType >= 0 && partType < VrGame::LimbWeapon ? LimbNames[partType] : "another part";
-
-      Logger::info(str::format("VR: The blade hit the ", limbName, " at bone ", nodeName(m_contact.bone),
-        ", limb damage ", limbDamage));
-      m_loggedLimbs++;
-    }
-
+    m_dealt.limbSet    = true;
+    m_dealt.limb       = partType >= 0 && partType < VrGame::LimbWeapon ? LimbNames[partType] : "another part";
+    m_dealt.limbDamage = limbDamage;
     return true;
+  }
+
+
+  void VrMeleeSwing::logDealt(uintptr_t actor) {
+    if (m_loggedDamage >= MaxLoggedHits)
+      return;
+
+    auto vtable = readField<uintptr_t>(actor, 0);
+    bool dead = reinterpret_cast<IsDeadFn>(readField<uintptr_t>(vtable, VrGame::ActorIsDeadSlot))(actor, nullptr, 0) & 0xFF;
+
+    uintptr_t values = actor + VrGame::ActorValueOwnerBase;
+    float health     = virtualFunction<GetAvFloatFn>(values, VrGame::AvOwnerFloatSlot)(values, nullptr, VrGame::AvHealth);
+    float baseHealth = virtualFunction<GetAvFloatFn>(values, VrGame::AvOwnerBaseFloatSlot)(values, nullptr, VrGame::AvHealth);
+
+    std::string limb = m_dealt.limbSet
+      ? str::format("the ", m_dealt.limb, " at bone ", nodeName(m_contact.bone), ", limb damage ", m_dealt.limbDamage)
+      : std::string("a limb the game picked along the view");
+
+    std::string damage = m_dealt.seen
+      ? str::format(", health damage ", m_dealt.healthDamage,
+          (m_dealt.flags & VrGame::HitFlagCritical) ? ", critical" : "",
+          (m_dealt.flags & VrGame::HitFlagSneakAttack) ? ", sneak attack" : "")
+      : std::string();
+
+    Logger::info(str::format("VR: The blade hit ", limb, damage,
+      ", health ", health, " of ", baseHealth, " left",
+      dead ? ", the target is dead" : ""));
+    m_loggedDamage++;
   }
 
 

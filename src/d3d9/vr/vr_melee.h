@@ -196,6 +196,13 @@ namespace dxvk {
     }
 
     /**
+     * \brief Fastest speed of the tip in the current swing, in metres per second
+     */
+    float peakSpeed() const {
+      return m_peakSpeed;
+    }
+
+    /**
      * \brief Whether the blade moves fast enough to hit
      */
     bool swinging() const {

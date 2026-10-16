@@ -1152,6 +1152,13 @@ namespace dxvk {
     constexpr uintptr_t RefIsActorSlot     = 0x100;
 
     /**
+     * Actor::IsDead(bool), vtable slot, __thiscall, ret 4, returns a bool
+     * (called on the target by HitData::CheckCriticalStrike, Steam
+     * 0x009B7060, with 0).
+     */
+    constexpr uintptr_t ActorIsDeadSlot    = 0x22C;
+
+    /**
      * Hit limb, see findings/melee.md §10. HitData::SetTargetedLimb
      * (Projectile*), __thiscall, ret 4, picks the limb of a melee hit along
      * the attacker's view; the non-projectile HitData::InitializeHitData
@@ -1191,6 +1198,13 @@ namespace dxvk {
 
     /// Actor's ActorValueOwner base
     constexpr uintptr_t ActorValueOwnerBase     = 0xA4;
+    /// ActorValueOwner vtable slots, __thiscall, ret 4, float in ST0: the
+    /// base value (called with Health by CalcTargetedLimbDamage) and the
+    /// current one, next but one in the same table (IDA)
+    constexpr uintptr_t AvOwnerBaseFloatSlot    = 0x04;
+    constexpr uintptr_t AvOwnerFloatSlot        = 0x0C;
+    /// ActorValue::Index of Health
+    constexpr uint32_t  AvHealth                = 16;
 
     /// HitData fields
     constexpr uintptr_t HitAggressor            = 0x00;
@@ -1202,6 +1216,11 @@ namespace dxvk {
     constexpr uintptr_t HitLocation             = 0x38;
     constexpr uintptr_t HitDirection            = 0x44;
     constexpr uintptr_t HitVatsCommand          = 0x54;
+    constexpr uintptr_t HitFlags                = 0x58;
+
+    /// HitData::Flag bits, set by HitData::CheckCriticalStrike (Steam 0x009B7060)
+    constexpr uint32_t  HitFlagCritical         = 0x004;
+    constexpr uint32_t  HitFlagSneakAttack      = 0x400;
 
     /// BGSBodyPart::LIMB_ENUM: torso 0 to brain 13, then the weapon
     constexpr int32_t   LimbWeapon              = 14;
