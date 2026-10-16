@@ -852,11 +852,13 @@ namespace dxvk {
     // One power attack spends the charge and its action points, however
     // many actors the swing hit
     if (hit.power) {
+      float before = m_powerRules->actionPoints();
       m_powerRules->spend(cost);
       m_powerCharge.spend();
 
       if (m_loggedPowerHits < MaxLoggedPowerHits) {
-        Logger::info(str::format("VR: The charged swing made a power attack for ", cost, " action points"));
+        Logger::info(str::format("VR: The charged swing made a power attack for ", cost,
+          " action points, from ", before, " to ", m_powerRules->actionPoints()));
         m_loggedPowerHits++;
       }
     }

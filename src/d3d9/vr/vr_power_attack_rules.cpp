@@ -103,9 +103,7 @@ namespace dxvk {
     if (reinterpret_cast<IsGodModeFn>(VrGame::PlayerIsGodMode)())
       return true;
 
-    const uint8_t* values = pc + VrGame::ActorValueOwnerBase;
-    float points = virtualFunction<GetAvFloatFn>(values, VrGame::AvOwnerFloatSlot)(values, nullptr, VrGame::AvActionPoints);
-    return float(cost) <= points;
+    return float(cost) <= actionPoints();
   }
 
 
@@ -115,6 +113,17 @@ namespace dxvk {
     // The game's routine takes nothing in god mode
     if (pc && cost > 0)
       reinterpret_cast<DamageActionPointsFn>(VrGame::PlayerDamageActionPoints)(pc, nullptr, float(cost));
+  }
+
+
+  float VrPowerAttackRules::actionPoints() const {
+    const uint8_t* pc = player();
+
+    if (!pc)
+      return 0.0f;
+
+    const uint8_t* values = pc + VrGame::ActorValueOwnerBase;
+    return virtualFunction<GetAvFloatFn>(values, VrGame::AvOwnerFloatSlot)(values, nullptr, VrGame::AvActionPoints);
   }
 
 
