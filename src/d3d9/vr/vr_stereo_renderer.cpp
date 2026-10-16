@@ -9,6 +9,7 @@
 #include "vr_game_addresses.h"
 #include "vr_game_memory.h"
 #include "vr_game_nodes.h"
+#include "vr_head_hud.h"
 #include "vr_math.h"
 #include "vr_stereo_renderer.h"
 #include "vr_weapon_types.h"
@@ -42,7 +43,8 @@ namespace dxvk {
     VrStereoRenderer* g_stereoRenderer = nullptr;
 
     // HUD groups shown on the panel in front of the head
-    constexpr uintptr_t HeadHudGroups[] = { VrGame::HudMessages, VrGame::HudQuestReminder, VrGame::HudSubtitles };
+    constexpr uintptr_t HeadHudGroups[] = {
+      VrGame::HudMessages, VrGame::HudQuestReminder, VrGame::HudSubtitles, VrGame::HudXpMeter };
 
     // HUD groups shown on the hands
     constexpr uintptr_t HandHudGroups[] = {
@@ -176,6 +178,12 @@ namespace dxvk {
       Logger::info("VR: The HUD layout was not found, the HUD is not shown in the headset");
     else if (!renderer->m_hudLayers.menusFound())
       Logger::info("VR: The menu list was not found, HUD messages are not shown while a menu is open");
+
+    renderer->m_xpMeterAvailable = renderer->m_hudAvailable && renderer->m_hudLayers.rectsFound()
+      && renderer->m_xpMeter.initialize();
+
+    if (renderer->m_hudAvailable && !renderer->m_xpMeterAvailable)
+      Logger::info("VR: The XP meter's layout was not found, the XP gained is shown at the bottom right of the HUD panel");
 
     renderer->m_handHudAvailable = renderer->m_hudAvailable && renderer->m_hudLayers.rectsFound();
     renderer->m_promptAvailable  = renderer->m_handHudAvailable
@@ -489,6 +497,9 @@ namespace dxvk {
     updateMeleeSwing(input, state, dt);
     updateHandPick(input, state);
     updatePipBoyGaze(input, state, dt);
+
+    // Before the interface's tiles are updated for this frame
+    m_xpMeterPlaced = m_xpMeterAvailable && m_xpMeter.place();
 
     for (uint32_t eye = 0; eye < VrEyeCount; eye++) {
       m_eyeCopied[eye] = false;
@@ -1313,10 +1324,6 @@ namespace dxvk {
 
 
   bool VrStereoRenderer::composeHud() {
-    // The game puts the messages and objectives in the top left corner and
-    // the subtitles at the bottom, in the centre. Seen from the head, the
-    // corner is too far to the side to read comfortably, so the upper half
-    // of the image is moved towards the centre and the lower half is kept.
     Com<IDirect3DSurface9> source;
     Com<IDirect3DSurface9> destination;
 
@@ -1327,21 +1334,40 @@ namespace dxvk {
     D3DSURFACE_DESC desc = { };
     source->GetDesc(&desc);
 
-    LONG width  = LONG(desc.Width);
-    LONG height = LONG(desc.Height);
-    LONG split  = height / 2;
+    VrVector2 imageSize = { float(desc.Width), float(desc.Height) };
 
     float shiftScale = m_panelConfig.hudWidth > 0.0f
       ? m_panelConfig.hudMessagesOffset / m_panelConfig.hudWidth : 0.0f;
-    LONG shift = std::clamp(LONG(std::lround(shiftScale * float(width))), LONG(0), width / 2);
+    float shift = std::round(shiftScale * imageSize.x);
 
-    RECT lower       = { 0,     split, width,         height };
-    RECT upperSource = { 0,     0,     width - shift, split  };
-    RECT upperTarget = { shift, 0,     width,         split  };
+    // The XP meter's crop, once it is in the top right corner
+    VrInterfaceRect xpGroup;
+    VrInterfaceRect xpMeter;
+    bool hasXpMeter = m_xpMeterPlaced && m_hudLayers.groupRect(VrGame::HudXpMeter, xpGroup);
 
-    return SUCCEEDED(m_device->ColorFill(destination.ptr(), nullptr, D3DCOLOR_ARGB(0, 0, 0, 0)))
-        && SUCCEEDED(m_device->StretchRect(source.ptr(), &lower, destination.ptr(), &lower, D3DTEXF_NONE))
-        && SUCCEEDED(m_device->StretchRect(source.ptr(), &upperSource, destination.ptr(), &upperTarget, D3DTEXF_NONE));
+    if (hasXpMeter) {
+      VrVector2 size  = vrComputeInterfaceSize(desc.Width, desc.Height);
+      float     scale = imageSize.x / size.x;
+      xpMeter = pixelsToRect(interfaceToPixels(vrComputeXpMeterCrop(xpGroup, size), scale, desc));
+    }
+
+    VrHeadHudLayout layout = vrComputeHeadHudLayout(imageSize, shift, hasXpMeter ? &xpMeter : nullptr);
+
+    if (FAILED(m_device->ColorFill(destination.ptr(), nullptr, D3DCOLOR_ARGB(0, 0, 0, 0))))
+      return false;
+
+    for (uint32_t i = 0; i < layout.count; i++) {
+      RECT from = rectToPixels(layout.copies[i].source);
+      RECT to   = rectToPixels(layout.copies[i].target);
+
+      if (from.right <= from.left || from.bottom <= from.top)
+        continue;
+
+      if (FAILED(m_device->StretchRect(source.ptr(), &from, destination.ptr(), &to, D3DTEXF_NONE)))
+        return false;
+    }
+
+    return true;
   }
 
 

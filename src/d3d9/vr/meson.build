@@ -15,6 +15,7 @@ vr_src = files([
   'vr_melee.cpp',
   'vr_pipboy_gaze.cpp',
   'vr_hand_hud.cpp',
+  'vr_head_hud.cpp',
   'vr_frame_stats.cpp',
   'vr_game_timer_stats.cpp',
   'vr_game_timer_step.cpp',
@@ -26,6 +27,7 @@ vr_src = files([
 vr_dxvk_src = files([
   'vr_activate_target.cpp',
   'vr_prompt_icon.cpp',
+  'vr_xp_meter.cpp',
   'vr_system.cpp',
   'vr_backend_factory.cpp',
   'vr_openvr_backend.cpp',
@@ -84,6 +86,7 @@ if add_languages('cpp', native: true, required: false)
     'tests/test_vr_melee.cpp',
     'tests/test_vr_pipboy_gaze.cpp',
     'tests/test_vr_hand_hud.cpp',
+    'tests/test_vr_head_hud.cpp',
     'tests/test_vr_frame_stats.cpp',
     'tests/test_vr_game_timer_stats.cpp',
     'tests/test_vr_game_timer_step.cpp',
