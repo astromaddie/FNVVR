@@ -203,6 +203,7 @@ TEST_CASE(melee_swing_needs_hit_speed) {
 
 TEST_CASE(melee_swing_power_from_peak_speed) {
   VrSwingConfig config;
+  config.powerSpeed = 5.0f;
   VrSwingTracker swing(config);
 
   swing.update({ 0.0f, 0.0f, 0.0f }, 0.01f);

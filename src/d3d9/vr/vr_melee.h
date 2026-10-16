@@ -33,7 +33,7 @@ namespace dxvk {
     /// Blade tip speed above which a contact hits, in metres per second
     float hitSpeed   = 2.0f;
     /// Blade tip speed that makes the hit a power attack, in metres per second
-    float powerSpeed = 5.0f;
+    float powerSpeed = 12.0f;
   };
 
   /**
