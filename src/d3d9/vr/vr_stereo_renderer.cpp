@@ -961,6 +961,13 @@ namespace dxvk {
       m_pipBoyBackFrames -= 1;
 
     m_pipBoyControl.blockGameOpen(m_pipBoyBackFrames != 0);
+
+    // The Pip-Boy grows while it opens and is open, and goes back to its
+    // size once the player looks away and it closes
+    bool grown = gaze.state == VrPipBoyState::Open
+      || (gaze.state == VrPipBoyState::Changing && m_pipBoyGaze.isLooking());
+
+    m_weaponHand->setPipBoyScale(m_pipBoyGrowth.update(grown, m_pipBoyScale, dt));
   }
 
 

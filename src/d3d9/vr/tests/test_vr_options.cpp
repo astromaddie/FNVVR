@@ -87,3 +87,42 @@ TEST_CASE(turn_speed_slider_positions) {
   CHECK(vrSmoothTurnSpeedToStep(1.0f) == 0);
   CHECK(vrSmoothTurnSpeedToStep(9000.0f) == VrSmoothTurnSpeedSteps - 1);
 }
+
+
+TEST_CASE(options_round_trip_the_pipboy_size) {
+  VrOptions options;
+  CHECK_NEAR(options.pipBoyScale, 1.0f, 1e-6);
+
+  VrOptions written;
+  written.pipBoyScale = 1.75f;
+
+  VrOptions read;
+  vrParseOptions(vrFormatOptions(written), read);
+  CHECK_NEAR(read.pipBoyScale, 1.75f, 1e-6);
+}
+
+
+TEST_CASE(options_parser_limits_the_pipboy_size) {
+  VrOptions options;
+  vrParseOptions("PipBoyScale=9", options);
+  CHECK_NEAR(options.pipBoyScale, 2.0f, 1e-6);
+
+  vrParseOptions("PipBoyScale=0.5", options);
+  CHECK_NEAR(options.pipBoyScale, 1.0f, 1e-6);
+
+  vrParseOptions("PipBoyScale=big", options);
+  CHECK_NEAR(options.pipBoyScale, 1.0f, 1e-6);
+}
+
+
+TEST_CASE(pipboy_size_positions) {
+  CHECK_NEAR(vrPipBoyStepToScale(0), 1.0f, 1e-6);
+  CHECK_NEAR(vrPipBoyStepToScale(2), 1.5f, 1e-6);
+  CHECK_NEAR(vrPipBoyStepToScale(VrPipBoyScaleSteps - 1), 2.0f, 1e-6);
+  CHECK_NEAR(vrPipBoyStepToScale(99), 2.0f, 1e-6);
+
+  CHECK(vrPipBoyScaleToStep(1.0f) == 0);
+  CHECK(vrPipBoyScaleToStep(1.3f) == 1);
+  CHECK(vrPipBoyScaleToStep(0.2f) == 0);
+  CHECK(vrPipBoyScaleToStep(5.0f) == VrPipBoyScaleSteps - 1);
+}

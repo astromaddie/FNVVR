@@ -268,10 +268,15 @@ namespace dxvk {
     constexpr uintptr_t SkinInstanceBones     = 0x14;
     constexpr uintptr_t SkinDataBoneCount     = 0x44;
 
-    /** NiAVObject transforms: parent, local rotation (row-major 3x3) and world transform */
+    /**
+     * NiAVObject transforms: parent, local rotation (row-major 3x3),
+     * translation and scale, and world transform. The local scale is the
+     * float NiAVObject::SetLocalScale (0x00440490, `fstp [eax+0x64]`) writes.
+     */
     constexpr uintptr_t ObjectParent          = 0x18;
     constexpr uintptr_t ObjectLocalRotation   = 0x34;
     constexpr uintptr_t ObjectLocalTranslation = 0x58;
+    constexpr uintptr_t ObjectLocalScale      = 0x64;
     constexpr uintptr_t ObjectWorldRotation   = 0x68;
     constexpr uintptr_t ObjectWorldTranslation = 0x8C;
     constexpr uintptr_t ObjectWorldScale      = 0x98;

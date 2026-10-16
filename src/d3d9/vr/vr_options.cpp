@@ -11,6 +11,7 @@ namespace dxvk {
 
     constexpr char SmoothTurnName[]      = "smoothturn";
     constexpr char SmoothTurnSpeedName[] = "smoothturnspeed";
+    constexpr char PipBoyScaleName[]     = "pipboyscale";
 
     std::string trim(const std::string& text) {
       size_t begin = 0;
@@ -48,7 +49,8 @@ namespace dxvk {
     }
 
 
-    bool parseFloat(const std::string& text, float& value) {
+    // Reads a positive number, brought into [low, high]
+    bool parseFloat(const std::string& text, float low, float high, float& value) {
       if (text.empty())
         return false;
 
@@ -58,27 +60,48 @@ namespace dxvk {
       if (*end || !(number > 0.0))
         return false;
 
-      float low  = VrSmoothTurnSpeedMin;
-      float high = vrSmoothTurnStepToSpeed(VrSmoothTurnSpeedSteps - 1);
       value = std::min(std::max(float(number), low), high);
       return true;
+    }
+
+
+    // Position of a value on evenly spaced steps from min, the closest one
+    uint32_t closestStep(float value, float min, float step, uint32_t count) {
+      float position = (value - min) / step + 0.5f;
+
+      if (!(position > 0.0f))
+        return 0;
+
+      return std::min(uint32_t(position), count - 1);
+    }
+
+
+    std::string formatFloat(float value) {
+      char text[32];
+      std::snprintf(text, sizeof(text), "%g", value);
+      return text;
     }
 
   }
 
 
   uint32_t vrSmoothTurnSpeedToStep(float speed) {
-    float step = (speed - VrSmoothTurnSpeedMin) / VrSmoothTurnSpeedStep + 0.5f;
-
-    if (!(step > 0.0f))
-      return 0;
-
-    return std::min(uint32_t(step), VrSmoothTurnSpeedSteps - 1);
+    return closestStep(speed, VrSmoothTurnSpeedMin, VrSmoothTurnSpeedStep, VrSmoothTurnSpeedSteps);
   }
 
 
   float vrSmoothTurnStepToSpeed(uint32_t step) {
     return VrSmoothTurnSpeedMin + float(std::min(step, VrSmoothTurnSpeedSteps - 1)) * VrSmoothTurnSpeedStep;
+  }
+
+
+  uint32_t vrPipBoyScaleToStep(float scale) {
+    return closestStep(scale, VrPipBoyScaleMin, VrPipBoyScaleStep, VrPipBoyScaleSteps);
+  }
+
+
+  float vrPipBoyStepToScale(uint32_t step) {
+    return VrPipBoyScaleMin + float(std::min(step, VrPipBoyScaleSteps - 1)) * VrPipBoyScaleStep;
   }
 
 
@@ -108,7 +131,9 @@ namespace dxvk {
       if (name == SmoothTurnName)
         parseBool(value, options.smoothTurn);
       else if (name == SmoothTurnSpeedName)
-        parseFloat(value, options.smoothTurnSpeed);
+        parseFloat(value, VrSmoothTurnSpeedMin, vrSmoothTurnStepToSpeed(VrSmoothTurnSpeedSteps - 1), options.smoothTurnSpeed);
+      else if (name == PipBoyScaleName)
+        parseFloat(value, VrPipBoyScaleMin, vrPipBoyStepToScale(VrPipBoyScaleSteps - 1), options.pipBoyScale);
     }
   }
 
@@ -118,12 +143,8 @@ namespace dxvk {
     text += "SmoothTurn=";
     text += options.smoothTurn ? "1" : "0";
     text += "\n";
-
-    char speed[32];
-    std::snprintf(speed, sizeof(speed), "%g", options.smoothTurnSpeed);
-    text += "SmoothTurnSpeed=";
-    text += speed;
-    text += "\n";
+    text += "SmoothTurnSpeed=" + formatFloat(options.smoothTurnSpeed) + "\n";
+    text += "PipBoyScale=" + formatFloat(options.pipBoyScale) + "\n";
     return text;
   }
 
