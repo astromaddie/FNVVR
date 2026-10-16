@@ -22,6 +22,7 @@
 #include "vr_hud_layers.h"
 #include "vr_melee_swing.h"
 #include "vr_menu_scenes.h"
+#include "vr_npc_gaze.h"
 #include "vr_pipboy_animation.h"
 #include "vr_weapon_drawn.h"
 #include "vr_pipboy_control.h"
@@ -322,6 +323,9 @@ namespace dxvk {
     // The idle camera off and the kill camera in first person
     std::unique_ptr<VrComfortSettings> m_comfortSettings;
 
+    // The other actors look at the head
+    std::unique_ptr<VrNpcGaze> m_npcGaze;
+
     // God mode, weapons and ammunition, for testing (d3d9.vrDeveloperMode)
     std::unique_ptr<VrDeveloperMode> m_developerMode;
 
@@ -459,6 +463,8 @@ namespace dxvk {
       const VrGameCameraPose& gameCamera, float dt);
 
     void updateHandPick(const VrInputState& input, VrGameStateKind state);
+
+    void updateNpcGaze();
 
     void updateMeleeSwing(const VrInputState& input, VrGameStateKind state, float dt);
 

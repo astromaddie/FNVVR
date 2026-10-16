@@ -256,6 +256,11 @@ namespace dxvk {
     if (!renderer->m_comfortSettings)
       Logger::info("VR: The idle and kill camera settings were not found, the game may leave the first person");
 
+    renderer->m_npcGaze = VrNpcGaze::install();
+
+    if (!renderer->m_npcGaze)
+      Logger::info("VR: The player's look-at location was not found, actors look at the game's camera");
+
     if (developer.enabled) {
       renderer->m_developerMode = VrDeveloperMode::install(developer.weaponTypes);
 
@@ -501,6 +506,7 @@ namespace dxvk {
 
     // The game turned its camera with the head already
     m_controls.adjustCamera(m_gameCameraPose);
+    updateNpcGaze();
     updateWeaponHand(input, state, modelCamera, dt);
     updateMeleeSwing(input, state, dt);
     updateHandPick(input, state);
@@ -577,6 +583,9 @@ namespace dxvk {
     // Nothing in the world can be pointed at without the stereo view
     if (m_handPick)
       m_handPick->setRays({ });
+
+    if (m_npcGaze)
+      m_npcGaze->setHead(nullptr);
 
     VrD3D9Bridge::submitEmptyFrame(m_device, m_backend, timing.predictedDisplayTime);
 
@@ -941,6 +950,21 @@ namespace dxvk {
     hand.position = vrComputeEyeCameraPose(m_gameCameraPose,
       vrComputeEyeInReference(m_reference, controller.gripPose), VrGameUnitsPerMetre).position;
     return hand;
+  }
+
+
+  void VrStereoRenderer::updateNpcGaze() {
+    if (!m_npcGaze)
+      return;
+
+    if (!m_hasReference || !m_hasHeadPose) {
+      m_npcGaze->setHead(nullptr);
+      return;
+    }
+
+    VrVector3 head = vrComputeEyeCameraPose(m_gameCameraPose,
+      vrComputeEyeInReference(m_reference, m_headPose), VrGameUnitsPerMetre).position;
+    m_npcGaze->setHead(&head);
   }
 
 
