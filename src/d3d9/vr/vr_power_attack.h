@@ -10,15 +10,17 @@ namespace dxvk {
    * \brief Action points a power attack costs
    *
    * The cost grows with the weapon's weight, as in lStewieAl's Tweaks
-   * (charged attacks cost action points), see findings/melee.md §12.2.
+   * (charged attacks cost action points), five times its values: the game
+   * restores action points quickly outside of V.A.T.S., see
+   * findings/melee.md §12.2 and §12.4.
    */
   struct VrPowerAttackCost {
     /// Cost of a weightless weapon
-    int32_t base = 5;
+    int32_t base = 25;
     /// Highest cost, whatever the weight
-    int32_t max = 30;
+    int32_t max = 150;
     /// Action points added per unit of the weapon's weight
-    float   weightMult = 2.0f;
+    float   weightMult = 10.0f;
   };
 
   /**
