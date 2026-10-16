@@ -183,10 +183,8 @@ namespace dxvk {
 
 
   void VrSwingTracker::reset() {
-    m_hasTip    = false;
-    m_speed     = 0.0f;
-    m_peakSpeed = 0.0f;
-    m_recent    = { };
+    m_hasTip = false;
+    m_speed  = 0.0f;
     m_hits.clear();
   }
 
@@ -201,19 +199,8 @@ namespace dxvk {
     m_tip    = tip;
     m_hasTip = true;
 
-    m_recent = { m_speed, m_recent[0], m_recent[1] };
-
-    std::array<float, 3> sorted = m_recent;
-    std::sort(sorted.begin(), sorted.end());
-
-    if (m_speed < m_config.hitSpeed) {
-      m_peakSpeed = 0.0f;
-    } else {
-      if (!wasSwinging)
-        m_swing++;
-
-      m_peakSpeed = std::max(m_peakSpeed, sorted[1]);
-    }
+    if (swinging() && !wasSwinging)
+      m_swing++;
 
     for (Hit& hit : m_hits)
       hit.age += dt;

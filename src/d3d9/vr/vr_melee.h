@@ -1,6 +1,5 @@
 #pragma once
 
-#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -28,13 +27,13 @@ namespace dxvk {
   };
 
   /**
-   * \brief Speeds that make a swing hit, see findings/melee.md §9
+   * \brief Speed that makes a swing hit, see findings/melee.md §9
+   *
+   * Every hit is a normal attack, whatever the speed, see findings/melee.md §9.7.
    */
   struct VrSwingConfig {
     /// Blade tip speed above which a contact hits, in metres per second
-    float hitSpeed   = 2.0f;
-    /// Blade tip speed that makes the hit a power attack, in metres per second
-    float powerSpeed = 12.0f;
+    float hitSpeed = 2.0f;
   };
 
   /**
@@ -159,9 +158,7 @@ namespace dxvk {
    * A swing lasts while the blade's tip moves at least as fast as the hit
    * speed. Each target is hit once per swing, and not again before
    * \ref RehitTime, so that shaking the blade against a target does not
-   * hit it at every shake. A swing is a power attack once its tip has
-   * reached the power speed over two of the last three frames, so that a
-   * single frame of tracking noise does not make one.
+   * hit it at every shake.
    *
    * The tip is followed in the player's frame, not in the world, so that
    * walking, running or turning with a still hand is no swing.
@@ -198,26 +195,10 @@ namespace dxvk {
     }
 
     /**
-     * \brief Fastest speed of the tip in the current swing, in metres per second
-     *
-     * Each frame counts the second fastest of its last three frames.
-     */
-    float peakSpeed() const {
-      return m_peakSpeed;
-    }
-
-    /**
      * \brief Whether the blade moves fast enough to hit
      */
     bool swinging() const {
       return m_hasTip && m_speed >= m_config.hitSpeed;
-    }
-
-    /**
-     * \brief Whether the current swing makes power attacks
-     */
-    bool powerful() const {
-      return swinging() && m_peakSpeed >= m_config.powerSpeed;
     }
 
     /**
@@ -245,12 +226,8 @@ namespace dxvk {
     VrSwingConfig m_config;
 
     VrVector3 m_tip;
-    bool      m_hasTip    = false;
-    float     m_speed     = 0.0f;
-    float     m_peakSpeed = 0.0f;
-
-    // Speeds of the last frames, the newest first
-    std::array<float, 3> m_recent = { };
+    bool      m_hasTip = false;
+    float     m_speed  = 0.0f;
 
     // Counts the swings, to tell the hits of the current one
     uint32_t  m_swing = 0;

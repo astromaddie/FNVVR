@@ -189,7 +189,7 @@ namespace dxvk {
            reinterpret_cast<const void*>(&VrMeleeSwing::setTargetedLimbHook));
 
     Logger::info(str::format("VR: Melee weapons hit when swung faster than ", config.hitSpeed,
-      " m/s, power attacks from ", config.powerSpeed, " m/s"));
+      " m/s, with normal attacks only"));
 
     if (!limbFound)
       Logger::warn("VR: The limb of melee hits could not be patched, the game picks it along the view");
@@ -242,13 +242,11 @@ namespace dxvk {
     if (!hadBlade || !m_swing.swinging())
       return result;
 
-    result.power = m_swing.powerful();
-    result.count = hitActors(player, previous, current, result.power);
+    result.count = hitActors(player, previous, current);
 
     if (result.count && m_loggedHits < MaxLoggedHits) {
-      Logger::info(str::format("VR: Melee swing at ", m_swing.speed(), " m/s (peak ", m_swing.peakSpeed(),
-        " m/s) hit ", result.count,
-        result.count > 1 ? " actors" : " actor", result.power ? " with a power attack" : ""));
+      Logger::info(str::format("VR: Melee swing at ", m_swing.speed(), " m/s hit ", result.count,
+        result.count > 1 ? " actors" : " actor"));
       m_loggedHits++;
     }
 
@@ -256,7 +254,7 @@ namespace dxvk {
   }
 
 
-  uint32_t VrMeleeSwing::hitActors(uint8_t* player, const VrSegment& from, const VrSegment& to, bool power) {
+  uint32_t VrMeleeSwing::hitActors(uint8_t* player, const VrSegment& from, const VrSegment& to) {
     auto actors = *reinterpret_cast<const uintptr_t* const*>(VrGame::ProcessActors);
     auto end    = *reinterpret_cast<const uint32_t*>(VrGame::ProcessHighEnd);
 
@@ -288,7 +286,8 @@ namespace dxvk {
       m_contact = contact;
       m_dealt   = Dealt();
       m_dealing = true;
-      combatHit(player, nullptr, reinterpret_cast<void*>(actor), power ? 1 : 0, nullptr, 0);
+      // Never a power attack, see findings/melee.md §9.7
+      combatHit(player, nullptr, reinterpret_cast<void*>(actor), 0, nullptr, 0);
       m_dealing = false;
 
       logDealt(actor);

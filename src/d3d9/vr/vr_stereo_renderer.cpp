@@ -68,10 +68,9 @@ namespace dxvk {
     // Pip-Boy control cannot reopen it after the gaze pressed back
     constexpr uint32_t PipBoyBackReleaseFrames = 3;
 
-    // Pulse on the right controller when a melee swing hits, stronger for a
-    // power attack, with its duration in nanoseconds
+    // Pulse on the right controller when a melee swing hits, with its
+    // duration in nanoseconds
     constexpr float   MeleeHitHaptic      = 0.5f;
-    constexpr float   MeleePowerHaptic    = 1.0f;
     constexpr int64_t MeleeHapticDuration = 40'000'000;
 
     /**
@@ -826,7 +825,7 @@ namespace dxvk {
     VrMeleeHit hit = m_meleeSwing->update(&hand, m_weaponHand->blade(), head, m_gameCameraPose, dt);
 
     if (hit.count)
-      m_backend.applyHaptic(VrHand::Right, hit.power ? MeleePowerHaptic : MeleeHitHaptic, MeleeHapticDuration);
+      m_backend.applyHaptic(VrHand::Right, MeleeHitHaptic, MeleeHapticDuration);
   }
 
 

@@ -12,8 +12,6 @@ namespace dxvk {
   struct VrMeleeHit {
     /// Number of actors hit
     uint32_t count = 0;
-    /// Whether the hits were power attacks
-    bool     power = false;
   };
 
   /**
@@ -130,7 +128,7 @@ namespace dxvk {
 
     void logDealt(uintptr_t actor);
 
-    uint32_t hitActors(uint8_t* player, const VrSegment& from, const VrSegment& to, bool power);
+    uint32_t hitActors(uint8_t* player, const VrSegment& from, const VrSegment& to);
 
     bool findContact(uintptr_t actor, const VrSegment& from, const VrSegment& to, Contact& contact) const;
 
