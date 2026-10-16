@@ -44,7 +44,8 @@ namespace dxvk {
 
     // HUD groups shown on the panel in front of the head
     constexpr uintptr_t HeadHudGroups[] = {
-      VrGame::HudMessages, VrGame::HudQuestReminder, VrGame::HudSubtitles, VrGame::HudXpMeter };
+      VrGame::HudMessages, VrGame::HudQuestReminder, VrGame::HudSubtitles,
+      VrGame::HudRadiationMeter, VrGame::HudXpMeter };
 
     // HUD groups shown on the hands
     constexpr uintptr_t HandHudGroups[] = {
@@ -179,11 +180,11 @@ namespace dxvk {
     else if (!renderer->m_hudLayers.menusFound())
       Logger::info("VR: The menu list was not found, HUD messages are not shown while a menu is open");
 
-    renderer->m_xpMeterAvailable = renderer->m_hudAvailable && renderer->m_hudLayers.rectsFound()
-      && renderer->m_xpMeter.initialize();
+    renderer->m_hudMetersAvailable = renderer->m_hudAvailable && renderer->m_hudLayers.rectsFound()
+      && renderer->m_hudMeters.initialize();
 
-    if (renderer->m_hudAvailable && !renderer->m_xpMeterAvailable)
-      Logger::info("VR: The XP meter's layout was not found, the XP gained is shown at the bottom right of the HUD panel");
+    if (renderer->m_hudAvailable && !renderer->m_hudMetersAvailable)
+      Logger::info("VR: The radiation and XP meters' layout was not found, they are shown where the game places them on the HUD panel");
 
     renderer->m_handHudAvailable = renderer->m_hudAvailable && renderer->m_hudLayers.rectsFound();
     renderer->m_promptAvailable  = renderer->m_handHudAvailable
@@ -513,7 +514,7 @@ namespace dxvk {
     updatePipBoyGaze(input, state, dt);
 
     // Before the interface's tiles are updated for this frame
-    m_xpMeterPlaced = m_xpMeterAvailable && m_xpMeter.place();
+    m_hudMetersPlaced = m_hudMetersAvailable ? m_hudMeters.place() : VrHudMetersPlaced();
 
     for (uint32_t eye = 0; eye < VrEyeCount; eye++) {
       m_eyeCopied[eye] = false;
@@ -1372,18 +1373,22 @@ namespace dxvk {
       ? m_panelConfig.hudMessagesOffset / m_panelConfig.hudWidth : 0.0f;
     float shift = std::round(shiftScale * imageSize.x);
 
-    // The XP meter's crop, once it is in the top right corner
+    // The crop of the meters placed in the top right corner
+    VrInterfaceRect radiationGroup;
     VrInterfaceRect xpGroup;
-    VrInterfaceRect xpMeter;
-    bool hasXpMeter = m_xpMeterPlaced && m_hudLayers.groupRect(VrGame::HudXpMeter, xpGroup);
+    bool hasRadiation = m_hudMetersPlaced.radiation && m_hudLayers.groupRect(VrGame::HudRadiationMeter, radiationGroup);
+    bool hasXp        = m_hudMetersPlaced.xp && m_hudLayers.groupRect(VrGame::HudXpMeter, xpGroup);
 
-    if (hasXpMeter) {
-      VrVector2 size  = vrComputeInterfaceSize(desc.Width, desc.Height);
-      float     scale = imageSize.x / size.x;
-      xpMeter = pixelsToRect(interfaceToPixels(vrComputeXpMeterCrop(xpGroup, size), scale, desc));
-    }
+    VrVector2       size = vrComputeInterfaceSize(desc.Width, desc.Height);
+    VrInterfaceRect metersGroup;
+    VrInterfaceRect meters;
+    bool hasMeters = vrComputeHudMetersCrop(hasRadiation ? &radiationGroup : nullptr,
+      hasXp ? &xpGroup : nullptr, size, metersGroup);
 
-    VrHeadHudLayout layout = vrComputeHeadHudLayout(imageSize, shift, hasXpMeter ? &xpMeter : nullptr);
+    if (hasMeters)
+      meters = pixelsToRect(interfaceToPixels(metersGroup, imageSize.x / size.x, desc));
+
+    VrHeadHudLayout layout = vrComputeHeadHudLayout(imageSize, shift, hasMeters ? &meters : nullptr);
 
     if (FAILED(m_device->ColorFill(destination.ptr(), nullptr, D3DCOLOR_ARGB(0, 0, 0, 0))))
       return false;

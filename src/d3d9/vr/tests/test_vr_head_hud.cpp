@@ -80,3 +80,48 @@ TEST_CASE(head_hud_keeps_the_xp_meter_in_the_upper_half) {
   CHECK(layout.count == 3);
   CHECK_NEAR(layout.copies[2].source.bottom, 960.0f, 1e-3f);
 }
+
+
+TEST_CASE(radiation_meter_crop_reaches_the_right_side) {
+  // The game's position without safe zone, moved to the messages' row
+  VrInterfaceRect crop = vrComputeRadiationMeterCrop({ 873.0f, 25.0f, 1240.0f, 85.0f }, Interface);
+
+  CHECK_NEAR(crop.left, 873.0f, 1e-3f);
+  CHECK_NEAR(crop.top, 25.0f, 1e-3f);
+  CHECK_NEAR(crop.right, 1280.0f, 1e-3f);
+  CHECK_NEAR(crop.bottom, 145.0f, 1e-3f);
+}
+
+
+TEST_CASE(hud_meters_crop_covers_both_meters) {
+  // The radiation meter in the messages' row, the XP meter below it
+  const VrInterfaceRect radiation = { 873.0f, 25.0f, 1240.0f, 85.0f };
+  const VrInterfaceRect xp = { 890.0f, 145.0f, 890.0f, 145.0f };
+
+  VrInterfaceRect crop;
+  CHECK(vrComputeHudMetersCrop(&radiation, &xp, Interface, crop));
+  CHECK_NEAR(crop.left, 873.0f, 1e-3f);
+  CHECK_NEAR(crop.top, 25.0f, 1e-3f);
+  CHECK_NEAR(crop.right, 1280.0f, 1e-3f);
+  CHECK_NEAR(crop.bottom, 401.0f, 1e-3f);
+
+  // The XP meter starts where the radiation meter ends, so they never overlap
+  VrInterfaceRect radiationCrop = vrComputeRadiationMeterCrop(radiation, Interface);
+  VrInterfaceRect xpCrop = vrComputeXpMeterCrop(xp, Interface);
+  CHECK(!overlaps(radiationCrop, xpCrop));
+
+  // Still within the upper half, which the head panel moves
+  CHECK(crop.bottom <= 0.5f * Interface.y);
+}
+
+
+TEST_CASE(hud_meters_crop_with_one_meter) {
+  const VrInterfaceRect xp = { 890.0f, 25.0f, 890.0f, 25.0f };
+
+  VrInterfaceRect crop;
+  CHECK(vrComputeHudMetersCrop(nullptr, &xp, Interface, crop));
+  CHECK_NEAR(crop.left, 878.0f, 1e-3f);
+  CHECK_NEAR(crop.bottom, 281.0f, 1e-3f);
+
+  CHECK(!vrComputeHudMetersCrop(nullptr, nullptr, Interface, crop));
+}
