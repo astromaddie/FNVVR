@@ -651,7 +651,10 @@ namespace dxvk {
       m_loggedFrame = true;
     }
 
-    measurePipBoyScreen(root);
+    // The size is written after the game's update, the next update shows it
+    PipBoyNodes pipBoy = findPipBoy(root);
+    measurePipBoyScreen(pipBoy);
+    scalePipBoy(pipBoy);
 
     // The game places its camera at its own eye
     if (uint8_t* camera = field<uint8_t*>(main, VrGame::MainFirstPersonCamera))
@@ -832,19 +835,37 @@ namespace dxvk {
   }
 
 
-  void VrWeaponHand::measurePipBoyScreen(uint8_t* root) {
+  VrWeaponHand::PipBoyNodes VrWeaponHand::findPipBoy(uint8_t* root) {
+    PipBoyNodes nodes;
+    nodes.hand    = findObject(root, VrGame::LeftHandNodeName);
+    nodes.forearm = nodes.hand ? field<uint8_t*>(nodes.hand, VrGame::ObjectParent) : nullptr;
+    nodes.twist   = nodes.forearm ? findObject(nodes.forearm, VrGame::LeftForeTwistNodeName) : nullptr;
+    nodes.screen  = nodes.twist ? findObject(nodes.twist, VrGame::PipBoyScreenNodeName) : nullptr;
+
+    if (nodes.twist && !nodes.screen)
+      nodes.screen = findObject(nodes.twist, VrGame::PipBoyScreenNodeAltName);
+
+    if (!nodes.screen || field<uint8_t*>(nodes.twist, VrGame::ObjectParent) != nodes.forearm) {
+      nodes.screen = nullptr;
+      return nodes;
+    }
+
+    // The model's root is the screen's ancestor attached to the twist bone
+    uint8_t* device = nodes.screen;
+
+    while (device && field<uint8_t*>(device, VrGame::ObjectParent) != nodes.twist)
+      device = field<uint8_t*>(device, VrGame::ObjectParent);
+
+    nodes.device = device;
+    return nodes;
+  }
+
+
+  void VrWeaponHand::measurePipBoyScreen(const PipBoyNodes& nodes) {
     // Offsets between the bones and from the twist bone to the screen do
     // not depend on the pose the game animates, only the rotations that
     // the free pose replaces do
-    uint8_t* hand    = findObject(root, VrGame::LeftHandNodeName);
-    uint8_t* forearm = hand ? field<uint8_t*>(hand, VrGame::ObjectParent) : nullptr;
-    uint8_t* twist   = forearm ? findObject(forearm, VrGame::LeftForeTwistNodeName) : nullptr;
-    uint8_t* screen  = twist ? findObject(twist, VrGame::PipBoyScreenNodeName) : nullptr;
-
-    if (twist && !screen)
-      screen = findObject(twist, VrGame::PipBoyScreenNodeAltName);
-
-    if (!screen || field<uint8_t*>(twist, VrGame::ObjectParent) != forearm) {
+    if (!nodes.screen) {
       if (!m_loggedScreen)
         Logger::warn("VR: The Pip-Boy screen was not found on the left forearm, looking at it does not open the Pip-Boy");
 
@@ -852,6 +873,11 @@ namespace dxvk {
       m_loggedScreen    = true;
       return;
     }
+
+    uint8_t* hand    = nodes.hand;
+    uint8_t* forearm = nodes.forearm;
+    uint8_t* twist   = nodes.twist;
+    uint8_t* screen  = nodes.screen;
 
     VrGameRotation forearmRotation = readRotation(forearm, VrGame::ObjectWorldRotation);
     VrVector3 forearmPosition      = readVector(forearm, VrGame::ObjectWorldTranslation);
@@ -876,6 +902,72 @@ namespace dxvk {
       Logger::info(str::format("VR: The Pip-Boy screen is ", m_pipBoyScreen.x, " m forward, ",
         m_pipBoyScreen.y, " m up and ", m_pipBoyScreen.z, " m right of the left controller"));
       m_loggedScreen = true;
+    }
+  }
+
+
+  void VrWeaponHand::scalePipBoy(const PipBoyNodes& nodes) {
+    uint8_t* device = nodes.device;
+
+    if (!device)
+      return;
+
+    VrNodeScale current = {
+      readVector(device, VrGame::ObjectLocalTranslation),
+      field<float>(device, VrGame::ObjectLocalScale) };
+
+    // A model the game attached or placed again is at its own size
+    bool replaced = device != m_pipBoyDevice
+      || std::memcmp(&current, &m_pipBoyWrittenPlacement, sizeof(current));
+
+    if (replaced) {
+      m_pipBoyDevice           = device;
+      m_pipBoyOwnPlacement     = current;
+      m_pipBoyWrittenPlacement = current;
+      m_pipBoyAppliedScale     = 1.0f;
+    }
+
+    if (m_pipBoyScale == m_pipBoyAppliedScale)
+      return;
+
+    VrNodeScale placement = m_pipBoyOwnPlacement;
+
+    if (m_pipBoyScale != 1.0f) {
+      // The screen's centre in the twist bone's frame at the model's own
+      // placement, and the forearm's axis there: the line from the forearm
+      // bone to the wrist
+      ParentFrame twist = parentFrame(device);
+
+      ParentFrame model;
+      model.rotate    = readRotation(device, VrGame::ObjectWorldRotation);
+      model.translate = readVector(device, VrGame::ObjectWorldTranslation);
+      model.scale     = field<float>(device, VrGame::ObjectWorldScale);
+
+      VrVector3 centre = readVector(nodes.screen, VrGame::ObjectWorldTranslation);
+
+      if (auto bound = field<const uint8_t*>(nodes.screen, VrGame::ObjectWorldBound))
+        centre = readVector(bound, 0);
+
+      VrVector3 screen = readRotation(device, VrGame::ObjectLocalRotation)
+        * (model.toLocal(centre) * m_pipBoyOwnPlacement.scale) + m_pipBoyOwnPlacement.translate;
+
+      VrVector3 pivot = vrClosestPointOnLine(
+        twist.toLocal(readVector(nodes.forearm, VrGame::ObjectWorldTranslation)),
+        twist.toLocal(readVector(nodes.hand, VrGame::ObjectWorldTranslation)),
+        screen);
+
+      placement = vrScaleAboutPoint(m_pipBoyOwnPlacement, pivot, m_pipBoyScale);
+    }
+
+    writeVector(device, VrGame::ObjectLocalTranslation, placement.translate);
+    field<float>(device, VrGame::ObjectLocalScale) = placement.scale;
+
+    m_pipBoyWrittenPlacement = placement;
+    m_pipBoyAppliedScale     = m_pipBoyScale;
+
+    if (!m_loggedPipBoyScale && m_pipBoyScale != 1.0f) {
+      Logger::info(str::format("VR: The Pip-Boy grows while it is open, up to ", m_pipBoyScale, " times its size"));
+      m_loggedPipBoyScale = true;
     }
   }
 

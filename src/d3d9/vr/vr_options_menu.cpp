@@ -32,13 +32,19 @@ namespace dxvk {
     constexpr char TurnSnapText[]   = "Snap";
     constexpr char TurnSmoothText[] = "Smooth";
     constexpr char SpeedText[]      = "Smooth turn speed";
+    constexpr char PipBoySizeText[] = "Pip-Boy size";
+
+    // One name per size of VrPipBoyScaleSteps, from the game's size up
+    constexpr const char* PipBoySizeNames[VrPipBoyScaleSteps] = {
+      "Normal", "125%", "150%", "175%", "200%" };
 
     using AppendFn   = int   (__fastcall*)(void* array, void* unused, void** option);
     using HeapFn     = void* (__cdecl*)(size_t size);
     using OptionCtorFn = void* (__thiscall*)(void* self, const char* text, void (__cdecl* callback)(), uint32_t mask);
     using UserOptionCallback = void (__cdecl*)(void* option);
+    // A toggle's value names follow, one pointer per setting; a slider has none
     using UserOptionCtorFn = void* (__cdecl*)(void* self, const char* text, UserOptionCallback callback,
-      uint32_t mask, int32_t type, uint32_t count, uint32_t spacing, const char* name0, const char* name1);
+      uint32_t mask, int32_t type, uint32_t count, uint32_t spacing, ...);
     using PopulateFn = void (__thiscall*)(void* menu, uint32_t mask);
     using SetEnabledFn = void (__thiscall*)(void* list, bool enabled);
     using GetFloatFn = float (__thiscall*)(void* tile, int32_t trait);
@@ -142,16 +148,33 @@ namespace dxvk {
     }
 
 
+    void __cdecl onPipBoySizeChanged(void* option) {
+      if (!optionsInitialised()) {
+        optionValue(option)   = vrPipBoyScaleToStep(g_options.pipBoyScale);
+        optionDefault(option) = 0u;
+        return;
+      }
+
+      // As with the speed, a size between two names stays until changed
+      if (vrPipBoyScaleToStep(g_options.pipBoyScale) == optionValue(option))
+        return;
+
+      g_options.pipBoyScale = vrPipBoyStepToScale(optionValue(option));
+      notifyChanged();
+    }
+
+
     // Creates a user option and adds it to the game's list
+    template<typename... Names>
     void appendUserOption(const char* text, UserOptionCallback callback, int32_t type,
-        uint32_t count, uint32_t spacing, const char* name0, const char* name1) {
+        uint32_t count, uint32_t spacing, Names... names) {
       void* memory = reinterpret_cast<HeapFn>(VrGame::HeapAllocate)(VrGame::UserOptionSize);
 
       if (!memory)
         return;
 
       void* option = reinterpret_cast<UserOptionCtorFn>(VrGame::UserOptionConstruct)(
-        memory, text, callback, PageMask, type, count, spacing, name0, name1);
+        memory, text, callback, PageMask, type, count, spacing, names...);
 
       reinterpret_cast<AppendFn>(VrGame::OptionArrayAppend)(
         reinterpret_cast<void*>(VrGame::UserOptionArray), nullptr, &option);
@@ -174,8 +197,9 @@ namespace dxvk {
 
       appendUserOption(TurnText, &onTurnChanged, ToggleType, ToggleValues, ArrowSpacing,
         TurnSnapText, TurnSmoothText);
-      appendUserOption(SpeedText, &onSpeedChanged, SliderType, VrSmoothTurnSpeedSteps, 0,
-        nullptr, nullptr);
+      appendUserOption(SpeedText, &onSpeedChanged, SliderType, VrSmoothTurnSpeedSteps, 0);
+      appendUserOption(PipBoySizeText, &onPipBoySizeChanged, ToggleType, VrPipBoyScaleSteps, ArrowSpacing,
+        PipBoySizeNames[0], PipBoySizeNames[1], PipBoySizeNames[2], PipBoySizeNames[3], PipBoySizeNames[4]);
     }
 
 

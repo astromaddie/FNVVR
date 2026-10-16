@@ -29,6 +29,7 @@
 #include "vr_weapon_drawn.h"
 #include "vr_pipboy_control.h"
 #include "vr_pipboy_gaze.h"
+#include "vr_pipboy_size.h"
 #include "vr_power_attack_rules.h"
 #include "vr_pipboy_render.h"
 #include "vr_preview_window.h"
@@ -181,6 +182,17 @@ namespace dxvk {
      */
     void setTurnConfig(const VrTurnConfig& turn) {
       m_controls.setTurnConfig(turn);
+    }
+
+    /**
+     * \brief Changes how large the Pip-Boy grows while it is open
+     *
+     * Called from the game's options page, on the game's thread.
+     *
+     * \param [in] scale Size as a factor of the game's size, 1 to keep it
+     */
+    void setPipBoyScale(float scale) {
+      m_pipBoyScale = scale;
     }
 
   private:
@@ -360,6 +372,10 @@ namespace dxvk {
     bool                m_loggedPipBoyGaze = false;
     bool                m_loggedPipBoyGazeAway = false;
     bool                m_rightHandAtPipBoy = false;
+    // Size the Pip-Boy grows to while it is open, for players who cannot
+    // read it at the game's size
+    VrPipBoyGrowth      m_pipBoyGrowth;
+    float               m_pipBoyScale = 1.0f;
     bool                m_loggedPipBoyLight = false;
 
     // Thread that runs the game's main loop, and whether Main::Swap ran

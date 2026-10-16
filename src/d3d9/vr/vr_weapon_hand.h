@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "vr_melee.h"
+#include "vr_pipboy_size.h"
 #include "vr_weapon_aim.h"
 
 namespace dxvk {
@@ -130,6 +131,19 @@ namespace dxvk {
     }
 
     /**
+     * \brief Sets the size of the Pip-Boy on the left forearm
+     *
+     * The Pip-Boy grows about the point of the forearm's axis below the
+     * centre of its screen, so that it stays around the forearm. Applied
+     * when the model is next drawn.
+     *
+     * \param [in] factor Size as a factor of the game's size
+     */
+    void setPipBoyScale(float factor) {
+      m_pipBoyScale = factor;
+    }
+
+    /**
      * \brief Blade of the melee weapon in the right hand
      *
      * Measured from the weapon's bound once the game has settled the weapon
@@ -162,6 +176,21 @@ namespace dxvk {
       TwoHanded,      ///< Held with both hands, the line between them aims
       TwoHandedMelee, ///< Held with both hands, the right hand alone swings it
       Braced,         ///< One-handed, supported while the game aims
+    };
+
+    /**
+     * \brief Nodes of the left forearm that carry the Pip-Boy
+     *
+     * The Pip-Boy is a rigid model attached to the forearm's twist bone,
+     * its screen one of its parts, see findings/pipboy.md §3.8.
+     */
+    struct PipBoyNodes {
+      uint8_t* hand    = nullptr;
+      uint8_t* forearm = nullptr;
+      uint8_t* twist   = nullptr;
+      /// Root of the Pip-Boy model, a child of the twist bone
+      uint8_t* device  = nullptr;
+      uint8_t* screen  = nullptr;
     };
 
     VrWeaponHand() = default;
@@ -198,6 +227,16 @@ namespace dxvk {
     // Centre of the Pip-Boy's screen in the left controller's frame
     VrVector3        m_pipBoyScreen;
     bool             m_hasPipBoyScreen = false;
+
+    // Size asked for the Pip-Boy, and the model it was applied to with the
+    // model's own placement, compared but only dereferenced once found in
+    // the model again. The written placement tells whether the game has
+    // placed the model again since.
+    float            m_pipBoyScale = 1.0f;
+    uint8_t*         m_pipBoyDevice = nullptr;
+    VrNodeScale      m_pipBoyOwnPlacement;
+    VrNodeScale      m_pipBoyWrittenPlacement;
+    float            m_pipBoyAppliedScale = 1.0f;
 
     // Muzzle relative to the first-person root, and the direction the
     // hand pointed, when the weapon was last drawn in the hand
@@ -241,6 +280,7 @@ namespace dxvk {
     bool             m_loggedPipBoy = false;
     bool             m_loggedRightHand = false;
     bool             m_loggedScreen = false;
+    bool             m_loggedPipBoyScale = false;
     bool             m_loggedAutoAim = false;
 
     // Objects culled by the VR layer, compared but not dereferenced until
@@ -289,7 +329,11 @@ namespace dxvk {
 
     void placePipBoyArm(uint8_t* root, const VrVector3& shift, void* updateData);
 
-    void measurePipBoyScreen(uint8_t* root);
+    static PipBoyNodes findPipBoy(uint8_t* root);
+
+    void measurePipBoyScreen(const PipBoyNodes& nodes);
+
+    void scalePipBoy(const PipBoyNodes& nodes);
 
     void updateGrip(GripKind kind, bool canHold, const VrVector3& support);
 

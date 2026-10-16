@@ -100,6 +100,7 @@ namespace dxvk {
     bool                                 m_showPreview;
     VrPanelConfig                        m_panelConfig;
     VrTurnConfig                         m_turnConfig;
+    float                                m_pipBoyScale = 1.0f;
     bool                                 m_weaponInHand;
     VrGameTimerConfig                    m_timerConfig;
     VrRenderPassConfig                   m_passConfig;

@@ -16,8 +16,9 @@ namespace dxvk {
    * looks and works like the game's own pages, including the cursor
    * driven by the controllers' lasers. See findings/options-menu.md.
    *
-   * For now the page has two options: snap or smooth turning, and the
-   * speed of smooth turning.
+   * For now the page has three options: snap or smooth turning, the
+   * speed of smooth turning, and how large the Pip-Boy grows while it is
+   * open.
    *
    * Only used on the game's main thread.
    */

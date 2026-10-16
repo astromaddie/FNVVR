@@ -20,6 +20,8 @@ namespace dxvk {
     bool  smoothTurn      = false;
     /// Speed of smooth turning at full deflection, in degrees per second
     float smoothTurnSpeed = DefaultSmoothTurnSpeed;
+    /// Size of the Pip-Boy while it is open, as a factor of the game's size
+    float pipBoyScale     = 1.0f;
   };
 
   /// Slowest smooth turning speed of the options page, in degrees per second
@@ -43,6 +45,28 @@ namespace dxvk {
    * \param [in] step Position, at most \c VrSmoothTurnSpeedSteps - 1
    */
   float vrSmoothTurnStepToSpeed(uint32_t step);
+
+  /// Smallest Pip-Boy size of the options page: the game's size
+  constexpr float    VrPipBoyScaleMin   = 1.0f;
+  /// Difference between two Pip-Boy sizes of the options page
+  constexpr float    VrPipBoyScaleStep  = 0.25f;
+  /// Number of Pip-Boy sizes of the options page, up to twice the game's size
+  constexpr uint32_t VrPipBoyScaleSteps = 5;
+
+  /**
+   * \brief Returns the Pip-Boy size of the options page closest to a factor
+   *
+   * \param [in] scale Factor of the game's size, which does not have to be
+   *    one of the page's sizes
+   */
+  uint32_t vrPipBoyScaleToStep(float scale);
+
+  /**
+   * \brief Returns the factor of a Pip-Boy size of the options page
+   *
+   * \param [in] step Size, at most \c VrPipBoyScaleSteps - 1
+   */
+  float vrPipBoyStepToScale(uint32_t step);
 
   /**
    * \brief Reads the options from the content of an options file
