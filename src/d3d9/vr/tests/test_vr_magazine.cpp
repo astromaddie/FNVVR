@@ -539,7 +539,7 @@ TEST_CASE(rack_needs_a_press_near_it) {
   VrRackHand rack;
 
   CHECK(rack.update(rackInput(true, besideRack(0.2f))) == VrRackEvent::None);
-  // Holding the grip while the hand comes near takes nothing
+  // Holding the trigger while the hand comes near takes nothing
   CHECK(rack.update(rackInput(true, Rack)) == VrRackEvent::None);
   CHECK(rack.update(rackInput(false, Rack)) == VrRackEvent::None);
 

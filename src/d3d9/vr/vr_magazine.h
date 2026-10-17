@@ -132,9 +132,9 @@ namespace dxvk {
     /// The weapon in the right hand has a magazine, and the left hand is
     /// tracked and free (not on the weapon)
     bool             active = false;
-    /// The left grip is held
+    /// The magazine action (the left trigger) is held
     bool             grip = false;
-    /// A press of the grip does not take the magazine out: it is nearer
+    /// A press of the trigger does not take the magazine out: it is nearer
     /// the weapon's rack, see VrRackHand
     bool             blocked = false;
     /// Left hand: the middle of the grip
@@ -187,15 +187,15 @@ namespace dxvk {
   /**
    * \brief Follows the magazine of the weapon in the right hand
    *
-   * The left grip pressed near the magazine, or below it along the way it
+   * The left trigger pressed near the magazine, or below it along the way it
    * comes out, takes it out: it slides along
    * its well with the hand, and comes free past the mouth of the well or
-   * when the hand moves across it. It stays in the hand while the grip is
+   * when the hand moves across it. It stays in the hand while the trigger is
    * held. Let go of, it disappears. With no magazine in the weapon, the
-   * left grip pressed behind the back takes a new one if rounds are left.
+   * left trigger pressed behind the back takes a new one if rounds are left.
    * A magazine in the hand brought near the way into the well enters it
    * at its mouth,
-   * and goes in once it is pushed home. Only a press of the grip takes a
+   * and goes in once it is pushed home. Only a press of the trigger takes a
    * magazine: holding it while the hand moves takes nothing.
    *
    * The game decides the clip: it is emptied on the way out and filled on
@@ -223,7 +223,7 @@ namespace dxvk {
     void reset();
 
     /**
-     * \brief How far the hand is from where a press of the grip takes the
+     * \brief How far the hand is from where a press of the trigger takes the
      *    magazine out, in metres
      */
     float ejectDistance(const VrMagazineInput& input) const;
@@ -283,9 +283,9 @@ namespace dxvk {
     /// The weapon in the right hand has a rack part, and the left hand is
     /// tracked, free (not on the weapon) and holds no magazine
     bool      active = false;
-    /// The left grip is held
+    /// The magazine action (the left trigger) is held
     bool      grip = false;
-    /// A press of the grip does not take the rack part: it is nearer the
+    /// A press of the trigger does not take the rack part: it is nearer the
     /// magazine, see VrMagazineHand
     bool      blocked = false;
     /// How far back the rack part rests when no hand holds it, in metres:
@@ -318,7 +318,7 @@ namespace dxvk {
   /**
    * \brief Follows the rack part of the weapon in the right hand
    *
-   * The left grip pressed near the rack part, or along the way it is
+   * The left trigger pressed near the rack part, or along the way it is
    * pulled back, takes it: it follows the hand back along its way, up to
    * its travel. Let go of, or left sideways, it goes home by itself, and
    * chambers a round if it was pulled back all the way. It is taken
@@ -344,7 +344,7 @@ namespace dxvk {
     void reset();
 
     /**
-     * \brief How far the hand is from where a press of the grip takes the
+     * \brief How far the hand is from where a press of the trigger takes the
      *    rack part, in metres
      */
     float grabDistance(const VrRackInput& input) const;

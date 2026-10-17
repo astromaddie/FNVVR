@@ -23,7 +23,7 @@ namespace dxvk {
     const VrGameCameraPose* leftHand  = nullptr;
     /// The left hand holds or supports the weapon
     bool                    leftOnWeapon = false;
-    /// The left grip is held
+    /// The magazine action (the left trigger) is held
     bool                    grip = false;
     /// Where the magazine sits in the weapon, in the right hand's frame
     /// (VrWeaponHand::magazineWell), or \c nullptr without a magazine
