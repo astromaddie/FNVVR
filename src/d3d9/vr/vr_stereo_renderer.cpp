@@ -80,6 +80,14 @@ namespace dxvk {
 
     constexpr uint32_t MaxLoggedPowerHits = 200;
 
+    // Pulses of the manual reload: on the left controller when it takes a
+    // magazine, on both when the magazine goes in, and a faint one when no
+    // rounds are left behind the back
+    constexpr float   MagazineTakenHaptic    = 0.4f;
+    constexpr float   MagazineInsertedHaptic = 0.7f;
+    constexpr float   MagazineEmptyHaptic    = 0.15f;
+    constexpr int64_t MagazineHapticDuration = 25'000'000;
+
     /**
      * \brief Checks whether a state has no 3D scene and is shown on the panel
      */
@@ -535,6 +543,7 @@ namespace dxvk {
     m_controls.adjustCamera(m_gameCameraPose);
     updateNpcGaze();
     updateWeaponHand(input, state, modelCamera, dt);
+    updateManualReload(input, state);
     updateMeleeSwing(input, state, dt);
     updateHandPick(input, state);
     updatePipBoyGaze(input, state, dt);
@@ -828,6 +837,62 @@ namespace dxvk {
 
     m_weaponHand->beginFrame(gameCamera, &hand, left.isActive ? &otherHand : nullptr,
       input.hasActions && input.actions.isPressed(VrAction::TwoHandGrip), VrFirstPersonMode::Hands, dt);
+  }
+
+
+  void VrStereoRenderer::updateManualReload(
+    const VrInputState&         input,
+          VrGameStateKind       state) {
+    if (!m_manualReload)
+      return;
+
+    const VrControllerState& right = input.controllers[uint32_t(VrHand::Right)];
+    const VrControllerState& left  = input.controllers[uint32_t(VrHand::Left)];
+
+    VrManualReloadInput hands;
+    VrGameCameraPose head, rightHand, leftHand;
+
+    bool tracked = state == VrGameStateKind::InGame && m_hasReference && m_hasHeadPose
+      && right.isActive && left.isActive && input.hasActions;
+
+    if (tracked) {
+      head      = vrComputeEyeCameraPose(m_gameCameraPose,
+        vrComputeEyeInReference(m_reference, m_headPose), VrGameUnitsPerMetre);
+      rightHand = handInGame(right);
+      leftHand  = handInGame(left);
+
+      hands.head         = &head;
+      hands.rightHand    = &rightHand;
+      hands.leftHand     = &leftHand;
+      hands.leftOnWeapon = input.actions.isPressed(VrAction::TwoHandGrip);
+      hands.grip         = input.actions.isPressed(VrAction::Magazine);
+    }
+
+    // The magazine was measured when the model was last drawn
+    hands.well = m_weaponHand ? m_weaponHand->magazineWell() : nullptr;
+
+    switch (m_manualReload->updateHands(hands)) {
+      case VrMagazineEvent::Ejected:
+      case VrMagazineEvent::Taken:
+        m_backend.applyHaptic(VrHand::Left, MagazineTakenHaptic, MagazineHapticDuration);
+        break;
+
+      case VrMagazineEvent::Inserted:
+        m_backend.applyHaptic(VrHand::Left, MagazineInsertedHaptic, MagazineHapticDuration);
+        m_backend.applyHaptic(VrHand::Right, MagazineInsertedHaptic, MagazineHapticDuration);
+        break;
+
+      case VrMagazineEvent::NoRounds:
+        m_backend.applyHaptic(VrHand::Left, MagazineEmptyHaptic, MagazineHapticDuration);
+        break;
+
+      case VrMagazineEvent::Dropped:
+      case VrMagazineEvent::None:
+        break;
+    }
+
+    if (m_weaponHand)
+      m_weaponHand->setMagazine(m_manualReload->magazineState());
   }
 
 

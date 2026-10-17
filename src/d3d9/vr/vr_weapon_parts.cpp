@@ -101,4 +101,34 @@ namespace dxvk {
       });
   }
 
+
+
+  uint8_t* vrFindWeaponPart(uint8_t* weapon, VrWeaponPartKind kind) {
+    uintptr_t found      = 0;
+    uint32_t  foundDepth = 0;
+    bool      foundNode  = false;
+
+    vrVisitGameObjects(reinterpret_cast<uintptr_t>(weapon), MaxPartDepth,
+      [&] (uintptr_t object, uint32_t depth) {
+        if (vrClassifyWeaponPart(objectName(object)) != kind)
+          return;
+
+        auto bound = readField<const uint8_t*>(reinterpret_cast<const uint8_t*>(object), VrGame::ObjectWorldBound);
+
+        if (!bound || readField<float>(bound, sizeof(VrVector3)) <= 0.0f)
+          return;
+
+        bool node = vrGameAsNode(object) != 0;
+
+        if (found && ((foundNode && !node) || (foundNode == node && foundDepth <= depth)))
+          return;
+
+        found      = object;
+        foundDepth = depth;
+        foundNode  = node;
+      });
+
+    return reinterpret_cast<uint8_t*>(found);
+  }
+
 }

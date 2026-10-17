@@ -126,3 +126,19 @@ TEST_CASE(pipboy_size_positions) {
   CHECK(vrPipBoyScaleToStep(0.2f) == 0);
   CHECK(vrPipBoyScaleToStep(5.0f) == VrPipBoyScaleSteps - 1);
 }
+
+
+TEST_CASE(options_round_trip_the_manual_reload) {
+  VrOptions options;
+  CHECK(options.manualReload);
+
+  VrOptions written;
+  written.manualReload = false;
+
+  VrOptions read;
+  vrParseOptions(vrFormatOptions(written), read);
+  CHECK(!read.manualReload);
+
+  vrParseOptions("ManualReload=1", read);
+  CHECK(read.manualReload);
+}

@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+#include "vr_magazine.h"
+
 namespace dxvk {
 
   /**
@@ -27,5 +29,19 @@ namespace dxvk {
    * \param [in] form The equipped weapon (TESObjectWEAP*), or \c nullptr
    */
   void vrLogWeaponParts(const uint8_t* weapon, const uint8_t* form);
+
+  /**
+   * \brief Finds a part of the weapon in the hand
+   *
+   * The part is told by its name, see vrClassifyWeaponPart. Only a part
+   * with meshes counts (the 9mm pistol has an empty second magazine node),
+   * and a node is preferred to its geometry, the nearest to the weapon
+   * node first.
+   *
+   * \param [in] weapon The first-person weapon node (NiNode*)
+   * \param [in] kind What the part is for
+   * \returns The part (NiAVObject*), or \c nullptr if there is none
+   */
+  uint8_t* vrFindWeaponPart(uint8_t* weapon, VrWeaponPartKind kind);
 
 }

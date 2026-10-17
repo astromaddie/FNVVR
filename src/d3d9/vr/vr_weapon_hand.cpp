@@ -9,6 +9,7 @@
 #include "vr_game_addresses.h"
 #include "vr_game_memory.h"
 #include "vr_game_nodes.h"
+#include "vr_melee.h"
 #include "vr_weapon_hand.h"
 #include "vr_weapon_parts.h"
 
@@ -661,6 +662,8 @@ namespace dxvk {
     if (uint8_t* camera = field<uint8_t*>(main, VrGame::MainFirstPersonCamera))
       writeVector(camera, VrGame::CameraWorldTranslation, m_eyePosition - shift);
 
+    m_hasMagazine = false;
+
     if (m_mode == VrFirstPersonMode::Hidden) {
       m_hasAim    = false;
       m_hasBlade  = false;
@@ -777,6 +780,7 @@ namespace dxvk {
     m_bladeAutomatic = form && (readField<uint8_t>(form, VrGame::WeaponFlags) & VrGame::WeaponFlagAutomatic);
 
     hideArms(root, false);
+    placeMagazine(weapon, hand, form, shift, updateData);
 
     uint8_t* muzzle = findObject(weapon, VrGame::ProjectileNodeName);
 
@@ -1109,6 +1113,106 @@ namespace dxvk {
         name ? name : "", "'"));
       m_loggedOtherHand = true;
     }
+  }
+
+
+  void VrWeaponHand::placeMagazine(
+          uint8_t*              weapon,
+    const VrGameCameraPose&     hand,
+    const uint8_t*              form,
+    const VrVector3&            shift,
+          void*                 updateData) {
+    // A magazine culled by the VR layer is still the magazine, even if a
+    // culled part no longer has a bound to be found by
+    bool hiddenFound = false;
+
+    if (m_hiddenMagazine) {
+      vrVisitGameObjects(reinterpret_cast<uintptr_t>(weapon), MaxModelDepth,
+        [this, &hiddenFound] (uintptr_t object, uint32_t) {
+          hiddenFound |= object == reinterpret_cast<uintptr_t>(m_hiddenMagazine);
+        });
+    }
+
+    uint8_t* magazine = hiddenFound ? m_hiddenMagazine : vrFindWeaponPart(weapon, VrWeaponPartKind::Magazine);
+
+    if (m_hiddenMagazine && (!hiddenFound || m_magazineState != VrMagazineState::Out)) {
+      if (hiddenFound)
+        field<uint32_t>(m_hiddenMagazine, VrGame::ObjectFlags) &= ~VrGame::ObjectFlagAppCulled;
+
+      m_hiddenMagazine = nullptr;
+    }
+
+    if (!magazine)
+      return;
+
+    if (form != m_magazineForm) {
+      m_magazineForm      = form;
+      m_hasMagazineCentre = false;
+      m_hasMagazineGrip   = false;
+    }
+
+    // Where the game draws the magazine in the weapon. Its bound is only
+    // read while the game draws it there.
+    VrGameRotation rotation = readRotation(magazine, VrGame::ObjectWorldRotation);
+    VrVector3 position      = readVector(magazine, VrGame::ObjectWorldTranslation);
+    float scale             = field<float>(magazine, VrGame::ObjectWorldScale);
+
+    auto bound = field<const uint8_t*>(magazine, VrGame::ObjectWorldBound);
+
+    if (m_magazineState == VrMagazineState::InWeapon && bound && scale > 0.0f) {
+      m_magazineCentre    = vrTranspose(rotation) * (readVector(bound, 0) - position) * (1.0f / scale);
+      m_hasMagazineCentre = true;
+    }
+
+    VrVector3 centre = m_hasMagazineCentre ? m_magazineCentre : VrVector3();
+
+    m_magazineWell = vrPointToHand(hand, position + rotation * centre * scale);
+    m_hasMagazine  = true;
+
+    if (!m_loggedMagazine) {
+      auto name = field<const char*>(magazine, VrGame::ObjectName);
+      Logger::info(str::format("VR: The weapon's magazine is '", name ? name : "", "'"));
+      m_loggedMagazine = true;
+    }
+
+    if (m_magazineState == VrMagazineState::Out) {
+      uint32_t& flags = field<uint32_t>(magazine, VrGame::ObjectFlags);
+
+      // A part the game culls itself is left to the game
+      if (!m_hiddenMagazine && !(flags & VrGame::ObjectFlagAppCulled)) {
+        flags |= VrGame::ObjectFlagAppCulled;
+        m_hiddenMagazine = magazine;
+      }
+      return;
+    }
+
+    if (m_magazineState != VrMagazineState::InHand || !m_hasOtherHand)
+      return;
+
+    // The angle to the left controller is the one the magazine had when it
+    // was taken out of the weapon, and new magazines take it too
+    VrGameRotation controller = vrCameraRotation(m_otherHand);
+
+    if (!m_hasMagazineGrip) {
+      m_magazineGrip    = vrTranspose(controller) * rotation;
+      m_hasMagazineGrip = true;
+    }
+
+    VrGameRotation worldRotation = controller * m_magazineGrip;
+    VrVector3 worldTranslation   = (m_otherHand.position - shift) - worldRotation * centre * scale;
+
+    ParentFrame parent = parentFrame(magazine);
+
+    VrGameRotation localRotation  = readRotation(magazine, VrGame::ObjectLocalRotation);
+    VrVector3 localTranslation    = readVector(magazine, VrGame::NodeLocalTranslate);
+
+    writeRotation(magazine, VrGame::ObjectLocalRotation, vrTranspose(parent.rotate) * worldRotation);
+    writeVector(magazine, VrGame::NodeLocalTranslate, parent.toLocal(worldTranslation));
+    updateObject(magazine, updateData);
+
+    // The next eye's update starts from the game's pose again
+    writeRotation(magazine, VrGame::ObjectLocalRotation, localRotation);
+    writeVector(magazine, VrGame::NodeLocalTranslate, localTranslation);
   }
 
 

@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 
+#include "vr_magazine.h"
 #include "vr_melee.h"
 #include "vr_pipboy_size.h"
 #include "vr_weapon_aim.h"
@@ -57,6 +58,9 @@ namespace dxvk {
    *   Pip-Boy screen, so the forearm is moved again after that update.
    * - While a menu is pointed at with the lasers, the whole model is
    *   hidden.
+   * - The weapon's magazine, a part of its model, is drawn in the left
+   *   hand while the left hand holds it, and hidden while it is neither
+   *   there nor in the weapon, see VrMagazineHand.
    *
    * Only used on the game's main thread.
    */
@@ -169,6 +173,32 @@ namespace dxvk {
       return m_hasBlade && m_bladeAutomatic;
     }
 
+    /**
+     * \brief Sets where the magazine of the weapon in the hand is drawn
+     *
+     * Applied when the model is next drawn. In the left hand, the magazine
+     * is centred on the left controller's grip and keeps the angle to it
+     * that it had when it was taken out of the weapon.
+     */
+    void setMagazine(VrMagazineState state) {
+      m_magazineState = state;
+    }
+
+    /**
+     * \brief Where the magazine sits in the weapon in the right hand
+     *
+     * The centre of the magazine's meshes where the game draws it, measured
+     * each time the model is drawn, given in the right hand's frame (see
+     * vrPointFromHand) so that it can be placed on the hand pose of a
+     * later frame.
+     *
+     * \returns The point, or \c nullptr if the weapon in the hand has no
+     *    magazine
+     */
+    const VrVector3* magazineWell() const {
+      return m_hasMagazine ? &m_magazineWell : nullptr;
+    }
+
   private:
 
     enum class GripKind {
@@ -261,6 +291,23 @@ namespace dxvk {
     bool             m_hasBlade = false;
     bool             m_bladeAutomatic = false;
 
+    // Magazine of the weapon in the hand: where it is drawn, where it sits
+    // in the weapon in the right hand's frame, the centre of its meshes in
+    // its own frame, its rotation relative to the left controller while
+    // held (for the weapon form it was taken from, compared but not
+    // dereferenced) and the magazine the VR layer culled, compared but only
+    // touched once found in the weapon again
+    VrMagazineState  m_magazineState = VrMagazineState::InWeapon;
+    VrVector3        m_magazineWell;
+    bool             m_hasMagazine = false;
+    VrVector3        m_magazineCentre;
+    bool             m_hasMagazineCentre = false;
+    const uint8_t*   m_magazineForm = nullptr;
+    VrGameRotation   m_magazineGrip;
+    bool             m_hasMagazineGrip = false;
+    uint8_t*         m_hiddenMagazine = nullptr;
+    bool             m_loggedMagazine = false;
+
     // Set while the game creates a projectile aimed with the hand, so that
     // its auto-aim leaves it alone
     bool             m_handAimedShot = false;
@@ -347,6 +394,13 @@ namespace dxvk {
     void placeOtherHand(
             uint8_t*              root,
             uint8_t*              otherHand,
+      const VrVector3&            shift,
+            void*                 updateData);
+
+    void placeMagazine(
+            uint8_t*              weapon,
+      const VrGameCameraPose&     hand,
+      const uint8_t*              form,
       const VrVector3&            shift,
             void*                 updateData);
 

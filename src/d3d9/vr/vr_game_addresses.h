@@ -1343,6 +1343,20 @@ namespace dxvk {
     constexpr uintptr_t WeaponFullName         = 0x34;
     constexpr uintptr_t WeaponModelPath        = 0x40;
 
+    /**
+     * Whether the weapon reloads one round at a time (TESObjectWEAP::
+     * GetIsLoopingReload 0x004938C0 reads this byte).
+     */
+    constexpr uintptr_t WeaponLoopingReload    = 0x384;
+
+    /**
+     * The reload callers ask ItemHasModEffect (above) for the extended
+     * magazine's effect on the weapon's inventory entry. ReloadWeapon
+     * counts the rounds it can put in the clip with InventoryObjectCount
+     * (above) on GetInventoryChanges.
+     */
+    constexpr uint32_t  ModEffectClipSize      = 2;
+
   }
 
 }

@@ -151,6 +151,7 @@ namespace dxvk {
     options.smoothTurnSpeed = turn.smoothSpeed;
     options.pipBoyScale     = std::min(std::max(config.getOption<float>("d3d9.vrPipBoyScale", options.pipBoyScale),
       VrPipBoyScaleMin), vrPipBoyStepToScale(VrPipBoyScaleSteps - 1));
+    options.manualReload    = config.getOption<bool>("d3d9.vrManualReload", options.manualReload);
     VrOptionsFile::load(options);
     turn.smooth      = options.smoothTurn;
     turn.smoothSpeed = options.smoothTurnSpeed;
@@ -210,6 +211,7 @@ namespace dxvk {
     g_vrSystem.reset(new VrSystem(std::move(backend), showPreview, panel, turn, weaponInHand, headsetResolution,
       timer, passes, developer, swing));
     g_vrSystem->m_pipBoyScale = options.pipBoyScale;
+    g_vrSystem->m_manualReload = options.manualReload;
     DxvkInstance::registerExtensionProvider(g_vrSystem->m_extensionProvider.get());
 
     VrOptionsMenu::install(options, [] (const VrOptions& changed) {
@@ -255,10 +257,12 @@ namespace dxvk {
     m_turnConfig.smoothSpeed = options.smoothTurnSpeed;
 
     m_pipBoyScale = options.pipBoyScale;
+    m_manualReload = options.manualReload;
 
     if (m_stereoRenderer) {
       m_stereoRenderer->setTurnConfig(m_turnConfig);
       m_stereoRenderer->setPipBoyScale(m_pipBoyScale);
+      m_stereoRenderer->setManualReload(m_manualReload);
     }
 
     VrOptionsFile::save(options);
@@ -307,8 +311,10 @@ namespace dxvk {
     m_stereoRenderer = VrStereoRenderer::install(*m_backend, device, m_showPreview, m_panelConfig, m_turnConfig,
       m_weaponInHand, m_timerConfig, m_passConfig, m_developerConfig, m_swingConfig);
 
-    if (m_stereoRenderer)
+    if (m_stereoRenderer) {
       m_stereoRenderer->setPipBoyScale(m_pipBoyScale);
+      m_stereoRenderer->setManualReload(m_manualReload);
+    }
 
     return true;
   }

@@ -196,6 +196,16 @@ namespace dxvk {
       m_pipBoyScale = scale;
     }
 
+    /**
+     * \brief Turns the reload with the hands on or off
+     *
+     * \param [in] enabled Off, every weapon is reloaded as in the game
+     */
+    void setManualReload(bool enabled) {
+      if (m_manualReload)
+        m_manualReload->setEnabled(enabled);
+    }
+
   private:
 
     static constexpr uint32_t NoEye = ~0u;
@@ -496,6 +506,8 @@ namespace dxvk {
     void updateNpcGaze();
 
     void updateMeleeSwing(const VrInputState& input, VrGameStateKind state, float dt);
+
+    void updateManualReload(const VrInputState& input, VrGameStateKind state);
 
     bool updatePowerCharge(const VrInputState& input, int32_t& cost);
 
