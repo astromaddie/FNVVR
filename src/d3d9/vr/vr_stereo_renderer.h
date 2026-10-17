@@ -22,6 +22,7 @@
 #include "vr_hud_layers.h"
 #include "vr_hud_meters.h"
 #include "vr_charge_ring.h"
+#include "vr_console_terminal.h"
 #include "vr_melee_swing.h"
 #include "vr_menu_scenes.h"
 #include "vr_manual_reload.h"
@@ -329,6 +330,9 @@ namespace dxvk {
     VrPowerCharge       m_powerCharge;
     uint32_t            m_loggedPowerHits = 0;
 
+    // The game's console, typed in on a terminal with the lasers
+    std::unique_ptr<VrConsoleTerminal> m_terminal;
+
     // The activation target, picked along the hands instead of the view
     std::unique_ptr<VrHandActivatePick> m_handPick;
     VrVector3           m_eyePosition;
@@ -510,6 +514,8 @@ namespace dxvk {
     void updateManualReload(const VrInputState& input, VrGameStateKind state);
 
     bool updatePowerCharge(const VrInputState& input, int32_t& cost);
+
+    void updateControls(const VrInputState& input, VrGameStateKind state, float dt);
 
     VrGameCameraPose handInGame(const VrControllerState& controller) const;
 

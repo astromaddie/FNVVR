@@ -69,13 +69,16 @@ namespace dxvk {
 
     // Identifies the panel overlay within SteamVR, and names it in its UI
     // Overlay key and name of each panel, indexed by VrPanelId. The sort
-    // order follows the index, so the HUD is drawn over the menu panel, and
-    // the hand panels, which are nearer, over the HUD.
+    // order follows the index, so the HUD is drawn over the menu panel, the
+    // hand panels, which are nearer, over the HUD, and the console's
+    // terminal, nearer than the menu it is opened from, over all of them.
     constexpr std::array<const char*, VrPanelCount> PanelOverlayKeys  = {
-      "fnvvr.panel", "fnvvr.hud.head", "fnvvr.hud.wrist", "fnvvr.hud.prompt", "fnvvr.hud.charge" };
+      "fnvvr.panel", "fnvvr.hud.head", "fnvvr.hud.wrist", "fnvvr.hud.prompt", "fnvvr.hud.charge",
+      "fnvvr.terminal" };
     constexpr std::array<const char*, VrPanelCount> PanelOverlayNames = {
       "Fallout: New Vegas", "Fallout: New Vegas HUD", "Fallout: New Vegas wrist HUD",
-      "Fallout: New Vegas interaction prompt", "Fallout: New Vegas power attack charge" };
+      "Fallout: New Vegas interaction prompt", "Fallout: New Vegas power attack charge",
+      "Fallout: New Vegas console" };
 
     // Overlay key and name of each hand's laser, indexed by VrHand. Lasers
     // are drawn over the panels.

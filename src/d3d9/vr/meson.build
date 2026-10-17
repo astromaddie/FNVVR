@@ -59,6 +59,8 @@ vr_dxvk_src = files([
   'vr_melee_swing.cpp',
   'vr_power_attack_rules.cpp',
   'vr_charge_ring.cpp',
+  'vr_console_terminal.cpp',
+  'vr_game_console.cpp',
   'vr_menu_scenes.cpp',
   'vr_manual_reload.cpp',
   'vr_reload_animation.cpp',

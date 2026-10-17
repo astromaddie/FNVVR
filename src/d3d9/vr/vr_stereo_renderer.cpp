@@ -7,6 +7,7 @@
 
 #include "vr_d3d9_bridge.h"
 #include "vr_game_addresses.h"
+#include "vr_game_console.h"
 #include "vr_game_memory.h"
 #include "vr_game_nodes.h"
 #include "vr_head_hud.h"
@@ -240,6 +241,9 @@ namespace dxvk {
       Logger::warn("VR: The game's power attack rules were not found, melee swings are never power attacks");
 
     renderer->m_chargeRing = std::make_unique<VrChargeRing>(device, backend);
+
+    if (VrGameConsole::install())
+      renderer->m_terminal = std::make_unique<VrConsoleTerminal>(device, backend);
 
     renderer->m_handPick = VrHandActivatePick::install();
 
@@ -521,7 +525,7 @@ namespace dxvk {
 
     float dt = float(timing.predictedPeriod) * 1e-9f;
 
-    m_controls.update(input, state, m_hasReference ? &m_reference : nullptr, menuPanel(), dt);
+    updateControls(input, state, dt);
 
     if (m_controls.switchesPipBoyLight() && !m_loggedPipBoyLight) {
       Logger::info("VR: The right grip at the Pip-Boy holds the Pip-Boy control to switch the light");
@@ -614,8 +618,7 @@ namespace dxvk {
     VrInputState input = m_backend.pollInput(timing.predictedDisplayTime);
     trackHead(input);
 
-    m_controls.update(input, state, m_hasReference ? &m_reference : nullptr,
-      menuPanel(), float(timing.predictedPeriod) * 1e-9f);
+    updateControls(input, state, float(timing.predictedPeriod) * 1e-9f);
 
     // Nothing in the world can be pointed at without the stereo view
     if (m_handPick)
@@ -627,6 +630,23 @@ namespace dxvk {
     VrD3D9Bridge::submitEmptyFrame(m_device, m_backend, timing.predictedDisplayTime);
 
     g_originalSwap(main, nullptr);
+  }
+
+
+  void VrStereoRenderer::updateControls(const VrInputState& input, VrGameStateKind state, float dt) {
+    m_controls.setTerminalPanel(m_terminal ? m_terminal->placement() : nullptr);
+    m_controls.update(input, state, m_hasReference ? &m_reference : nullptr, menuPanel(), dt);
+
+    if (!m_terminal)
+      return;
+
+    VrPose head;
+    head.position.y = DefaultHeadHeight;
+
+    if (m_hasHeadPose)
+      head = m_headPose;
+
+    m_terminal->update(head, m_controls.terminalPointer(), m_controls.terminalBack(), dt);
   }
 
 

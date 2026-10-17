@@ -17,6 +17,7 @@
 #include "vr_emulator_backend.h"
 #include "vr_emulator_keyboard.h"
 #include "vr_extension_provider.h"
+#include "vr_game_console.h"
 #include "vr_game_space.h"
 #include "vr_gamepad_head.h"
 #include "vr_gamepad_hook.h"
@@ -217,6 +218,8 @@ namespace dxvk {
     VrOptionsMenu::install(options, [] (const VrOptions& changed) {
       if (g_vrSystem)
         g_vrSystem->applyOptions(changed);
+    }, [] {
+      VrGameConsole::requestOpen();
     });
   }
 

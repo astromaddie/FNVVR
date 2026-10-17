@@ -55,31 +55,10 @@ namespace dxvk {
     // The actions were read in the context chosen on the previous frame
     VrActionState actions = m_filter.update(input.actions, m_context, dt);
 
-    // Pressed and released on alternate frames: a button held down does not
-    // close the Pip-Boy until it is released
-    m_menuBackDown = m_menuBack && !m_menuBackDown && m_context == VrInputContext::Menu;
-
-    if (m_menuBackDown)
-      actions.setPressed(VrAction::MenuBack, true);
-
-    if (m_swingsWithHand && m_context == VrInputContext::Game)
-      actions.setPressed(VrAction::Attack, false);
-
-    VrPointerState pointer = updatePointer(input, actions, menuPanel, dt);
-    VrGamepadHook::setCursorMode(pointer.cursorActive);
-    VrMenuCursor::update(pointer);
-
-    VrPadState pad = vrComputePadState(actions, m_context, gameBindings());
-
-    if (m_gameAim && m_context == VrInputContext::Game)
-      vrPressGameControl(pad, VrGameControl::Aim, gameBindings());
-
-    // The game switches the light once its Pip-Boy control is held long
-    // enough, and does not open the Pip-Boy on that release
-    if (m_filter.holdsPipBoyControl() && m_context == VrInputContext::Game)
-      vrPressGameControl(pad, VrGameControl::MenuMode, gameBindings());
-
-    VrGamepadHook::setControllerPad(input.hasActions, pad);
+    if (m_terminalPanel && m_context == VrInputContext::Menu && input.hasActions)
+      updateTerminal(input, actions, dt);
+    else
+      updateGameInput(input, actions, menuPanel, dt);
 
     if (m_headLook) {
       VrPose head;
@@ -100,26 +79,87 @@ namespace dxvk {
   }
 
 
-  VrPointerState VrControls::updatePointer(
+  void VrControls::updateGameInput(
     const VrInputState&         input,
           VrActionState&        actions,
     const VrPanelPlacement*     menuPanel,
           float                 dt) {
+    m_terminalPointer  = VrPointerState();
+    m_terminalBack     = false;
+    m_terminalBackDown = actions.isPressed(VrAction::MenuBack);
+
+    // Pressed and released on alternate frames: a button held down does not
+    // close the Pip-Boy until it is released
+    m_menuBackDown = m_menuBack && !m_menuBackDown && m_context == VrInputContext::Menu;
+
+    if (m_menuBackDown)
+      actions.setPressed(VrAction::MenuBack, true);
+
+    if (m_swingsWithHand && m_context == VrInputContext::Game)
+      actions.setPressed(VrAction::Attack, false);
+
+    const VrPanelPlacement* panel = nullptr;
+
+    if (m_context == VrInputContext::Menu && input.hasActions && VrMenuCursor::pointerAllowed())
+      panel = menuPanel;
+
+    bool padUsed = std::max(std::abs(actions.move.x), std::abs(actions.move.y)) >= NavigateThreshold;
+
+    for (VrAction action : MenuButtons)
+      padUsed |= actions.isPressed(action);
+
+    VrPointerState pointer = updatePointer(input, actions, panel, padUsed, dt);
+    VrGamepadHook::setCursorMode(pointer.cursorActive);
+    VrMenuCursor::update(pointer);
+
+    VrPadState pad = vrComputePadState(actions, m_context, gameBindings());
+
+    if (m_gameAim && m_context == VrInputContext::Game)
+      vrPressGameControl(pad, VrGameControl::Aim, gameBindings());
+
+    // The game switches the light once its Pip-Boy control is held long
+    // enough, and does not open the Pip-Boy on that release
+    if (m_filter.holdsPipBoyControl() && m_context == VrInputContext::Game)
+      vrPressGameControl(pad, VrGameControl::MenuMode, gameBindings());
+
+    VrGamepadHook::setControllerPad(input.hasActions, pad);
+  }
+
+
+  void VrControls::updateTerminal(
+    const VrInputState&         input,
+          VrActionState&        actions,
+          float                 dt) {
+    bool back = actions.isPressed(VrAction::MenuBack);
+    m_terminalBack     = back && !m_terminalBackDown;
+    m_terminalBackDown = back;
+
+    // The sticks and buttons never take the lasers off the terminal
+    m_terminalPointer = updatePointer(input, actions, m_terminalPanel, false, dt);
+
+    // The console has the input: the game's cursor rests and the game's
+    // menus see a gamepad at rest
+    VrGamepadHook::setCursorMode(false);
+    VrMenuCursor::update(VrPointerState());
+    VrGamepadHook::setControllerPad(input.hasActions, VrPadState());
+  }
+
+
+  VrPointerState VrControls::updatePointer(
+    const VrInputState&         input,
+          VrActionState&        actions,
+    const VrPanelPlacement*     panel,
+          bool                  padUsed,
+          float                 dt) {
     VrPointerInput pointerInput;
     pointerInput.controllers = input.controllers;
     pointerInput.dt          = dt;
-
-    if (m_context == VrInputContext::Menu && input.hasActions && VrMenuCursor::pointerAllowed())
-      pointerInput.panel = menuPanel;
+    pointerInput.panel       = panel;
+    pointerInput.padUsed     = padUsed;
 
     pointerInput.triggers[uint32_t(VrHand::Left)]  = actions.isPressed(VrAction::MenuLeftTrigger);
     pointerInput.triggers[uint32_t(VrHand::Right)] = actions.isPressed(VrAction::MenuRightTrigger);
     pointerInput.wheel = actions.turn.y;
-
-    pointerInput.padUsed = std::max(std::abs(actions.move.x), std::abs(actions.move.y)) >= NavigateThreshold;
-
-    for (VrAction action : MenuButtons)
-      pointerInput.padUsed |= actions.isPressed(action);
 
     VrPointerState pointer = m_pointer.update(pointerInput);
 

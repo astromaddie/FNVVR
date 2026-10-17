@@ -18,7 +18,8 @@ namespace dxvk {
    * to VrHeadLook, and the backend
    * is told whether the next frame's actions are read for the game or for
    * a menu. In menus the controllers also point at the menu panel with
-   * lasers, which drive the game's cursor (see VrMenuPointer).
+   * lasers, which drive the game's cursor (see VrMenuPointer), or at the
+   * console's terminal while it is shown (see VrConsoleTerminal).
    */
   class VrControls {
 
@@ -116,6 +117,35 @@ namespace dxvk {
     }
 
     /**
+     * \brief Points the lasers at the console's terminal from the next update on
+     *
+     * While the terminal is shown, the lasers point at it instead of the
+     * menu panel and no longer drive the game's cursor, and the controllers
+     * press nothing in the game's menus: the console has the input. What
+     * the lasers do on the terminal is returned by terminalPointer.
+     *
+     * \param [in] panel Placement of the terminal in tracking space, or
+     *    \c nullptr while it is hidden; it must stay valid until update
+     */
+    void setTerminalPanel(const VrPanelPlacement* panel) {
+      m_terminalPanel = panel;
+    }
+
+    /**
+     * \brief What the lasers did on the terminal in the last update
+     */
+    const VrPointerState& terminalPointer() const {
+      return m_terminalPointer;
+    }
+
+    /**
+     * \brief Whether the menu's back button was pressed on the terminal in the last update
+     */
+    bool terminalBack() const {
+      return m_terminalBack;
+    }
+
+    /**
      * \brief See VrHeadLook::adjustCamera
      */
     bool adjustCamera(VrGameCameraPose& pose) const;
@@ -127,10 +157,22 @@ namespace dxvk {
 
   private:
 
-    VrPointerState updatePointer(
+    void updateGameInput(
       const VrInputState&         input,
             VrActionState&        actions,
       const VrPanelPlacement*     menuPanel,
+            float                 dt);
+
+    void updateTerminal(
+      const VrInputState&         input,
+            VrActionState&        actions,
+            float                 dt);
+
+    VrPointerState updatePointer(
+      const VrInputState&         input,
+            VrActionState&        actions,
+      const VrPanelPlacement*     panel,
+            bool                  padUsed,
             float                 dt);
 
     IVRBackend&                 m_backend;
@@ -145,6 +187,11 @@ namespace dxvk {
     bool                        m_swingsWithHand = false;
     bool                        m_menuBack = false;
     bool                        m_menuBackDown = false;
+
+    const VrPanelPlacement*     m_terminalPanel = nullptr;
+    VrPointerState              m_terminalPointer;
+    bool                        m_terminalBack = false;
+    bool                        m_terminalBackDown = false;
 
   };
 

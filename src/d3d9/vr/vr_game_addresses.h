@@ -1063,6 +1063,65 @@ namespace dxvk {
     constexpr uint8_t   SetListEnabledPrologue[]      = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x4E, 0xEA };
 
     /**
+     * A Settings page entry that runs a command when its row is clicked, see
+     * findings/console.md §3. StartMenu::DoClick calls the Option callback
+     * (OptionCallback, void __cdecl()) of the clicked row of any of the
+     * menu's list boxes, after disabling that list box; a user option's
+     * callback is null, its constructor passes none. The options page's
+     * list box is at StartMenuOptionsList.
+     */
+    constexpr uintptr_t OptionCallback       = 0x08;
+    constexpr uintptr_t StartMenuOptionsList = 0x114;
+
+    /**
+     * The console, see findings/console.md.
+     *
+     * - ConsoleGlobal: MenuConsole*, null until the interface creates it;
+     *   ConsoleVisible (char, > 0 while shown), the printed lines (a list of
+     *   nodes: next, previous, then a BSStringT, pointer and 16-bit length),
+     *   the index of the last line shown (ConsoleLastLine, lower while the
+     *   output is scrolled up) and the command line's position
+     *   (ConsoleTextX, ConsoleTextY, integers);
+     * - OpenConsoleRequest: byte TESMain::OnIdle reads each frame; when set,
+     *   it clears it and opens the console (Interface::OpenConsole);
+     * - CloseConsole: Interface::CloseConsole, __cdecl without arguments;
+     * - ConsoleKeyCallSite: InterfaceManager::Idle takes the first key
+     *   typed in a frame in menu mode from ConsoleReadKey
+     *   (GetKeyFromScancodeAndSetModifiers, __thiscall with the key state
+     *   and the scan code, returns the key or 0) and gives it to
+     *   MenuConsole::Idle while the console is shown;
+     * - DebugTextGlobal: DebugText*, which holds the command line; the
+     *   console's MenuConsole::Idle reads it back with GetDebugText
+     *   (__thiscall: a buffer of DebugTextBufferSize bytes, x and y as
+     *   floats, the alignment ConsoleTextAlignment; returns whether found).
+     *   The text cursor is drawn in it as ConsoleCursorChar.
+     */
+    constexpr uintptr_t ConsoleGlobal          = 0x011D8CE8;
+    constexpr uintptr_t ConsolePrintedLines    = 0x04;
+    constexpr uintptr_t ConsolePrintedCount    = 0x0C;
+    constexpr uintptr_t ConsoleLastLine        = 0x24;
+    constexpr uintptr_t ConsoleTextX           = 0x30;
+    constexpr uintptr_t ConsoleTextY           = 0x34;
+    constexpr uintptr_t ConsoleVisible         = 0x38;
+    constexpr uintptr_t ConsoleLineNodeText    = 0x08;
+    constexpr uintptr_t OpenConsoleRequest     = 0x011DEA2F;
+    constexpr uintptr_t SetOpenConsoleRequest  = 0x0070ED20;
+    constexpr uintptr_t CloseConsole           = 0x00703DA0;
+    constexpr uintptr_t ConsoleKeyCallSite     = 0x0070E02F;
+    constexpr uintptr_t ConsoleReadKey         = 0x007154B0;
+    constexpr uintptr_t DebugTextGlobal        = 0x011F33A8;
+    constexpr uintptr_t GetDebugText           = 0x00A103E0;
+    constexpr size_t    DebugTextBufferSize    = 0x800;
+    constexpr int32_t   ConsoleTextAlignment   = 1;
+    constexpr char      ConsoleCursorChar      = '|';
+
+    /** First bytes of the console functions above; SetOpenConsoleRequest writes OpenConsoleRequest */
+    constexpr uint8_t   SetOpenConsoleRequestBytes[] = { 0x55, 0x8B, 0xEC, 0x8A, 0x45, 0x08, 0xA2, 0x2F, 0xEA, 0x1D, 0x01 };
+    constexpr uint8_t   CloseConsolePrologue[]       = { 0x55, 0x8B, 0xEC, 0xE8, 0x68, 0x34, 0xDB, 0xFF };
+    constexpr uint8_t   ConsoleReadKeyPrologue[]     = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x0C, 0x89, 0x4D };
+    constexpr uint8_t   GetDebugTextPrologue[]       = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x3C, 0x89, 0x4D };
+
+    /**
      * Menu tile internals (VrTileTextureRetry), see findings/pipboy.md §3.7.
      * Tile: vtable slot 3 (+0x0C) is GetType (__thiscall, 0x386 = image),
      * children list head at +0x04 (node: next at +0, Tile* at +8), name

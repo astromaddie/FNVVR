@@ -28,6 +28,8 @@ namespace dxvk {
 
     // The game keeps these pointers and never frees them
     constexpr char PageText[]       = "VR";
+    constexpr char ConsoleText[]    = "Console";
+    constexpr char ConsoleOpenText[] = "Open";
     constexpr char TurnText[]       = "Turning";
     constexpr char TurnSnapText[]   = "Snap";
     constexpr char TurnSmoothText[] = "Smooth";
@@ -53,6 +55,7 @@ namespace dxvk {
 
     VrOptions                    g_options;
     VrOptionsMenu::ChangedFn     g_onChanged;
+    VrOptionsMenu::ConsoleFn     g_onConsole;
 
     uint8_t* startMenu() {
       return *reinterpret_cast<uint8_t* const*>(VrGame::StartMenuGlobal);
@@ -112,6 +115,35 @@ namespace dxvk {
     }
 
 
+    void openConsole() {
+      if (g_onConsole)
+        g_onConsole();
+    }
+
+
+    // The console entry is a toggle with a single value, so that clicking
+    // its value or arrows is a change, which the game reports here
+    void __cdecl onConsoleChosen(void* option) {
+      optionValue(option)   = 0u;
+      optionDefault(option) = 0u;
+
+      if (optionsInitialised())
+        openConsole();
+    }
+
+
+    // Clicking the entry's row calls its Option callback, after the game
+    // disabled the options list as it does before opening another page
+    void __cdecl onConsoleRowClicked() {
+      uint8_t* menu = startMenu();
+
+      if (menu)
+        reinterpret_cast<SetEnabledFn>(VrGame::SetListEnabled)(menu + VrGame::StartMenuOptionsList, true);
+
+      openConsole();
+    }
+
+
     void __cdecl onTurnChanged(void* option) {
       if (!optionsInitialised()) {
         optionValue(option)   = g_options.smoothTurn ? 1u : 0u;
@@ -166,18 +198,19 @@ namespace dxvk {
 
     // Creates a user option and adds it to the game's list
     template<typename... Names>
-    void appendUserOption(const char* text, UserOptionCallback callback, int32_t type,
+    void* appendUserOption(const char* text, UserOptionCallback callback, int32_t type,
         uint32_t count, uint32_t spacing, Names... names) {
       void* memory = reinterpret_cast<HeapFn>(VrGame::HeapAllocate)(VrGame::UserOptionSize);
 
       if (!memory)
-        return;
+        return nullptr;
 
       void* option = reinterpret_cast<UserOptionCtorFn>(VrGame::UserOptionConstruct)(
         memory, text, callback, PageMask, type, count, spacing, names...);
 
       reinterpret_cast<AppendFn>(VrGame::OptionArrayAppend)(
         reinterpret_cast<void*>(VrGame::UserOptionArray), nullptr, &option);
+      return option;
     }
 
 
@@ -194,6 +227,15 @@ namespace dxvk {
         optionMemory, PageText, &choosePage, VrGame::OptionMaskSettingsList);
 
       append(optionArray, nullptr, &option);
+
+      // The page lists its options in the order they are added
+      void* console = appendUserOption(ConsoleText, &onConsoleChosen, ToggleType, 1, ArrowSpacing,
+        ConsoleOpenText);
+
+      if (console) {
+        using RowCallback = void (__cdecl*)();
+        *reinterpret_cast<RowCallback*>(static_cast<uint8_t*>(console) + VrGame::OptionCallback) = &onConsoleRowClicked;
+      }
 
       appendUserOption(TurnText, &onTurnChanged, ToggleType, ToggleValues, ArrowSpacing,
         TurnSnapText, TurnSmoothText);
@@ -237,7 +279,7 @@ namespace dxvk {
   }
 
 
-  bool VrOptionsMenu::install(const VrOptions& options, ChangedFn onChanged) {
+  bool VrOptionsMenu::install(const VrOptions& options, ChangedFn onChanged, ConsoleFn onConsole) {
     if (!supported()) {
       Logger::warn("VR: The options page is not available, the executable is not the supported version");
       return false;
@@ -245,6 +287,7 @@ namespace dxvk {
 
     g_options   = options;
     g_onChanged = std::move(onChanged);
+    g_onConsole = std::move(onConsole);
 
     if (!VrGameMemory::redirectCall(VrGame::ControlsOptionAppendCallSite,
         VrGame::OptionArrayAppend, reinterpret_cast<const void*>(&appendControlsEntry))) {
