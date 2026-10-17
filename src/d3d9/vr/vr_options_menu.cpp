@@ -51,6 +51,7 @@ namespace dxvk {
     using GetFloatFn = float (__thiscall*)(void* tile, int32_t trait);
     using SetFloatFn = void (__thiscall*)(void* tile, int32_t trait, float value, bool propagate);
     using AddTraitFn = int32_t (__cdecl*)(const char* name, int32_t id);
+    using ListInitFn = void* (__thiscall*)(void* list, void* tile, const char* itemTemplate);
 
     VrOptions                    g_options;
     VrOptionsMenu::ChangedFn     g_onChanged;
@@ -239,6 +240,47 @@ namespace dxvk {
     }
 
 
+    // Number of entries of the Settings list, the game's and the fork's
+    uint32_t settingsEntryCount() {
+      auto array = reinterpret_cast<const uint8_t*>(VrGame::OptionArray);
+      auto options = *reinterpret_cast<uint8_t* const* const*>(array + VrGame::OptionArrayData);
+      uint32_t count = *reinterpret_cast<const uint32_t*>(array + VrGame::OptionArrayCount);
+      uint32_t entries = 0;
+
+      for (uint32_t i = 0; i < count; i++) {
+        if (options[i] && (*reinterpret_cast<const uint32_t*>(options[i] + VrGame::OptionMask) & VrGame::OptionMaskSettingsList))
+          entries += 1;
+      }
+
+      return entries;
+    }
+
+
+    // Replaces the call that sets up the Settings list box: the list takes
+    // its height from the number of visible items when its first entry is
+    // added, and start_menu.xml leaves room for five, so the entries after
+    // the fifth would be cut off
+    void* __fastcall initSettingsList(void* list, void* unused, void* tile, const char* itemTemplate) {
+      void* result = reinterpret_cast<ListInitFn>(VrGame::ListBoxInitialize)(list, tile, itemTemplate);
+
+      if (!tile)
+        return result;
+
+      int32_t trait = reinterpret_cast<AddTraitFn>(VrGame::AddUserTrait)(VrGame::VisibleItemsTraitName, -1);
+
+      if (trait == INT32_MIN)
+        return result;
+
+      float visible = reinterpret_cast<GetFloatFn>(VrGame::TileGetFloat)(tile, trait);
+      float entries = float(settingsEntryCount());
+
+      if (entries > visible)
+        reinterpret_cast<SetFloatFn>(VrGame::TileSetFloat)(tile, trait, entries, true);
+
+      return result;
+    }
+
+
     bool supported() {
       return VrGameMemory::matches(VrGame::OptionConstruct,
           VrGame::OptionConstructPrologue, sizeof(VrGame::OptionConstructPrologue))
@@ -258,6 +300,8 @@ namespace dxvk {
           VrGame::AddUserTraitPrologue, sizeof(VrGame::AddUserTraitPrologue))
         && VrGameMemory::matches(VrGame::HeapAllocate,
           VrGame::HeapAllocatePrologue, sizeof(VrGame::HeapAllocatePrologue))
+        && VrGameMemory::matches(VrGame::ListBoxInitialize,
+          VrGame::ListBoxInitializePrologue, sizeof(VrGame::ListBoxInitializePrologue))
         && VrGameMemory::readable(VrGame::StartMenuGlobal, sizeof(uintptr_t));
     }
 
@@ -279,6 +323,10 @@ namespace dxvk {
       Logger::warn("VR: The options page is not available, the settings list was not hooked");
       return false;
     }
+
+    if (!VrGameMemory::redirectCall(VrGame::SettingsListInitCallSite,
+        VrGame::ListBoxInitialize, reinterpret_cast<const void*>(&initSettingsList)))
+      Logger::warn("VR: The Settings list keeps its height, its last entries may be cut off");
 
     Logger::info("VR: Added the VR page to the Settings menu");
     return true;

@@ -1024,7 +1024,15 @@ namespace dxvk {
      * - the tile of the menu holds the page's _center_x, copied from the
      *   Gameplay page's trait (PageCenterTraitGameplay);
      * - Tile::GetFloat and Tile::SetFloat: __thiscall on the tile with the
-     *   trait (and a float and a bool); AddUserTrait: __cdecl (name, id).
+     *   trait (and a float and a bool); AddUserTrait: __cdecl (name, id);
+     * - the option array holds OptionArrayCount pointers at OptionArrayData,
+     *   each option's mask at OptionMask;
+     * - StartMenu::_Create sets up the Settings list box with ListBoxInitialize
+     *   (__thiscall on the list box: its tile, the item template name) at
+     *   SettingsListInitCallSite. The first item added fixes the list's
+     *   height to the tile's _number_of_visible_items (5 in start_menu.xml),
+     *   which the game updates only after adding them, so a longer list is
+     *   cut off (findings/options-menu.md §4).
      */
     constexpr uintptr_t StartMenuGlobal              = 0x011DAAC0;
     constexpr uintptr_t OptionArray                  = 0x011DAB88;
@@ -1048,6 +1056,12 @@ namespace dxvk {
     constexpr uintptr_t UserOptionValue              = 0x14;
     constexpr uintptr_t UserOptionDefaultValue       = 0x18;
     constexpr uint32_t  OptionMaskSettingsList       = 0x04;
+    constexpr uintptr_t OptionArrayData              = 0x04;
+    constexpr uintptr_t OptionArrayCount             = 0x08;
+    constexpr uintptr_t OptionMask                   = 0x0C;
+    constexpr uintptr_t ListBoxInitialize            = 0x0075A0D0;
+    constexpr uintptr_t SettingsListInitCallSite     = 0x007CBBFD;
+    constexpr char      VisibleItemsTraitName[]      = "_number_of_visible_items";
     constexpr uint32_t  PageCenterTraitGameplay      = 0x1005;
     constexpr char      CenterXTraitName[]           = "_center_x";
 
@@ -1061,6 +1075,7 @@ namespace dxvk {
     constexpr uint8_t   AddUserTraitPrologue[]        = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x94, 0xCC };
     constexpr uint8_t   HeapAllocatePrologue[]        = { 0x55, 0x8B, 0xEC, 0x8B, 0x45, 0x08, 0x50, 0xE8 };
     constexpr uint8_t   SetListEnabledPrologue[]      = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x4E, 0xEA };
+    constexpr uint8_t   ListBoxInitializePrologue[]   = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x8B };
 
     /**
      * The console, see findings/console.md.
