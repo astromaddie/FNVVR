@@ -210,8 +210,12 @@ namespace dxvk {
     magazine.grip   = input.grip;
 
     if (magazine.active) {
+      const VrGameCameraPose& right = *input.rightHand;
+
       magazine.hand       = input.leftHand->position;
-      magazine.well       = vrPointFromHand(*input.rightHand, *input.well);
+      magazine.held       = vrPointFromHand(*input.leftHand, input.held);
+      magazine.well       = vrPointFromHand(right, *input.well);
+      magazine.axis       = right.forward * input.axis.x + right.up * input.axis.y + right.right * input.axis.z;
       magazine.head       = *input.head;
       magazine.roundsHeld = m_magazine.state() != VrMagazineState::Out || holdsRounds(character);
     }
@@ -220,11 +224,19 @@ namespace dxvk {
 
     switch (event) {
       case VrMagazineEvent::Ejected:
-        ejectMagazine(character, weapon);
+        ejectMagazine(character, weapon, input.animation ? &input.animation->out : nullptr, magazine.well);
         break;
 
       case VrMagazineEvent::Inserted:
-        insertMagazine(character, weapon);
+        insertMagazine(character, weapon, input.animation ? &input.animation->in : nullptr, magazine.well);
+        break;
+
+      case VrMagazineEvent::Cleared:
+        Logger::info(str::format("VR: The magazine of '", weaponName(weapon), "' is out of its well"));
+        break;
+
+      case VrMagazineEvent::Engaged:
+        Logger::info(str::format("VR: A magazine enters the well of '", weaponName(weapon), "'"));
         break;
 
       case VrMagazineEvent::Taken:
@@ -247,7 +259,7 @@ namespace dxvk {
   }
 
 
-  void VrManualReload::ejectMagazine(uint8_t* player, const uint8_t* weapon) {
+  void VrManualReload::ejectMagazine(uint8_t* player, const uint8_t* weapon, const VrReloadSound* sound, const VrVector3& well) {
     // The rounds of the clip are still counted in the inventory: emptying
     // it loses none (findings/reload.md §1)
     uint8_t* clip = currentAmmo(player);
@@ -256,12 +268,15 @@ namespace dxvk {
     if (clip)
       *reinterpret_cast<int32_t*>(clip + VrGame::InventoryEntryCount) = 0;
 
+    if (sound)
+      vrPlayReloadSound(*sound, well);
+
     Logger::info(str::format("VR: The magazine of '", weaponName(weapon), "' is taken out with ",
       rounds, " round(s), they stay in the inventory"));
   }
 
 
-  void VrManualReload::insertMagazine(uint8_t* player, uint8_t* weapon) {
+  void VrManualReload::insertMagazine(uint8_t* player, uint8_t* weapon, const VrReloadSound* sound, const VrVector3& well) {
     // As the game's callers do, the extended magazine counts if it is installed
     uint8_t* entry = weaponEntry(player);
     uint32_t extended = entry
@@ -272,6 +287,9 @@ namespace dxvk {
     // next frame, and the action points are spent as in the game
     uint32_t result = reinterpret_cast<ReloadWeaponFn>(VrGame::PlayerReloadWeapon)(
       player, nullptr, weapon, 0, extended, 0);
+
+    if (sound && (result & 0xFF))
+      vrPlayReloadSound(*sound, well);
 
     Logger::info(str::format("VR: A magazine is pushed into '", weaponName(weapon), "' (extended magazine ",
       extended, "): ", (result & 0xFF) ? "reload started" : "refused, no rounds left"));

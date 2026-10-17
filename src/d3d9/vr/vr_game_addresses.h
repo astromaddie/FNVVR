@@ -1357,6 +1357,93 @@ namespace dxvk {
      */
     constexpr uint32_t  ModEffectClipSize      = 2;
 
+    /**
+     * The weapon's reload animation, read without playing it, see
+     * findings/reload.md §8.2 (GOG database, bytes checked in Ghidra).
+     *
+     * TESObjectWEAP::GetReloadAnim, __thiscall with the extended magazine
+     * bool, ret 4, returns the group (0xB1 + the weapon's reload
+     * animation). Actor::GetAnimGroup (above) turns it into the full
+     * 16-bit group of an AnimData, whose low byte is that group if the
+     * AnimData has it. The AnimData's sequences are a NiTPointerMap from
+     * the full group to an AnimSequenceBase, whose GetAt is __thiscall with
+     * the group and the result's address, ret 8, returns a bool in AL; the
+     * AnimSequenceBase's virtual GetSequenceToPlay (__thiscall with an
+     * index, 0 being the first) returns the BSAnimGroupSequence, which is a
+     * NiControllerSequence with its TESAnimGroup at +0x74.
+     */
+    constexpr uintptr_t WeaponGetReloadAnim        = 0x0051E2A0;
+    constexpr uintptr_t AnimDataSequences          = 0xDC;
+    constexpr uintptr_t AnimDataReloadSpeed        = 0x118;
+    constexpr uintptr_t AnimSequenceMapGetAt       = 0x0049C390;
+    constexpr uintptr_t AnimSequenceToPlaySlot     = 0x10;
+    constexpr uintptr_t AnimSequenceGroup          = 0x74;
+
+    /**
+     * NiControllerSequence: an array of tracks (InterpArrayItem, 0x10
+     * bytes, its interpolator first) and one of the same size naming
+     * their targets (IDTag, 0x14 bytes, the object's name first), and the
+     * time range of its keys (GetInterpolatorAt 0x004937A0, GetIDTag
+     * 0x007E4FC0, GetBeginKeyTime 0x00759450, GetEndKeyTime 0x00508100).
+     * A NiInterpolator's virtual UpdateTransform (__thiscall with the time,
+     * the target and a NiQuatTransform to fill, returns a bool in AL) gives
+     * the track's translation, rotation (NiQuaternion w, x, y, z) and scale
+     * at a time, each -FLT_MAX where the track has none
+     * (NiBSplineCompTransformInterpolator 0x00A50F60 at +0x8C of its
+     * vtable). IsTransformValueSupported says whether it has one.
+     */
+    constexpr uintptr_t SequenceArraySize          = 0x0C;
+    constexpr uintptr_t SequenceInterpolators      = 0x14;
+    constexpr uintptr_t SequenceInterpolatorSize   = 0x10;
+    constexpr uintptr_t SequenceIdTags             = 0x18;
+    constexpr uintptr_t SequenceIdTagSize          = 0x14;
+    constexpr uintptr_t SequenceBeginKeyTime       = 0x2C;
+    constexpr uintptr_t SequenceEndKeyTime         = 0x30;
+    constexpr uintptr_t InterpolatorUpdateTransformSlot = 0x8C;
+    constexpr uintptr_t InterpolatorIsTransformSlot     = 0xB8;
+
+    /**
+     * TESAnimGroup: the sounds of the animation's "Sound:" text keys,
+     * read when it is loaded (GetSound 0x005F3710): their count and an
+     * array of AnimGroupSound (0x10 bytes: the time, the volume as a byte
+     * out of 255, the pitch, the TESSound).
+     */
+    constexpr uintptr_t AnimGroupSoundCount        = 0x34;
+    constexpr uintptr_t AnimGroupSounds            = 0x38;
+    constexpr uintptr_t AnimGroupSoundSize         = 0x10;
+    constexpr uintptr_t AnimGroupSoundVolume       = 0x04;
+    constexpr uintptr_t AnimGroupSoundPitch        = 0x08;
+    constexpr uintptr_t AnimGroupSoundForm         = 0x0C;
+
+    /**
+     * How TESAnimGroup::PlaySounds (0x005F2B60) plays them for the player
+     * in first person: BSAudio::GetSoundHandleByFilename (__thiscall on the
+     * BSAudio singleton with the handle to fill, the sound's file name
+     * (TESSound::GetFilename, __thiscall), the flags and the TESSound, ret
+     * 0x10), then on the 12-byte BSSoundHandle SetPosition (three floats),
+     * SetVolume, SetModFrequency (the pitch times the reload speed) and
+     * Play (whether it loops). The flags are the TESSound's loop flag
+     * (ConvertLoopFlag, __cdecl, of its flags at +0x48), 2D if its flag
+     * 0x40 is set and 3D otherwise, one shot, first person, ignoring the
+     * time scale and driven by an animation.
+     */
+    constexpr uintptr_t AudioSingleton             = 0x011F6D98;
+    constexpr uintptr_t AudioGetSoundByFilename    = 0x00AD7480;
+    constexpr uintptr_t SoundGetFilename           = 0x00511840;
+    constexpr uintptr_t SoundConvertLoopFlag       = 0x005E39B0;
+    constexpr uintptr_t SoundHandleSetPosition     = 0x00AD8B60;
+    constexpr uintptr_t SoundHandleSetVolume       = 0x00AD89E0;
+    constexpr uintptr_t SoundHandleSetFrequency    = 0x00AD8A90;
+    constexpr uintptr_t SoundHandlePlay            = 0x00AD8830;
+    constexpr uintptr_t SoundFormFlags             = 0x48;
+    constexpr uint32_t  SoundForm2D                = 0x40;
+    constexpr uint32_t  SoundFlag2D                = 0x1;
+    constexpr uint32_t  SoundFlag3D                = 0x2;
+    constexpr uint32_t  SoundFlagOneShot           = 0x100;
+    constexpr uint32_t  SoundFlagFirstPerson       = 0x40000;
+    constexpr uint32_t  SoundFlagIgnoreTimescale   = 0x200000;
+    constexpr uint32_t  SoundFlagAnimationDriven   = 0x40000000;
+
   }
 
 }

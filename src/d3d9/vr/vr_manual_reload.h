@@ -7,6 +7,7 @@
 #include "../../util/thread.h"
 
 #include "vr_magazine.h"
+#include "vr_reload_animation.h"
 
 namespace dxvk {
 
@@ -27,6 +28,15 @@ namespace dxvk {
     /// Where the magazine sits in the weapon, in the right hand's frame
     /// (VrWeaponHand::magazineWell), or \c nullptr without a magazine
     const VrVector3*        well = nullptr;
+    /// Direction the magazine comes out along, in the right hand's frame
+    /// (VrWeaponHand::magazineAxis), valid with the well
+    VrVector3               axis;
+    /// Where a magazine held by the left hand has its centre, in the left
+    /// hand's frame (VrWeaponHand::magazineHeld), valid with the well
+    VrVector3               held;
+    /// The game's reload animation of the weapon, for its sounds, or
+    /// \c nullptr
+    const VrReloadAnimation* animation = nullptr;
   };
 
   /**
@@ -44,7 +54,8 @@ namespace dxvk {
    * refused, so an empty clip clicks. Taking the magazine out empties the
    * clip, which loses no round (the clip is a view on the inventory), and
    * pushing one in fills it through the game's own reload with no
-   * animation. Every other reload (equipping, V.A.T.S., an ammunition
+   * animation. The magazine goes out and in with the sounds of the
+   * weapon's reload animation. Every other reload (equipping, V.A.T.S., an ammunition
    * swap...) is the game's, and puts the magazine back in the weapon.
    *
    * The reloads may be started from the game's other threads, so the clip
@@ -96,6 +107,13 @@ namespace dxvk {
       return m_magazine.state();
     }
 
+    /**
+     * \brief How far the magazine is out along its well, see VrMagazineHand::seat
+     */
+    float magazineSeat() const {
+      return m_magazine.seat();
+    }
+
   private:
 
     VrManualReload() = default;
@@ -122,9 +140,9 @@ namespace dxvk {
 
     void watchClip(int32_t clip);
 
-    void ejectMagazine(uint8_t* player, const uint8_t* weapon);
+    void ejectMagazine(uint8_t* player, const uint8_t* weapon, const VrReloadSound* sound, const VrVector3& well);
 
-    void insertMagazine(uint8_t* player, uint8_t* weapon);
+    void insertMagazine(uint8_t* player, uint8_t* weapon, const VrReloadSound* sound, const VrVector3& well);
 
     static uint32_t __fastcall reloadHook(
             uint8_t*              player,

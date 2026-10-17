@@ -82,10 +82,11 @@ namespace dxvk {
 
     // Pulses of the manual reload: on the left controller when it takes a
     // magazine, on both when the magazine goes in, and a faint one when no
-    // rounds are left behind the back
+    // rounds are left behind the back or the magazine enters or leaves its
+    // well
     constexpr float   MagazineTakenHaptic    = 0.4f;
     constexpr float   MagazineInsertedHaptic = 0.7f;
-    constexpr float   MagazineEmptyHaptic    = 0.15f;
+    constexpr float   MagazineFaintHaptic    = 0.15f;
     constexpr int64_t MagazineHapticDuration = 25'000'000;
 
     /**
@@ -869,7 +870,12 @@ namespace dxvk {
     }
 
     // The magazine was measured when the model was last drawn
-    hands.well = m_weaponHand ? m_weaponHand->magazineWell() : nullptr;
+    if (m_weaponHand) {
+      hands.well      = m_weaponHand->magazineWell();
+      hands.axis      = m_weaponHand->magazineAxis();
+      hands.held      = m_weaponHand->magazineHeld();
+      hands.animation = m_weaponHand->reloadAnimation();
+    }
 
     switch (m_manualReload->updateHands(hands)) {
       case VrMagazineEvent::Ejected:
@@ -883,7 +889,9 @@ namespace dxvk {
         break;
 
       case VrMagazineEvent::NoRounds:
-        m_backend.applyHaptic(VrHand::Left, MagazineEmptyHaptic, MagazineHapticDuration);
+      case VrMagazineEvent::Cleared:
+      case VrMagazineEvent::Engaged:
+        m_backend.applyHaptic(VrHand::Left, MagazineFaintHaptic, MagazineHapticDuration);
         break;
 
       case VrMagazineEvent::Dropped:
@@ -892,7 +900,7 @@ namespace dxvk {
     }
 
     if (m_weaponHand)
-      m_weaponHand->setMagazine(m_manualReload->magazineState());
+      m_weaponHand->setMagazine(m_manualReload->magazineState(), m_manualReload->magazineSeat());
   }
 
 

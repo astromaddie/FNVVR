@@ -7,6 +7,7 @@
 #include "vr_magazine.h"
 #include "vr_melee.h"
 #include "vr_pipboy_size.h"
+#include "vr_reload_animation.h"
 #include "vr_weapon_aim.h"
 
 namespace dxvk {
@@ -59,8 +60,11 @@ namespace dxvk {
    * - While a menu is pointed at with the lasers, the whole model is
    *   hidden.
    * - The weapon's magazine, a part of its model, is drawn in the left
-   *   hand while the left hand holds it, and hidden while it is neither
-   *   there nor in the weapon, see VrMagazineHand.
+   *   hand while the left hand holds it, sliding along its well while it
+   *   is in it, and hidden while it is neither in the hand nor in the
+   *   weapon, see VrMagazineHand. The game's reload animation of the
+   *   weapon tells how the hand holds it and along which direction it
+   *   comes out, see vrReadReloadAnimation.
    *
    * Only used on the game's main thread.
    */
@@ -177,12 +181,14 @@ namespace dxvk {
      * \brief Sets where the magazine of the weapon in the hand is drawn
      *
      * Applied when the model is next drawn. In the left hand, the magazine
-     * is centred on the left controller's grip and keeps the angle to it
-     * that it had when it was taken out of the weapon.
+     * is held as the game's reload animation holds it, with the fingers
+     * closed on it. Between the hand and the well it moves smoothly.
+     *
+     * \param [in] state Where the magazine is
+     * \param [in] seat How far out of its place it is along its well, in
+     *    metres, while it is in the well
      */
-    void setMagazine(VrMagazineState state) {
-      m_magazineState = state;
-    }
+    void setMagazine(VrMagazineState state, float seat);
 
     /**
      * \brief Where the magazine sits in the weapon in the right hand
@@ -197,6 +203,35 @@ namespace dxvk {
      */
     const VrVector3* magazineWell() const {
       return m_hasMagazine ? &m_magazineWell : nullptr;
+    }
+
+    /**
+     * \brief Direction the magazine comes out of the weapon along
+     *
+     * A unit vector in the right hand's frame (forward, up and right),
+     * valid with magazineWell.
+     */
+    const VrVector3& magazineAxis() const {
+      return m_magazineAxis;
+    }
+
+    /**
+     * \brief Where the centre of a magazine held by the left hand is
+     *
+     * In the left controller's frame (see vrPointFromHand), valid with
+     * magazineWell.
+     */
+    const VrVector3& magazineHeld() const {
+      return m_magazineHeld;
+    }
+
+    /**
+     * \brief The game's reload animation of the weapon in the hand
+     *
+     * \returns The animation, or \c nullptr if it was not read
+     */
+    const VrReloadAnimation* reloadAnimation() const {
+      return m_hasMagazine && m_hasReloadAnimation ? &m_reloadAnimation : nullptr;
     }
 
   private:
@@ -298,7 +333,10 @@ namespace dxvk {
     // dereferenced) and the magazine the VR layer culled, compared but only
     // touched once found in the weapon again
     VrMagazineState  m_magazineState = VrMagazineState::InWeapon;
+    float            m_magazineSeat = 0.0f;
     VrVector3        m_magazineWell;
+    VrVector3        m_magazineAxis;
+    VrVector3        m_magazineHeld;
     bool             m_hasMagazine = false;
     VrVector3        m_magazineCentre;
     bool             m_hasMagazineCentre = false;
@@ -307,6 +345,23 @@ namespace dxvk {
     bool             m_hasMagazineGrip = false;
     uint8_t*         m_hiddenMagazine = nullptr;
     bool             m_loggedMagazine = false;
+
+    // Where the magazine was last drawn out of the weapon, in the game
+    // world, and the blend from there when it moves between the hand and
+    // the well (1 when done)
+    VrGameTransform  m_magazineDrawn;
+    bool             m_hasMagazineDrawn = false;
+    VrGameTransform  m_magazineFrom;
+    float            m_magazineBlend = 1.0f;
+
+    // The game's reload animation of the weapon form it was read for,
+    // compared but not dereferenced, how many times it was tried for it and
+    // how many draws to wait before the next try
+    VrReloadAnimation m_reloadAnimation;
+    bool             m_hasReloadAnimation = false;
+    const uint8_t*   m_reloadForm = nullptr;
+    uint32_t         m_reloadTries = 0;
+    uint32_t         m_reloadWait = 0;
 
     // Set while the game creates a projectile aimed with the hand, so that
     // its auto-aim leaves it alone
@@ -398,11 +453,16 @@ namespace dxvk {
             void*                 updateData);
 
     void placeMagazine(
+            uint8_t*              root,
             uint8_t*              weapon,
+            uint8_t*              leftHand,
+            bool                  handPlaced,
       const VrGameCameraPose&     hand,
       const uint8_t*              form,
       const VrVector3&            shift,
             void*                 updateData);
+
+    bool holdsMagazine() const;
 
     void hideArms(uint8_t* root, bool rightHand);
 

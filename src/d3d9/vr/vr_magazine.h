@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
+
 #include "vr_game_space.h"
 
 namespace dxvk {
@@ -70,6 +73,8 @@ namespace dxvk {
   enum class VrMagazineState {
     /// In the weapon, as the game draws it
     InWeapon,
+    /// Held by the left hand in the weapon's well, sliding along it
+    Seating,
     /// Held by the left hand, out of the weapon
     InHand,
     /// Neither in the weapon nor in the hand
@@ -81,15 +86,19 @@ namespace dxvk {
    */
   enum class VrMagazineEvent {
     None,
-    /// The magazine was taken out of the weapon
+    /// The magazine was taken out of the weapon: it slides out of its well
     Ejected,
+    /// The magazine came out of the well, it is free in the hand
+    Cleared,
+    /// The magazine in the hand entered the well
+    Engaged,
     /// A new magazine was taken behind the back
     Taken,
     /// The hand reached behind the back, but no rounds are left
     NoRounds,
     /// The magazine in the hand was let go of
     Dropped,
-    /// The magazine in the hand was pushed into the weapon
+    /// The magazine was pushed home into the weapon
     Inserted,
   };
 
@@ -104,10 +113,14 @@ namespace dxvk {
     bool             active = false;
     /// The left grip is held
     bool             grip = false;
-    /// Left hand: the middle of the grip, where it holds a magazine
+    /// Left hand: the middle of the grip
     VrVector3        hand;
-    /// Where the magazine sits in the weapon
+    /// Where the centre of a magazine held by the left hand is
+    VrVector3        held;
+    /// Where the centre of the magazine sits in the weapon
     VrVector3        well;
+    /// Direction the magazine comes out of the weapon along, unit
+    VrVector3        axis;
     /// Head pose
     VrGameCameraPose head;
     /// The inventory holds rounds for the weapon
@@ -120,11 +133,24 @@ namespace dxvk {
   struct VrMagazineReach {
     /// How close the hand must be to the magazine to take it out
     float eject   = 0.10f;
-    /// How close the magazine must come to its place to go in
-    float insert  = 0.07f;
-    /// How far a magazine just taken out must move away before it can go
-    /// in again, so that it does not go back in at once
-    float rearm   = 0.12f;
+    /// How far the magazine slides along its well, from its place to the
+    /// mouth of the well
+    float depth   = 0.03f;
+    /// How far past the mouth of the well the magazine is pulled before it
+    /// comes out
+    float slack   = 0.02f;
+    /// How close to the mouth of the well a magazine in the hand must come
+    /// to enter it
+    float capture = 0.04f;
+    /// How far the hand may move across the well before the magazine comes
+    /// out of it sideways
+    float leave   = 0.06f;
+    /// How far a magazine just taken out must slide before pushing it back
+    /// puts it in again
+    float armed   = 0.01f;
+    /// How far from the mouth of the well a magazine that came out of it
+    /// must move before it can enter again
+    float rearm   = 0.08f;
     /// Where new magazines are taken
     VrMagazinePouch pouch;
   };
@@ -132,12 +158,14 @@ namespace dxvk {
   /**
    * \brief Follows the magazine of the weapon in the right hand
    *
-   * The left grip pressed near the magazine takes it out, and the magazine
-   * stays in the hand while the grip is held. Let go of, it disappears.
-   * With no magazine in the weapon, the left grip pressed behind the back
-   * takes a new one if rounds are left. A magazine in the hand goes in
-   * when it comes near its place in the weapon. Only a press of the grip
-   * takes a magazine: holding it while the hand moves takes nothing.
+   * The left grip pressed near the magazine takes it out: it slides along
+   * its well with the hand, and comes free past the mouth of the well or
+   * when the hand moves across it. It stays in the hand while the grip is
+   * held. Let go of, it disappears. With no magazine in the weapon, the
+   * left grip pressed behind the back takes a new one if rounds are left.
+   * A magazine in the hand brought to the mouth of the well enters it,
+   * and goes in once it is pushed home. Only a press of the grip takes a
+   * magazine: holding it while the hand moves takes nothing.
    *
    * The game decides the clip: it is emptied on the way out and filled on
    * the way in by the caller.
@@ -167,13 +195,93 @@ namespace dxvk {
       return m_state;
     }
 
+    /**
+     * \brief How far the magazine is out of its place along its well
+     *
+     * In metres, while it is VrMagazineState::Seating.
+     */
+    float seat() const {
+      return m_seat;
+    }
+
   private:
 
     VrMagazineReach m_reach;
     VrMagazineState m_state     = VrMagazineState::InWeapon;
     bool            m_gripDown  = false;
     bool            m_canInsert = false;
+    bool            m_canEnter  = false;
+
+    // While seating: how far out the magazine is, and where the held
+    // magazine was along and across the well when it entered it, so that
+    // the hand moves it from there
+    float           m_seat       = 0.0f;
+    float           m_alongStart = 0.0f;
+    VrVector3       m_acrossStart;
+
+    void seat(const VrMagazineInput& input, float start);
 
   };
+
+  /**
+   * \brief Where the magazine is at a time of the game's reload animation
+   */
+  struct VrMagazineSample {
+    float     time = 0.0f;
+    /// The magazine's centre relative to its place in the weapon, in
+    /// metres, in the weapon's frame
+    VrVector3 offset;
+  };
+
+  /**
+   * \brief When the game's reload animation moves the magazine
+   */
+  struct VrMagazineTiming {
+    /// The magazine leaves its place
+    float     out  = 0.0f;
+    /// The magazine is back in its place
+    float     in   = 0.0f;
+    /// The left hand holds the new magazine, before pushing it in
+    float     grip = 0.0f;
+    /// Direction the new magazine comes from, towards its place: the
+    /// direction it goes out along, unit, in the weapon's frame
+    VrVector3 axis;
+  };
+
+  /**
+   * \brief Finds when the game's reload animation moves the magazine
+   *
+   * The magazine leaves its place when it first moves by more than a
+   * centimetre, and is back when it last comes within a centimetre of it.
+   * The hand holds the new magazine at the last time before that it was
+   * about four centimetres out, or less if it never went that far.
+   *
+   * \param [in] samples The magazine through the animation, in time order
+   * \param [in] count Number of samples
+   * \param [out] timing When the magazine moves
+   * \returns \c false if the magazine does not leave its place and come
+   *    back to it
+   */
+  bool vrFindMagazineTiming(
+    const VrMagazineSample*     samples,
+          size_t                count,
+          VrMagazineTiming&     timing);
+
+  /**
+   * \brief Finds the sound played nearest a time
+   *
+   * \param [in] times Times of the sounds
+   * \param [in] count Number of sounds
+   * \param [in] time Time to look near
+   * \param [in] window How far from the time a sound may be
+   * \param [in] exclude A sound not to pick, or -1
+   * \returns The sound's index, or -1 if none is that near
+   */
+  int32_t vrFindNearestSound(
+    const float*                times,
+          size_t                count,
+          float                 time,
+          float                 window,
+          int32_t               exclude);
 
 }

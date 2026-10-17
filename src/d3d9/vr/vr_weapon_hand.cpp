@@ -69,6 +69,18 @@ namespace dxvk {
     constexpr int8_t WeaponTypeRifle        = 5;
     constexpr int8_t WeaponTypeLauncher     = 9;
 
+    // How long the magazine takes to move between the hand and its well
+    constexpr float MagazineBlendTime = 0.12f;
+
+    // How many times the reload animation of a weapon is read, in case its
+    // animations are not loaded yet, and how many draws apart (two per frame)
+    constexpr uint32_t ReloadAnimationTries      = 3;
+    constexpr uint32_t ReloadAnimationRetryDraws = 180;
+
+    // Bones of the free hand that take a pose: its fingers, the wrist and
+    // the forearm's twist bone
+    constexpr uint32_t MaxPosedBones = 48;
+
     constexpr float Pi               = 3.14159265f;
     constexpr float DegreesPerRadian = 180.0f / Pi;
 
@@ -438,6 +450,7 @@ namespace dxvk {
 
     m_frameTime         = dt;
     m_heldSettleUpdated = false;
+    m_magazineBlend     = std::min(m_magazineBlend + dt / MagazineBlendTime, 1.0f);
 
     m_gameCamera   = gameCamera;
     m_hasHand      = hand != nullptr;
@@ -769,7 +782,9 @@ namespace dxvk {
     writeRotation(root, VrGame::ObjectLocalRotation, rotation);
     writeVector(root, VrGame::NodeLocalTranslate, translation);
 
-    if (forearm && m_hasOtherHand && !m_twoHanded && !m_braced)
+    bool handPlaced = forearm && m_hasOtherHand && !m_twoHanded && !m_braced;
+
+    if (handPlaced)
       placeOtherHand(root, otherHand, shift, updateData);
 
     // Held still, the blade does not move in the hand
@@ -780,7 +795,7 @@ namespace dxvk {
     m_bladeAutomatic = form && (readField<uint8_t>(form, VrGame::WeaponFlags) & VrGame::WeaponFlagAutomatic);
 
     hideArms(root, false);
-    placeMagazine(weapon, hand, form, shift, updateData);
+    placeMagazine(root, weapon, otherHand, handPlaced, hand, form, shift, updateData);
 
     uint8_t* muzzle = findObject(weapon, VrGame::ProjectileNodeName);
 
@@ -1063,29 +1078,42 @@ namespace dxvk {
     writeRotation(forearm, VrGame::ObjectLocalRotation, vrTranspose(parent.rotate) * worldRotation);
     writeVector(forearm, VrGame::NodeLocalTranslate, parent.toLocal(worldTranslation));
 
-    // The wrist, the twist bone and the fingers take the pose too
+    // The wrist, the twist bone and the fingers take the pose too. A hand
+    // holding a magazine closes its fingers on it as the game's reload
+    // animation does.
     struct SavedBone {
       uint8_t*       bone;
       VrGameRotation rotate;
     };
 
-    std::array<SavedBone, std::size(FreeHandBones)> saved;
+    const std::vector<VrBonePose>* grip = holdsMagazine() ? &m_reloadAnimation.fingers : nullptr;
+
+    std::array<SavedBone, MaxPosedBones> saved;
     uint32_t savedCount = 0;
 
-    forEachObject(forearm, MaxModelDepth, [&saved, &savedCount] (uint8_t* object) {
+    forEachObject(forearm, MaxModelDepth, [grip, &saved, &savedCount] (uint8_t* object) {
       auto name = field<const char*>(object, VrGame::ObjectName);
 
       if (!name || savedCount == saved.size())
         return;
 
-      for (const FreeHandBone& pose : FreeHandBones) {
-        if (std::strcmp(name, pose.name))
-          continue;
+      const VrGameRotation* pose = nullptr;
 
-        saved[savedCount++] = { object, readRotation(object, VrGame::ObjectLocalRotation) };
-        writeRotation(object, VrGame::ObjectLocalRotation, pose.rotate);
-        return;
+      for (size_t i = 0; grip && !pose && i < grip->size(); i++) {
+        if ((*grip)[i].name == name)
+          pose = &(*grip)[i].rotate;
       }
+
+      for (size_t i = 0; !pose && i < std::size(FreeHandBones); i++) {
+        if (!std::strcmp(name, FreeHandBones[i].name))
+          pose = &FreeHandBones[i].rotate;
+      }
+
+      if (!pose)
+        return;
+
+      saved[savedCount++] = { object, readRotation(object, VrGame::ObjectLocalRotation) };
+      writeRotation(object, VrGame::ObjectLocalRotation, *pose);
     });
 
     updateObject(forearm, updateData);
@@ -1116,8 +1144,38 @@ namespace dxvk {
   }
 
 
+  void VrWeaponHand::setMagazine(VrMagazineState state, float seat) {
+    // Between the hand and the well the magazine moves from where it was
+    // drawn last
+    bool moving = (state == VrMagazineState::Seating && m_magazineState == VrMagazineState::InHand)
+               || (state == VrMagazineState::InHand && m_magazineState == VrMagazineState::Seating);
+
+    if (moving && m_hasMagazineDrawn) {
+      m_magazineFrom  = m_magazineDrawn;
+      m_magazineBlend = 0.0f;
+    }
+
+    if (state != VrMagazineState::Seating && state != VrMagazineState::InHand) {
+      m_magazineBlend    = 1.0f;
+      m_hasMagazineDrawn = false;
+    }
+
+    m_magazineState = state;
+    m_magazineSeat  = seat;
+  }
+
+
+  bool VrWeaponHand::holdsMagazine() const {
+    return m_mode == VrFirstPersonMode::Hands && m_hasReloadAnimation
+      && (m_magazineState == VrMagazineState::InHand || m_magazineState == VrMagazineState::Seating);
+  }
+
+
   void VrWeaponHand::placeMagazine(
+          uint8_t*              root,
           uint8_t*              weapon,
+          uint8_t*              leftHand,
+          bool                  handPlaced,
     const VrGameCameraPose&     hand,
     const uint8_t*              form,
     const VrVector3&            shift,
@@ -1151,6 +1209,24 @@ namespace dxvk {
       m_hasMagazineGrip   = false;
     }
 
+    // The game's reload animation, once the weapon's model is in the hand
+    if (form != m_reloadForm) {
+      m_reloadForm         = form;
+      m_hasReloadAnimation = false;
+      m_reloadTries        = 0;
+      m_reloadWait         = 0;
+    }
+
+    if (!m_hasReloadAnimation && leftHand && m_reloadTries < ReloadAnimationTries) {
+      if (m_reloadWait) {
+        m_reloadWait -= 1;
+      } else {
+        m_reloadTries += 1;
+        m_reloadWait   = ReloadAnimationRetryDraws;
+        m_hasReloadAnimation = vrReadReloadAnimation(player(), root, weapon, magazine, leftHand, m_reloadAnimation);
+      }
+    }
+
     // Where the game draws the magazine in the weapon. Its bound is only
     // read while the game draws it there.
     VrGameRotation rotation = readRotation(magazine, VrGame::ObjectWorldRotation);
@@ -1165,9 +1241,37 @@ namespace dxvk {
     }
 
     VrVector3 centre = m_hasMagazineCentre ? m_magazineCentre : VrVector3();
+    VrVector3 well   = position + rotation * centre * scale;
 
-    m_magazineWell = vrPointToHand(hand, position + rotation * centre * scale);
+    m_magazineWell = vrPointToHand(hand, well);
     m_hasMagazine  = true;
+
+    // The direction it comes out along: the animation's, or away from the
+    // middle of the weapon
+    VrVector3 axis;
+
+    if (m_hasReloadAnimation) {
+      axis = readRotation(weapon, VrGame::ObjectWorldRotation) * m_reloadAnimation.axis;
+    } else if (auto weaponBound = field<const uint8_t*>(weapon, VrGame::ObjectWorldBound)) {
+      axis = well - readVector(weaponBound, 0);
+    }
+
+    float axisLength = vrLength(axis);
+    axis = axisLength > 1e-3f ? axis * (1.0f / axisLength) : hand.up * -1.0f;
+
+    m_magazineAxis = { vrDot(axis, hand.forward), vrDot(axis, hand.up), vrDot(axis, hand.right) };
+
+    // Where the left hand holds the magazine's centre, in the left
+    // controller's frame, where the free pose puts the hand bone
+    VrGameTransform inHand = m_reloadAnimation.magazineInHand;
+
+    if (m_hasReloadAnimation && leftHand) {
+      float handScale = field<float>(leftHand, VrGame::ObjectWorldScale);
+      m_magazineHeld = FreeHandPose.translate + FreeHandPose.rotate
+        * (inHand.translate * handScale + inHand.rotate * centre * scale);
+    } else {
+      m_magazineHeld = VrVector3();
+    }
 
     if (!m_loggedMagazine) {
       auto name = field<const char*>(magazine, VrGame::ObjectName);
@@ -1186,20 +1290,53 @@ namespace dxvk {
       return;
     }
 
-    if (m_magazineState != VrMagazineState::InHand || !m_hasOtherHand)
+    if (m_magazineState == VrMagazineState::InWeapon)
       return;
 
-    // The angle to the left controller is the one the magazine had when it
-    // was taken out of the weapon, and new magazines take it too
-    VrGameRotation controller = vrCameraRotation(m_otherHand);
+    VrGameRotation worldRotation;
+    VrVector3 worldTranslation;
 
-    if (!m_hasMagazineGrip) {
-      m_magazineGrip    = vrTranspose(controller) * rotation;
-      m_hasMagazineGrip = true;
+    if (m_magazineState == VrMagazineState::Seating) {
+      // In its well, out of its place by the seat
+      worldRotation    = rotation;
+      worldTranslation = position + axis * (m_magazineSeat * VrGameUnitsPerMetre);
+    } else if (m_hasReloadAnimation && handPlaced) {
+      // As the reload animation holds it in the hand
+      VrGameRotation handRotation = readRotation(leftHand, VrGame::ObjectWorldRotation);
+      float handScale = field<float>(leftHand, VrGame::ObjectWorldScale);
+
+      worldRotation    = handRotation * inHand.rotate;
+      worldTranslation = readVector(leftHand, VrGame::ObjectWorldTranslation)
+        + handRotation * inHand.translate * handScale;
+    } else if (m_hasOtherHand) {
+      // Centred on the left controller, at the angle to it it had when it
+      // was taken out of the weapon, which new magazines take too
+      VrGameRotation controller = vrCameraRotation(m_otherHand);
+
+      if (!m_hasMagazineGrip) {
+        m_magazineGrip    = vrTranspose(controller) * rotation;
+        m_hasMagazineGrip = true;
+      }
+
+      worldRotation    = controller * m_magazineGrip;
+      worldTranslation = (m_otherHand.position - shift) - worldRotation * centre * scale;
+    } else {
+      return;
     }
 
-    VrGameRotation worldRotation = controller * m_magazineGrip;
-    VrVector3 worldTranslation   = (m_otherHand.position - shift) - worldRotation * centre * scale;
+    if (m_magazineBlend < 1.0f) {
+      float t = m_magazineBlend * m_magazineBlend * (3.0f - 2.0f * m_magazineBlend);
+      VrVector3 from = m_magazineFrom.translate - shift;
+
+      worldTranslation = from + (worldTranslation - from) * t;
+      worldRotation    = vrGameRotationFromQuaternion(vrSlerp(
+        vrQuaternionFromGameRotation(m_magazineFrom.rotate),
+        vrQuaternionFromGameRotation(worldRotation), t));
+    }
+
+    m_magazineDrawn.rotate    = worldRotation;
+    m_magazineDrawn.translate = worldTranslation + shift;
+    m_hasMagazineDrawn        = true;
 
     ParentFrame parent = parentFrame(magazine);
 

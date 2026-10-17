@@ -33,6 +33,19 @@ namespace dxvk {
   VrGameRotation vrTranspose(const VrGameRotation& r);
 
   /**
+   * \brief Rotation of a unit quaternion, in the game's layout
+   *
+   * The convention of the game's NiQuaternion::ToRotation (0x004F0180),
+   * which is also that of vrRotate.
+   */
+  VrGameRotation vrGameRotationFromQuaternion(const VrQuaternion& q);
+
+  /**
+   * \brief Unit quaternion of a rotation in the game's layout
+   */
+  VrQuaternion vrQuaternionFromGameRotation(const VrGameRotation& r);
+
+  /**
    * \brief Rotation of a camera pose: forward, up and right as columns
    */
   VrGameRotation vrCameraRotation(const VrGameCameraPose& pose);

@@ -58,6 +58,7 @@ vr_dxvk_src = files([
   'vr_charge_ring.cpp',
   'vr_menu_scenes.cpp',
   'vr_manual_reload.cpp',
+  'vr_reload_animation.cpp',
   'vr_npc_gaze.cpp',
   'vr_pipboy_animation.cpp',
   'vr_pipboy_control.cpp',

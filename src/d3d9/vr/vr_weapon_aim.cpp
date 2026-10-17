@@ -49,6 +49,61 @@ namespace dxvk {
   }
 
 
+  VrGameRotation vrGameRotationFromQuaternion(const VrQuaternion& q) {
+    float x2 = q.x * 2.0f;
+    float y2 = q.y * 2.0f;
+    float z2 = q.z * 2.0f;
+
+    VrGameRotation r;
+    r.m[0][0] = 1.0f - (q.y * y2 + q.z * z2);
+    r.m[0][1] = q.x * y2 - q.w * z2;
+    r.m[0][2] = q.x * z2 + q.w * y2;
+    r.m[1][0] = q.x * y2 + q.w * z2;
+    r.m[1][1] = 1.0f - (q.x * x2 + q.z * z2);
+    r.m[1][2] = q.y * z2 - q.w * x2;
+    r.m[2][0] = q.x * z2 - q.w * y2;
+    r.m[2][1] = q.y * z2 + q.w * x2;
+    r.m[2][2] = 1.0f - (q.x * x2 + q.y * y2);
+    return r;
+  }
+
+
+  VrQuaternion vrQuaternionFromGameRotation(const VrGameRotation& r) {
+    const auto& m = r.m;
+    float trace = m[0][0] + m[1][1] + m[2][2];
+
+    VrQuaternion q;
+
+    if (trace > 0.0f) {
+      float s = std::sqrt(trace + 1.0f) * 2.0f;
+      q.w = 0.25f * s;
+      q.x = (m[2][1] - m[1][2]) / s;
+      q.y = (m[0][2] - m[2][0]) / s;
+      q.z = (m[1][0] - m[0][1]) / s;
+    } else if (m[0][0] > m[1][1] && m[0][0] > m[2][2]) {
+      float s = std::sqrt(1.0f + m[0][0] - m[1][1] - m[2][2]) * 2.0f;
+      q.w = (m[2][1] - m[1][2]) / s;
+      q.x = 0.25f * s;
+      q.y = (m[0][1] + m[1][0]) / s;
+      q.z = (m[0][2] + m[2][0]) / s;
+    } else if (m[1][1] > m[2][2]) {
+      float s = std::sqrt(1.0f + m[1][1] - m[0][0] - m[2][2]) * 2.0f;
+      q.w = (m[0][2] - m[2][0]) / s;
+      q.x = (m[0][1] + m[1][0]) / s;
+      q.y = 0.25f * s;
+      q.z = (m[1][2] + m[2][1]) / s;
+    } else {
+      float s = std::sqrt(1.0f + m[2][2] - m[0][0] - m[1][1]) * 2.0f;
+      q.w = (m[1][0] - m[0][1]) / s;
+      q.x = (m[0][2] + m[2][0]) / s;
+      q.y = (m[1][2] + m[2][1]) / s;
+      q.z = 0.25f * s;
+    }
+
+    return vrNormalize(q);
+  }
+
+
   VrGameRotation vrCameraRotation(const VrGameCameraPose& pose) {
     VrGameRotation result;
     const VrVector3* axes[3] = { &pose.forward, &pose.up, &pose.right };
