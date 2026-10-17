@@ -30,6 +30,7 @@ namespace dxvk {
     using TextureManagerFn = void* (__cdecl*)();
     using BorrowFn        = void* (__thiscall*)(void* manager, void* renderer, uint32_t type,
       uint32_t a, uint32_t b, uint32_t c);
+    using ReturnFn        = void  (__thiscall*)(void* manager, void* texture);
     using MainFn          = void  (__thiscall*)(void* main);
     using ScreenFn        = void  (__thiscall*)(void* main, void* screen, void* renderer);
     using OffscreenFn     = void  (__cdecl*)();
@@ -181,6 +182,7 @@ namespace dxvk {
         { VrGame::HeapAllocate,           VrGame::HeapAllocatePrologue,           sizeof(VrGame::HeapAllocatePrologue) },
         { VrGame::GetTextureManager,      VrGame::GetTextureManagerBytes,         sizeof(VrGame::GetTextureManagerBytes) },
         { VrGame::BorrowRenderedTexture,  VrGame::BorrowRenderedTexturePrologue,  sizeof(VrGame::BorrowRenderedTexturePrologue) },
+        { VrGame::ReturnRenderedTexture,  VrGame::ReturnRenderedTexturePrologue,  sizeof(VrGame::ReturnRenderedTexturePrologue) },
         { VrGame::NiPointerAssign,        VrGame::NiPointerAssignPrologue,        sizeof(VrGame::NiPointerAssignPrologue) },
         { VrGame::DrawRenderedMenuParent, VrGame::DrawRenderedMenuParentPrologue, sizeof(VrGame::DrawRenderedMenuParentPrologue) },
         { VrGame::RenderPipBoy,           VrGame::RenderPipBoyPrologue,           sizeof(VrGame::RenderPipBoyPrologue) },
@@ -250,6 +252,9 @@ namespace dxvk {
     setHeader();
     m_shown = true;
 
+    m_debugTextCulled = false;
+    hideDebugText();
+
     Logger::info("VR: The console is shown on the game's terminal");
     return true;
   }
@@ -265,6 +270,8 @@ namespace dxvk {
     game<AssignFn>(VrGame::NiPointerAssign)(m_menu + VrGame::TerminalMenuRoot, nullptr);
 
     destroyTiles();
+    releaseTexture();
+    restoreDebugText();
     m_shown = false;
   }
 
@@ -297,8 +304,11 @@ namespace dxvk {
 
 
   void VrConsoleScreen::drawEye(const VrEyeView& eye) {
-    if (!m_shown)
+    if (!m_shown || !m_texture)
       return;
+
+    // The game shows the console's own lines in white over the view
+    hideDebugText();
 
     uint8_t* manager = interfaceManager();
     void*    main      = *reinterpret_cast<void* const*>(VrGame::MainSingleton);
@@ -320,6 +330,12 @@ namespace dxvk {
     void*  previous = current;
     current = m_menu;
 
+    // The screen is drawn with the texture the game's interface texture
+    // points to; the pointer is swapped without touching either count
+    void*& texture = *reinterpret_cast<void**>(VrGame::InterfaceFxTexture);
+    void*  gameTexture = texture;
+    texture = m_texture;
+
     // The terminal is nearer than the world, which never hides it. The
     // game's renderer is between its world and interface passes here, so
     // the device clears the depth buffer the eye is drawn with.
@@ -327,6 +343,7 @@ namespace dxvk {
     game<MainFn>(VrGame::DrawRenderedMenuParent)(main);
     game<ScreenFn>(VrGame::RenderPipBoy)(main, field<void*>(m_menu, VrGame::TerminalScreen), renderer);
 
+    texture = gameTexture;
     current = previous;
 
     if (culler)
@@ -502,20 +519,64 @@ namespace dxvk {
     method<IdleFn>(m_menu, VrGame::TerminalOnIdle)(m_menu);
     inRenderedMenu = previous;
 
-    // Borrowed as the game borrows it for its own terminals
-    void*& texture = *reinterpret_cast<void**>(VrGame::InterfaceFxTexture);
-
-    if (!texture) {
+    // Borrowed as the game borrows its interface texture for its own
+    // terminals, but kept until the console is hidden: the game gives its
+    // own back after each eye, and the right eye does not render it again
+    if (!m_texture) {
       void* textures = game<TextureManagerFn>(VrGame::GetTextureManager)();
       void* borrowed = textures ? game<BorrowFn>(VrGame::BorrowRenderedTexture)(textures, renderer,
         VrGame::InterfaceFxTextureType, 0, 0, 0) : nullptr;
 
       if (borrowed)
-        game<AssignFn>(VrGame::NiPointerAssign)(reinterpret_cast<void*>(VrGame::InterfaceFxTexture), borrowed);
+        game<AssignFn>(VrGame::NiPointerAssign)(&m_texture, borrowed);
     }
 
-    if (texture)
-      method<DrawFn>(m_menu, VrGame::TerminalDraw)(m_menu, texture, 1, nullptr);
+    if (m_texture)
+      method<DrawFn>(m_menu, VrGame::TerminalDraw)(m_menu, m_texture, 1, nullptr);
+  }
+
+
+  void VrConsoleScreen::hideDebugText() {
+    uint8_t* manager = interfaceManager();
+    uint8_t* root = manager ? field<uint8_t*>(manager, VrGame::InterfaceDebugTextRoot) : nullptr;
+
+    if (!root)
+      return;
+
+    // FORenderedMenu::Render shows the node again after its pass when the
+    // game's debug text is on, so it is hidden again in each eye
+    auto& flags = field<uint32_t>(root, VrGame::ObjectFlags);
+
+    if (!m_debugTextCulled) {
+      m_debugTextWasCulled = (flags & VrGame::ObjectFlagAppCulled) != 0;
+      m_debugTextCulled = true;
+    }
+
+    flags |= VrGame::ObjectFlagAppCulled;
+  }
+
+
+  void VrConsoleScreen::restoreDebugText() {
+    uint8_t* manager = interfaceManager();
+    uint8_t* root = manager ? field<uint8_t*>(manager, VrGame::InterfaceDebugTextRoot) : nullptr;
+
+    if (root && m_debugTextCulled && !m_debugTextWasCulled)
+      field<uint32_t>(root, VrGame::ObjectFlags) &= ~VrGame::ObjectFlagAppCulled;
+
+    m_debugTextCulled = false;
+  }
+
+
+  void VrConsoleScreen::releaseTexture() {
+    if (!m_texture)
+      return;
+
+    void* textures = game<TextureManagerFn>(VrGame::GetTextureManager)();
+
+    if (textures)
+      game<ReturnFn>(VrGame::ReturnRenderedTexture)(textures, m_texture);
+
+    game<AssignFn>(VrGame::NiPointerAssign)(&m_texture, nullptr);
   }
 
 }

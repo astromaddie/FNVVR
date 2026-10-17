@@ -1151,7 +1151,14 @@ namespace dxvk {
      *   (NiPointer<BSRenderedTexture>), borrowed from the texture manager
      *   (GetTextureManager __cdecl, BorrowRenderedTexture __thiscall:
      *   renderer, InterfaceFxTextureType, 0, 0, 0) and assigned with
-     *   NiPointerAssign (__thiscall on the pointer: object);
+     *   NiPointerAssign (__thiscall on the pointer: object); Main::Swap
+     *   gives that texture back (ReturnRenderedTexture, __thiscall on the
+     *   texture manager: texture) and clears the pointer at the end of each
+     *   frame it draws, so the console keeps a texture of its own and lends
+     *   it to InterfaceFxTexture only while it draws its screen;
+     * - the debug text the console prints its lines and command line with
+     *   is drawn under the node at InterfaceDebugTextRoot (NiNode*), which
+     *   FORenderedMenu::Render culls for its own pass;
      * - DrawRenderedMenuParent and RenderPipBoy (above) draw the current
      *   rendered menu's model and screen with the menu's camera;
      * - the world's culling process (WorldSceneGraph holds the scene graph,
@@ -1193,6 +1200,8 @@ namespace dxvk {
     constexpr uintptr_t BorrowRenderedTexture      = 0x00B6E110;
     constexpr uint32_t  InterfaceFxTextureType     = 0x2D;
     constexpr uintptr_t NiPointerAssign            = 0x0066B0D0;
+    constexpr uintptr_t ReturnRenderedTexture      = 0x00B6DA10;
+    constexpr uintptr_t InterfaceDebugTextRoot     = 0xA4;
     constexpr uintptr_t WorldSceneGraph            = 0x011DEB7C;
     constexpr uintptr_t SceneGraphCuller           = 0xB4;
     constexpr uintptr_t CullerCamera               = 0x0C;
@@ -1209,6 +1218,7 @@ namespace dxvk {
     constexpr uint8_t   TileSetStringPrologue[]        = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x85, 0xCD, 0xF1, 0x00 };
     constexpr uint8_t   GetTextureManagerBytes[]       = { 0x55, 0x8B, 0xEC, 0xA1, 0xA8, 0x91, 0x1F, 0x01, 0x5D, 0xC3 };
     constexpr uint8_t   BorrowRenderedTexturePrologue[] = { 0x6A, 0xFF, 0x68, 0xB8, 0x89, 0xF2, 0x00 };
+    constexpr uint8_t   ReturnRenderedTexturePrologue[] = { 0x6A, 0xFF, 0x68, 0xD0, 0x88, 0xF2, 0x00 };
     constexpr uint8_t   NiPointerAssignPrologue[]      = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x8B, 0x45, 0xFC };
     constexpr uint8_t   DrawRenderedMenuParentPrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x38, 0x56, 0x89, 0x4D, 0xE0 };
     constexpr uint8_t   RenderPipBoyPrologue[]         = { 0x55, 0x8B, 0xEC, 0x81, 0xEC, 0xD0, 0x00, 0x00, 0x00 };

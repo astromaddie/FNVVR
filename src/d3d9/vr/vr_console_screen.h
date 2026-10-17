@@ -92,6 +92,10 @@ namespace dxvk {
     // The game's rendered terminal, kept from the first show on
     uint8_t*     m_menu = nullptr;
 
+    // Texture the screen is rendered into while shown (NiPointer), kept
+    // for both eyes: the game gives its own back at the end of each eye
+    void*        m_texture = nullptr;
+
     // Tiles of the screen while shown, owned by the game's interface
     void*        m_root    = nullptr;
     void*        m_header[2] = { };
@@ -102,6 +106,8 @@ namespace dxvk {
     bool         m_failed    = false;
     bool         m_shown     = false;
     bool         m_textSet   = false;
+    bool         m_debugTextCulled    = false;
+    bool         m_debugTextWasCulled = false;
 
     VrPose       m_anchor;
     VrVector3    m_target;
@@ -123,6 +129,12 @@ namespace dxvk {
     void setHeader();
 
     void renderScreen();
+
+    void hideDebugText();
+
+    void restoreDebugText();
+
+    void releaseTexture();
 
   };
 
