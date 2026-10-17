@@ -109,6 +109,27 @@ namespace dxvk {
   }
 
 
+  VrGameCameraPose vrComputeMenuSceneCameraPose(
+    const VrPose&           anchor,
+    const VrPose&           eye,
+    const VrVector3&        target,
+          float             unitsPerMetre) {
+    // The anchor's right, up and back axes are the menu's +Z, +Y and -X
+    auto toMenu = [] (const VrVector3& v) {
+      return VrVector3 { -v.z, v.y, v.x };
+    };
+
+    VrPose local = vrCompose(vrInverse(anchor), eye);
+
+    VrGameCameraPose pose;
+    pose.forward  = toMenu(vrRotate(local.orientation, VrVector3 { 0.0f, 0.0f, -1.0f }));
+    pose.up       = toMenu(vrRotate(local.orientation, VrVector3 { 0.0f, 1.0f,  0.0f }));
+    pose.right    = toMenu(vrRotate(local.orientation, VrVector3 { 1.0f, 0.0f,  0.0f }));
+    pose.position = target + toMenu(local.position) * unitsPerMetre;
+    return pose;
+  }
+
+
   VrFov vrComputeCullingFov(const VrFov& left, const VrFov& right, float margin) {
     // Left and down are negative angles
     VrFov fov;

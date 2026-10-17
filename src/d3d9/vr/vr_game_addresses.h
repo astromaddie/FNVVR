@@ -1122,6 +1122,115 @@ namespace dxvk {
     constexpr uint8_t   GetDebugTextPrologue[]       = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x3C, 0x89, 0x4D };
 
     /**
+     * The game's rendered terminal, which shows the console in 3D, see
+     * findings/console.md §6. All checked in Ghidra on the Steam executable.
+     *
+     * - TerminalConstruct: FORenderedTerminal::FORenderedTerminal,
+     *   __thiscall on TerminalSize bytes from the game's heap. Its vtable:
+     *   Draw (+0x0C, target, clear flags, unused target), OnIdle (+0x14),
+     *   Initialize (+0x24), OnMenuOpen (+0x30), OnMenuClose (+0x34), all
+     *   __thiscall. Fields: screen geometry, model (the monitor), menu
+     *   root node (NiPointer), menu tile, camera (NiCamera*), initialised
+     *   flag;
+     * - InterfaceManager fields: the menus root tile, the "in a rendered
+     *   menu" flag and the current rendered menu;
+     * - the XML of the console's tiles is stored with CompressAndStoreXML
+     *   (__cdecl: name, text) and XmlCacheSetAt (__thiscall on XmlCache:
+     *   name, storage), then read by TileReadFile (__thiscall on the parent
+     *   tile: name), which frees the storage, and taken out of the cache
+     *   again with XmlCacheRemoveAt (__thiscall on XmlCache: name); TileGetChildByName (__thiscall: name), TileSetString
+     *   (__thiscall: trait, text, propagate), traits below, a tile's
+     *   destructor is vtable slot 0 (__thiscall, 1 frees);
+     * - OffscreenInterfaceCallSite: DrawWorld_UpdateOffscreenBuffers calls
+     *   UpdateOffscreenInterface (__cdecl) there, outside the renderer's
+     *   frame; the rendered menu's Draw renders into InterfaceFxTexture
+     *   (NiPointer<BSRenderedTexture>), borrowed from the texture manager
+     *   (GetTextureManager __cdecl, BorrowRenderedTexture __thiscall:
+     *   renderer, InterfaceFxTextureType, 0, 0, 0) and assigned with
+     *   NiPointerAssign (__thiscall on the pointer: object);
+     * - DrawRenderedMenuParent and RenderPipBoy (above) draw the current
+     *   rendered menu's model and screen with the menu's camera;
+     * - the world's culling process (WorldSceneGraph holds the scene graph,
+     *   its culling process at SceneGraphCuller) keeps the camera they set
+     *   at CullerCamera;
+     * - sComputersHeader1 and 2: the terminal's header lines (Setting*,
+     *   text at SettingValue, above), whose address ComputersMenu::FinishIntro
+     *   loads at ComputersHeaderUseSite.
+     */
+    constexpr uintptr_t TerminalConstruct          = 0x00705FE0;
+    constexpr size_t    TerminalSize               = 0xF0;
+    constexpr uintptr_t TerminalDraw               = 0x0C;
+    constexpr uintptr_t TerminalOnIdle             = 0x14;
+    constexpr uintptr_t TerminalInitialize         = 0x24;
+    constexpr uintptr_t TerminalOnMenuOpen         = 0x30;
+    constexpr uintptr_t TerminalOnMenuClose        = 0x34;
+    constexpr uintptr_t TerminalScreen             = 0x04;
+    constexpr uintptr_t TerminalModel              = 0x08;
+    constexpr uintptr_t TerminalMenuRoot           = 0x14;
+    constexpr uintptr_t TerminalMenuTile           = 0x18;
+    constexpr uintptr_t TerminalCamera             = 0x24;
+    constexpr uintptr_t TerminalInitialized        = 0x28;
+    constexpr uintptr_t InterfaceMenusRoot         = 0x9C;
+    constexpr uintptr_t InterfaceInRenderedMenu    = 0x168;
+    constexpr uintptr_t InterfaceRenderedMenu      = 0x16C;
+    constexpr uintptr_t CompressAndStoreXml        = 0x00A1CE70;
+    constexpr uintptr_t XmlCacheSetAt              = 0x00A0C900;
+    constexpr uintptr_t XmlCache                   = 0x011F34E0;
+    constexpr uintptr_t XmlCacheRemoveAt           = 0x00A1E240;
+    constexpr uintptr_t TileReadFile               = 0x00A01B00;
+    constexpr uintptr_t TileGetChildByName         = 0x00A03DA0;
+    constexpr uintptr_t TileSetString              = 0x00A01350;
+    constexpr uint32_t  TileTraitVisible           = 0xFA3;
+    constexpr uint32_t  TileTraitString            = 0xFC4;
+    constexpr uintptr_t OffscreenInterfaceCallSite = 0x008719F8;
+    constexpr uintptr_t UpdateOffscreenInterface   = 0x00871A50;
+    constexpr uintptr_t InterfaceFxTexture         = 0x011DEC64;
+    constexpr uintptr_t GetTextureManager          = 0x004A0EA0;
+    constexpr uintptr_t BorrowRenderedTexture      = 0x00B6E110;
+    constexpr uint32_t  InterfaceFxTextureType     = 0x2D;
+    constexpr uintptr_t NiPointerAssign            = 0x0066B0D0;
+    constexpr uintptr_t WorldSceneGraph            = 0x011DEB7C;
+    constexpr uintptr_t SceneGraphCuller           = 0xB4;
+    constexpr uintptr_t CullerCamera               = 0x0C;
+    constexpr uintptr_t ComputersHeader1           = 0x011D3D78;
+    constexpr uintptr_t ComputersHeader2           = 0x011D4978;
+
+    /** First bytes of the functions above, checked before any is used */
+    constexpr uint8_t   TerminalConstructPrologue[]    = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0xE8, 0x79, 0xF0, 0x00 };
+    constexpr uint8_t   CompressAndStoreXmlPrologue[]  = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x6C, 0xC7, 0x45, 0xF4 };
+    constexpr uint8_t   XmlCacheSetAtPrologue[]        = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x2C, 0x89, 0x4D, 0xD4 };
+    constexpr uint8_t   XmlCacheRemoveAtPrologue[]     = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x14, 0x89, 0x4D, 0xEC };
+    constexpr uint8_t   TileReadFilePrologue[]         = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x19, 0xCE, 0xF1, 0x00 };
+    constexpr uint8_t   TileGetChildByNamePrologue[]   = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0xC3, 0xCE, 0xF1, 0x00 };
+    constexpr uint8_t   TileSetStringPrologue[]        = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x85, 0xCD, 0xF1, 0x00 };
+    constexpr uint8_t   GetTextureManagerBytes[]       = { 0x55, 0x8B, 0xEC, 0xA1, 0xA8, 0x91, 0x1F, 0x01, 0x5D, 0xC3 };
+    constexpr uint8_t   BorrowRenderedTexturePrologue[] = { 0x6A, 0xFF, 0x68, 0xB8, 0x89, 0xF2, 0x00 };
+    constexpr uint8_t   NiPointerAssignPrologue[]      = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x8B, 0x45, 0xFC };
+    constexpr uint8_t   DrawRenderedMenuParentPrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x38, 0x56, 0x89, 0x4D, 0xE0 };
+    constexpr uint8_t   RenderPipBoyPrologue[]         = { 0x55, 0x8B, 0xEC, 0x81, 0xEC, 0xD0, 0x00, 0x00, 0x00 };
+    constexpr uint8_t   ComputersHeaderUse[]           = { 0xB9, 0x78, 0x3D, 0x1D, 0x01 };
+    constexpr uintptr_t ComputersHeaderUseSite         = 0x00758DCF;
+
+    /**
+     * Files of the game read through its own lookup, loose or in an archive,
+     * see findings/console.md §7. FileFinderGetFile: __cdecl (path, mode
+     * FileReadOnly, buffer size, archive type), returns a BSFile* or null.
+     * A BSFile: vtable slot 0 destroys it (__thiscall, 1 frees), slot
+     * FileGetSize (__thiscall) gives its size, FileRead (__cdecl: file,
+     * buffer, bytes, component sizes, component count) reads it, FilePosition
+     * is moved by the caller, FileGood is set when it opened.
+     */
+    constexpr uintptr_t FileFinderGetFile    = 0x00AFDF20;
+    constexpr uint32_t  FileReadOnly         = 0;
+    constexpr uint32_t  FileBufferSize       = 0x4000;
+    constexpr uint32_t  ArchiveTextures      = 0x2;
+    constexpr uintptr_t FileGetSize          = 0x28;
+    constexpr uintptr_t FileRead             = 0x08;
+    constexpr uintptr_t FilePosition         = 0x04;
+    constexpr uintptr_t FileGood             = 0x2C;
+    constexpr uint8_t   FileFinderGetFilePrologue[] = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x95, 0x37, 0xF2, 0x00 };
+
+    /**
      * Menu tile internals (VrTileTextureRetry), see findings/pipboy.md §3.7.
      * Tile: vtable slot 3 (+0x0C) is GetType (__thiscall, 0x386 = image),
      * children list head at +0x04 (node: next at +0, Tile* at +8), name

@@ -4,9 +4,11 @@
 
 #include "test.h"
 
-#include "../vr_terminal_font.h"
+#include "../vr_bitmap_font.h"
+#include "../vr_dds.h"
 #include "../vr_terminal_image.h"
 #include "../vr_terminal_keyboard.h"
+#include "../vr_terminal_text.h"
 
 using namespace dxvk;
 
@@ -41,60 +43,156 @@ namespace {
     return VrTerminalKeyboard::keys(count)[index];
   }
 
-  // Centre of a key on the keyboard, in key units
-  void keyCentre(int32_t index, float& x, float& y) {
-    const VrTerminalKey& key = keyAt(index);
-    x = key.x + 0.5f * key.width;
-    y = float(key.row) + 0.5f;
+  // Centre of a key, as a point of the plate
+  VrVector2 keyCentre(int32_t index) {
+    const VrTexelRect& plate = VrTerminalKeyboard::Plate;
+    const VrTexelRect& rect  = keyAt(index).rect;
+
+    VrVector2 uv;
+    uv.x = (0.5f * (rect.left + rect.right) - plate.left) / plate.width();
+    uv.y = (0.5f * (rect.top + rect.bottom) - plate.top) / plate.height();
+    return uv;
   }
 
   bool differs(const uint32_t* a, const std::vector<uint32_t>& b) {
     return std::memcmp(a, b.data(), b.size() * sizeof(uint32_t)) != 0;
   }
 
+  void put32(std::vector<uint8_t>& data, size_t offset, uint32_t value) {
+    std::memcpy(data.data() + offset, &value, sizeof(value));
+  }
+
+  void putFloat(std::vector<uint8_t>& data, size_t offset, float value) {
+    std::memcpy(data.data() + offset, &value, sizeof(value));
+  }
+
+  // A DDS header for a width x height image, without its pixels
+  std::vector<uint8_t> ddsHeader(uint32_t width, uint32_t height) {
+    std::vector<uint8_t> data(128, 0);
+    put32(data, 0, 0x20534444u);
+    put32(data, 4, 124);
+    put32(data, 12, height);
+    put32(data, 16, width);
+    put32(data, 76, 32);
+    return data;
+  }
+
+  std::vector<uint8_t> dxtFile(const char* format, const std::vector<uint8_t>& blocks) {
+    std::vector<uint8_t> data = ddsHeader(4, 4);
+    put32(data, 80, 0x4);
+    std::memcpy(data.data() + 84, format, 4);
+    data.insert(data.end(), blocks.begin(), blocks.end());
+    return data;
+  }
+
+  // A font file: line height 25, one texture, every glyph a box of the
+  // given size at the top left of the texture
+  std::vector<uint8_t> fontFile(float width, float height) {
+    constexpr size_t GlyphsOffset = 8 + 0x120;
+    std::vector<uint8_t> data(GlyphsOffset + 256 * 56, 0);
+    putFloat(data, 0, 25.0f);
+    put32(data, 4, 1);
+
+    for (uint32_t i = 32; i < 127; i++) {
+      size_t glyph = GlyphsOffset + i * 56;
+      float values[14] = { 0.0f, 0.0f, 0.0f, 0.5f, 0.0f, 0.0f, 0.5f, 0.5f, 0.5f,
+        width, height, 1.0f, 2.0f, 18.0f };
+
+      // Capitals are taller than small letters, so that shifting shows
+      if (i >= 'a' && i <= 'z')
+        values[10] = height / 2.0f;
+
+      std::memcpy(data.data() + glyph, values, sizeof(values));
+    }
+
+    // The space has no glyph
+    std::memset(data.data() + GlyphsOffset + ' ' * 56, 0, 56);
+    putFloat(data, GlyphsOffset + ' ' * 56 + 11 * 4, 17.0f);
+    return data;
+  }
+
+  // The terminal texture: a light plate whose outermost texels are black
+  VrImage terminalTexture() {
+    VrImage image;
+    image.width  = 512;
+    image.height = 512;
+    image.pixels.assign(512 * 512, 0xFF000000u);
+
+    const VrTexelRect& plate = VrTerminalKeyboard::Plate;
+
+    for (uint32_t y = uint32_t(plate.top) + 3; y < uint32_t(plate.bottom) - 3; y++) {
+      for (uint32_t x = uint32_t(plate.left) + 3; x < uint32_t(plate.right) - 3; x++)
+        image.pixels[y * 512 + x] = 0xFF969682u;
+    }
+
+    return image;
+  }
+
+  VrImage solidGlyphs() {
+    VrImage image;
+    image.width  = 32;
+    image.height = 32;
+    image.pixels.assign(32 * 32, 0xFFFFFFFFu);
+    return image;
+  }
+
 }
 
 
-TEST_CASE(terminal_keyboard_rows_fill_its_width) {
+TEST_CASE(terminal_keys_lie_on_the_plate_without_overlapping) {
   uint32_t count = 0;
   const VrTerminalKey* keys = VrTerminalKeyboard::keys(count);
+  const VrTexelRect& plate = VrTerminalKeyboard::Plate;
+
+  CHECK(count == 63);
 
   for (uint32_t i = 0; i < count; i++) {
-    CHECK(keys[i].row < VrTerminalKeyboard::Rows);
-    CHECK(keys[i].x >= 0.0f);
-    CHECK(keys[i].x + keys[i].width <= VrTerminalKeyboard::Width + 1e-4f);
+    const VrTexelRect& a = keys[i].rect;
+    CHECK(a.left >= plate.left && a.right <= plate.right);
+    CHECK(a.top >= plate.top && a.bottom <= plate.bottom);
+    CHECK(a.width() > 5.0f && a.height() > 5.0f);
 
-    // Keys of a row never overlap
     for (uint32_t j = i + 1; j < count; j++) {
-      if (keys[j].row == keys[i].row) {
-        CHECK(keys[j].x >= keys[i].x + keys[i].width - 1e-4f
-           || keys[i].x >= keys[j].x + keys[j].width - 1e-4f);
-      }
+      const VrTexelRect& b = keys[j].rect;
+      CHECK(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top);
     }
   }
 }
 
 
 TEST_CASE(terminal_keyboard_finds_the_key_under_a_point) {
-  for (char c : std::string("1qa z.")) {
-    int32_t index = findChar(c);
-    CHECK(index >= 0);
+  uint32_t count = 0;
+  VrTerminalKeyboard::keys(count);
 
-    float x, y;
-    keyCentre(index, x, y);
-    CHECK(VrTerminalKeyboard::findKey(x, y) == index);
-  }
+  for (uint32_t i = 0; i < count; i++)
+    CHECK(VrTerminalKeyboard::findKey(keyCentre(int32_t(i))) == int32_t(i));
 
-  int32_t enter = findLabel("ENTER");
-  float x, y;
-  keyCentre(enter, x, y);
-  CHECK(VrTerminalKeyboard::findKey(x, y) == enter);
+  // The plate's corners and the light are no key
+  CHECK(VrTerminalKeyboard::findKey({ 0.02f, 0.02f }) == -1);
+  CHECK(VrTerminalKeyboard::findKey({ 0.98f, 0.98f }) == -1);
 
-  // The indent of the second row and points off the keyboard are no key
-  CHECK(VrTerminalKeyboard::findKey(0.2f, 1.5f) == -1);
-  CHECK(VrTerminalKeyboard::findKey(5.0f, -0.1f) == -1);
-  CHECK(VrTerminalKeyboard::findKey(5.0f, 5.0f) == -1);
-  CHECK(VrTerminalKeyboard::findKey(14.5f, 0.5f) == -1);
+  const VrTexelRect& plate = VrTerminalKeyboard::Plate;
+  VrVector2 light = { (VrTerminalKeyboard::LightX - plate.left) / plate.width(),
+                      (VrTerminalKeyboard::LightY - plate.top)  / plate.height() };
+  CHECK(VrTerminalKeyboard::findKey(light) == -1);
+}
+
+
+TEST_CASE(terminal_keyboard_has_the_console_keys) {
+  for (const char* label : { "ESC", "EXIT", "PGUP", "PGDN", "BACK", "DEL", "CAPS", "ENTER",
+                             "SHIFT", "HOME", "END", "<", ">", "^", "v" })
+    CHECK(findLabel(label) >= 0);
+
+  for (char c : std::string("1234567890-=qwertyuiop[]\\asdfghjkl;'zxcvbnm,./ "))
+    CHECK(findChar(c) >= 0);
+
+  CHECK(keyAt(findLabel("ESC")).kind  == VrTerminalKeyKind::Close);
+  CHECK(keyAt(findLabel("EXIT")).kind == VrTerminalKeyKind::Close);
+  CHECK(keyAt(findLabel("CAPS")).kind == VrTerminalKeyKind::CapsLock);
+  CHECK(keyAt(findLabel("SHIFT")).kind == VrTerminalKeyKind::Shift);
+  CHECK(VrTerminalKeyboard::code(keyAt(findLabel("^")), false) == VrConsoleKey::Up);
+  CHECK(VrTerminalKeyboard::code(keyAt(findLabel("v")), false) == VrConsoleKey::Down);
+  CHECK(VrTerminalKeyboard::code(keyAt(findLabel("DEL")), false) == VrConsoleKey::Delete);
 }
 
 
@@ -112,31 +210,171 @@ TEST_CASE(terminal_keyboard_never_types_the_console_cursor) {
 }
 
 
-TEST_CASE(terminal_keyboard_codes_follow_shift) {
+TEST_CASE(terminal_keyboard_codes_follow_shift_and_caps_lock) {
   const VrTerminalKey& quote = keyAt(findChar('\''));
   CHECK(VrTerminalKeyboard::code(quote, false) == uint32_t('\''));
   CHECK(VrTerminalKeyboard::code(quote, true)  == uint32_t('"'));
 
-  const VrTerminalKey& period = keyAt(findChar('.'));
-  CHECK(VrTerminalKeyboard::code(period, false) == uint32_t('.'));
+  const VrTerminalKey& q   = keyAt(findChar('q'));
+  const VrTerminalKey& one = keyAt(findChar('1'));
+
+  // Caps Lock shifts the letters only, Shift every character, both cancel out
+  CHECK( VrTerminalKeyboard::isShifted(q,   false, true));
+  CHECK(!VrTerminalKeyboard::isShifted(one, false, true));
+  CHECK( VrTerminalKeyboard::isShifted(one, true,  false));
+  CHECK(!VrTerminalKeyboard::isShifted(q,   true,  true));
+  CHECK(VrTerminalKeyboard::code(one, true) == uint32_t('!'));
 
   const VrTerminalKey& back = keyAt(findLabel("BACK"));
   CHECK(VrTerminalKeyboard::code(back, false) == VrConsoleKey::Backspace);
   CHECK(VrTerminalKeyboard::code(back, true)  == VrConsoleKey::Backspace);
-
-  CHECK(keyAt(findLabel("EXIT")).kind  == VrTerminalKeyKind::Close);
-  CHECK(keyAt(findLabel("SHIFT")).kind == VrTerminalKeyKind::Shift);
-  CHECK(keyAt(findLabel("SPACE")).kind == VrTerminalKeyKind::Char);
-  CHECK(VrTerminalKeyboard::code(keyAt(findLabel("SPACE")), true) == uint32_t(' '));
+  CHECK(VrTerminalKeyboard::code(keyAt(findChar(' ')), true) == uint32_t(' '));
 }
 
 
-TEST_CASE(terminal_layout_finds_keys_on_the_image) {
-  // The top of the image is the screen
-  CHECK(VrTerminalLayout::findKey({ 0.5f, 0.2f }) == -1);
+TEST_CASE(dds_decodes_dxt1) {
+  // One block: white and black end points; the first pixel takes white,
+  // the second black, the third white again, the others the darker of
+  // the two colours between them
+  std::vector<uint8_t> block = { 0xFF, 0xFF, 0x00, 0x00, 0x04, 0xFF, 0xFF, 0xFF };
+  std::vector<uint8_t> file = dxtFile("DXT1", block);
 
-  // The space bar is at the bottom, in the middle
-  CHECK(VrTerminalLayout::findKey({ 0.5f, 0.93f }) == findLabel("SPACE"));
+  VrImage image;
+  CHECK(vrDecodeDds(file.data(), file.size(), image));
+  CHECK(image.width == 4 && image.height == 4);
+  CHECK(image.at(0, 0) == 0xFFFFFFFFu);
+  CHECK(image.at(1, 0) == 0xFF000000u);
+  CHECK(image.at(2, 0) == 0xFFFFFFFFu);
+  CHECK(image.at(3, 3) == 0xFF555555u);
+}
+
+
+TEST_CASE(dds_decodes_dxt5_alpha) {
+  // Alpha end points 255 and 0, every index 1 (the second end point),
+  // then an all-white colour block
+  std::vector<uint8_t> block = { 0xFF, 0x00, 0x49, 0x92, 0x24, 0x49, 0x92, 0x24,
+                                 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00 };
+  std::vector<uint8_t> file = dxtFile("DXT5", block);
+
+  VrImage image;
+  CHECK(vrDecodeDds(file.data(), file.size(), image));
+  CHECK(image.at(0, 0) == 0x00FFFFFFu);
+  CHECK(image.at(3, 2) == 0x00FFFFFFu);
+}
+
+
+TEST_CASE(dds_decodes_a4r4g4b4) {
+  std::vector<uint8_t> file = ddsHeader(2, 1);
+  put32(file, 80, 0x41);
+  put32(file, 88, 16);
+  put32(file, 92,  0x0F00);
+  put32(file, 96,  0x00F0);
+  put32(file, 100, 0x000F);
+  put32(file, 104, 0xF000);
+
+  for (uint8_t byte : { uint8_t(0x00), uint8_t(0xF0), uint8_t(0x5F), uint8_t(0x0A) })
+    file.push_back(byte);
+
+  VrImage image;
+  CHECK(vrDecodeDds(file.data(), file.size(), image));
+  CHECK(image.at(0, 0) == 0xFF000000u);
+  CHECK(image.at(1, 0) == 0x00AA55FFu);
+}
+
+
+TEST_CASE(dds_rejects_other_files) {
+  std::vector<uint8_t> file = dxtFile("ATI2", std::vector<uint8_t>(16, 0));
+  VrImage image;
+  CHECK(!vrDecodeDds(file.data(), file.size(), image));
+  CHECK(image.pixels.empty());
+
+  // Too short for its block
+  file = dxtFile("DXT1", std::vector<uint8_t>(4, 0));
+  CHECK(!vrDecodeDds(file.data(), file.size(), image));
+
+  const uint8_t text[] = "not a texture";
+  CHECK(!vrDecodeDds(text, sizeof(text), image));
+}
+
+
+TEST_CASE(bitmap_font_reads_glyph_metrics) {
+  std::vector<uint8_t> file = fontFile(14.0f, 20.0f);
+  VrBitmapFont font;
+  CHECK(font.parse(file.data(), file.size()));
+  CHECK_NEAR(font.lineHeight(), 25.0f, 1e-6);
+
+  const VrGlyph& a = font.glyph('A');
+  CHECK_NEAR(a.width, 14.0f, 1e-6);
+  CHECK_NEAR(a.height, 20.0f, 1e-6);
+  CHECK_NEAR(a.advance(), 17.0f, 1e-6);
+  CHECK_NEAR(a.u1, 0.5f, 1e-6);
+  CHECK_NEAR(a.ascent, 18.0f, 1e-6);
+
+  // A file of another size is not a font of one texture
+  file.pop_back();
+  CHECK(!font.parse(file.data(), file.size()));
+}
+
+
+TEST_CASE(terminal_image_draws_only_what_changed) {
+  std::vector<uint8_t> file = fontFile(14.0f, 20.0f);
+  VrBitmapFont font;
+  font.parse(file.data(), file.size());
+
+  VrTerminalImage image;
+  CHECK(image.initialize(terminalTexture(), font, solidGlyphs()));
+
+  VrTerminalKeyboardView view;
+  CHECK(image.update(view));
+
+  constexpr uint32_t Width  = VrTerminalImage::Width;
+  constexpr uint32_t Height = VrTerminalImage::Height;
+  std::vector<uint32_t> first(image.pixels(), image.pixels() + Width * Height);
+
+  // The black edge of the plate is transparent, its middle opaque
+  CHECK((first[0] >> 24) == 0);
+  CHECK((first[(Height / 2) * Width + Width / 2] >> 24) == 0xFF);
+
+  // Nothing changed, nothing is drawn
+  CHECK(!image.update(view));
+
+  // The hovered key, a pressed key and Shift change the image
+  view.hoveredKey = findChar('q');
+  CHECK(image.update(view));
+  CHECK(differs(image.pixels(), first));
+
+  view.hoveredKey = -1;
+  CHECK(image.update(view));
+  CHECK(!differs(image.pixels(), first));
+
+  view.pressedKey = findLabel("ENTER");
+  CHECK(image.update(view));
+  CHECK(differs(image.pixels(), first));
+
+  view.pressedKey = -1;
+  view.shift = true;
+  CHECK(image.update(view));
+  CHECK(differs(image.pixels(), first));
+
+  view.shift = false;
+  CHECK(image.update(view));
+  CHECK(!differs(image.pixels(), first));
+}
+
+
+TEST_CASE(terminal_image_needs_the_whole_plate) {
+  VrImage small;
+  small.width  = 256;
+  small.height = 256;
+  small.pixels.assign(256 * 256, 0xFF808080u);
+
+  std::vector<uint8_t> file = fontFile(14.0f, 20.0f);
+  VrBitmapFont font;
+  font.parse(file.data(), file.size());
+
+  VrTerminalImage image;
+  CHECK(!image.initialize(small, font, solidGlyphs()));
+  CHECK(!image.update(VrTerminalKeyboardView()));
 }
 
 
@@ -169,68 +407,39 @@ TEST_CASE(terminal_lines_keep_the_last_rows) {
 }
 
 
-TEST_CASE(terminal_font_has_printable_ascii) {
-  // A space is blank, a letter is not, and characters without a glyph are '?'
-  const uint16_t* space = vrTerminalGlyph(' ');
-  const uint16_t* letter = vrTerminalGlyph('A');
-  uint32_t lit = 0;
+TEST_CASE(terminal_command_follows_the_prompt) {
+  std::string text;
+  uint32_t column = 0;
 
-  for (uint32_t y = 0; y < VrTerminalFont::GlyphHeight; y++) {
-    CHECK(space[y] == 0);
-    lit += letter[y] ? 1 : 0;
-    CHECK(letter[y] < (1u << VrTerminalFont::GlyphWidth));
-  }
+  vrLayoutTerminalCommand("tgm", 3, 44, text, column);
+  CHECK(text == "> tgm");
+  CHECK(column == 5);
 
-  CHECK(lit > 0);
-  CHECK(vrTerminalGlyph('\x01') == vrTerminalGlyph('?'));
-  CHECK(vrTerminalGlyph(char(0xE9)) == vrTerminalGlyph('?'));
+  vrLayoutTerminalCommand("tgm", 1, 44, text, column);
+  CHECK(column == 3);
+
+  // A cursor past the end stands after the last character
+  vrLayoutTerminalCommand("tgm", 9, 44, text, column);
+  CHECK(column == 5);
 }
 
 
-TEST_CASE(terminal_image_draws_only_what_changed) {
-  VrTerminalImage image;
-  VrTerminalView view;
-  view.output = { "help \"9mm\" 4" };
-  view.input  = "player.additem f 1";
-  view.cursor = uint32_t(view.input.size());
+TEST_CASE(terminal_command_scrolls_to_the_cursor) {
+  std::string input(60, 'a');
+  input[59] = 'z';
 
-  CHECK(image.update(view));
+  std::string text;
+  uint32_t column = 0;
 
-  constexpr uint32_t Width  = VrTerminalLayout::ImageWidth;
-  constexpr uint32_t Height = VrTerminalLayout::ImageHeight;
-  std::vector<uint32_t> first(image.pixels(), image.pixels() + Width * Height);
+  vrLayoutTerminalCommand(input, 60, 44, text, column);
+  CHECK(text.size() <= 44);
+  CHECK(text.substr(0, 2) == "> ");
+  CHECK(text.back() == 'z');
+  CHECK(column < 44);
+  CHECK(column == text.size());
 
-  // The corners are transparent, the case and the screen opaque
-  CHECK((first[0] >> 24) == 0);
-  CHECK((first[(Height / 2) * Width + 4] >> 24) == 0xFF);
-  CHECK((first[(Height / 4) * Width + Width / 2] >> 24) == 0xFF);
-
-  // Nothing changed, nothing is drawn
-  CHECK(!image.update(view));
-  CHECK(!differs(image.pixels(), first));
-
-  // The cursor's blinking and the hovered key change the image
-  view.cursorShown = false;
-  CHECK(image.update(view));
-  CHECK(differs(image.pixels(), first));
-
-  view.cursorShown = true;
-  CHECK(image.update(view));
-  CHECK(!differs(image.pixels(), first));
-
-  view.hoveredKey = findChar('q');
-  CHECK(image.update(view));
-  CHECK(differs(image.pixels(), first));
-
-  view.hoveredKey = -1;
-  CHECK(image.update(view));
-  CHECK(!differs(image.pixels(), first));
-
-  // Drawn again from scratch, an image gives the same pixels
-  VrTerminalImage other;
-  view.shift = true;
-  other.update(view);
-  view.shift = false;
-  other.update(view);
-  CHECK(!differs(other.pixels(), first));
+  // At the start, the beginning of the command is shown
+  vrLayoutTerminalCommand(input, 0, 44, text, column);
+  CHECK(column == 2);
+  CHECK(text.back() == 'a');
 }

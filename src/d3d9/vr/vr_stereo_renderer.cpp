@@ -525,7 +525,7 @@ namespace dxvk {
 
     float dt = float(timing.predictedPeriod) * 1e-9f;
 
-    updateControls(input, state, dt);
+    updateControls(input, state, true, dt);
 
     if (m_controls.switchesPipBoyLight() && !m_loggedPipBoyLight) {
       Logger::info("VR: The right grip at the Pip-Boy holds the Pip-Boy control to switch the light");
@@ -595,8 +595,12 @@ namespace dxvk {
     else
       hideHandHud();
 
-    // A menu keeps its last image for a frame where it was not drawn
-    if (m_menuRendered)
+    // A menu keeps its last image for a frame where it was not drawn. The
+    // console's terminal stands in front of the menu it is opened from,
+    // and the runtime would draw the menu over it.
+    if (m_terminal && m_terminal->showsScreen())
+      hidePanel();
+    else if (m_menuRendered)
       submitMenu();
     else if (m_overPipBoy)
       hidePanel();
@@ -618,7 +622,7 @@ namespace dxvk {
     VrInputState input = m_backend.pollInput(timing.predictedDisplayTime);
     trackHead(input);
 
-    updateControls(input, state, float(timing.predictedPeriod) * 1e-9f);
+    updateControls(input, state, false, float(timing.predictedPeriod) * 1e-9f);
 
     // Nothing in the world can be pointed at without the stereo view
     if (m_handPick)
@@ -633,7 +637,7 @@ namespace dxvk {
   }
 
 
-  void VrStereoRenderer::updateControls(const VrInputState& input, VrGameStateKind state, float dt) {
+  void VrStereoRenderer::updateControls(const VrInputState& input, VrGameStateKind state, bool stereo, float dt) {
     m_controls.setTerminalPanel(m_terminal ? m_terminal->placement() : nullptr);
     m_controls.update(input, state, m_hasReference ? &m_reference : nullptr, menuPanel(), dt);
 
@@ -646,7 +650,7 @@ namespace dxvk {
     if (m_hasHeadPose)
       head = m_headPose;
 
-    m_terminal->update(head, m_controls.terminalPointer(), m_controls.terminalBack(), dt);
+    m_terminal->update(head, stereo, m_controls.terminalPointer(), m_controls.terminalBack(), dt);
   }
 
 
@@ -1199,6 +1203,10 @@ namespace dxvk {
   void VrStereoRenderer::captureEye() {
     if (m_eye == NoEye || m_eyeCopied[m_eye])
       return;
+
+    // The console's terminal belongs to the 3D image, drawn with the eye
+    if (m_terminal)
+      m_terminal->drawEye(*m_eyeView);
 
     logEyeCapture();
 

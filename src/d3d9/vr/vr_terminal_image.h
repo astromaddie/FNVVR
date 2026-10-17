@@ -1,105 +1,73 @@
 #pragma once
 
 #include <cstdint>
-#include <string>
 #include <vector>
 
-#include "vr_types.h"
+#include "vr_bitmap_font.h"
+#include "vr_dds.h"
+#include "vr_terminal_keyboard.h"
 
 namespace dxvk {
 
   /**
-   * \brief What the console terminal shows
+   * \brief What the keyboard shows
    */
-  struct VrTerminalView {
-    /// Lines the console printed, oldest first, as many as fit or more
-    std::vector<std::string> output;
-    /// Command being typed
-    std::string input;
-    /// Position of the text cursor in \c input
-    uint32_t    cursor      = 0;
-    /// Whether the blinking text cursor is lit
-    bool        cursorShown = true;
+  struct VrTerminalKeyboardView {
     /// Key the active laser points at, -1 if none
-    int32_t     hoveredKey  = -1;
+    int32_t hoveredKey = -1;
     /// Key drawn pressed, -1 if none
-    int32_t     pressedKey  = -1;
-    /// Whether the next character is shifted
-    bool        shift       = false;
+    int32_t pressedKey = -1;
+    bool    shift      = false;
+    bool    capsLock   = false;
+
+    bool operator == (const VrTerminalKeyboardView& other) const {
+      return hoveredKey == other.hoveredKey && pressedKey == other.pressedKey
+          && shift == other.shift && capsLock == other.capsLock;
+    }
+
+    bool operator != (const VrTerminalKeyboardView& other) const {
+      return !(*this == other);
+    }
   };
 
   /**
-   * \brief Layout of the console terminal's image
+   * \brief Image of the console's keyboard
    *
-   * The image is a terminal seen from the front: a screen in the style of
-   * the game's terminal and hacking menus at the top, green text over a
-   * dark screen with scan lines, and a keyboard below it, with the beige
-   * keys of the terminals in the game's world.
-   */
-  struct VrTerminalLayout {
-    constexpr static uint32_t ImageWidth  = 1024;
-    constexpr static uint32_t ImageHeight = 1024;
-
-    /// Characters per line of the screen
-    constexpr static uint32_t Columns     = 85;
-    /// Lines of the screen: a header, the output, and the command line
-    constexpr static uint32_t Lines       = 22;
-    constexpr static uint32_t HeaderLines = 3;
-    constexpr static uint32_t OutputLines = Lines - HeaderLines - 1;
-
-    /**
-     * \brief Finds the key at a point of the image
-     *
-     * \param [in] uv Point on the image, (0, 0) top left, (1, 1) bottom right
-     * \returns Index of the key in VrTerminalKeyboard::keys, -1 if none
-     */
-    static int32_t findKey(VrVector2 uv);
-  };
-
-  /**
-   * \brief Wraps console lines to the screen's width
-   *
-   * Lines break after the last space that fits, or at the width when a
-   * word is longer than a line. Tabs become spaces.
-   *
-   * \param [in] lines Lines, oldest first
-   * \param [in] columns Characters per screen line
-   * \param [in] rows Screen lines to keep
-   * \returns The last \c rows screen lines, oldest first
-   */
-  std::vector<std::string> vrWrapTerminalLines(
-    const std::vector<std::string>& lines,
-          uint32_t                  columns,
-          uint32_t                  rows);
-
-  /**
-   * \brief Image of the console terminal
-   *
-   * The parts that never change (the case, the screen's glass and the
-   * keyboard's well) are drawn once. Each update then only draws again
-   * the lines of the screen whose text changed and the keys whose look
-   * changed, so that typing and the cursor's blinking stay cheap.
+   * The keyboard plate of the game's terminal texture, enlarged, with the
+   * name of each key printed on it in the game's terminal font, the key
+   * the laser points at lit, the key just typed pressed down, and the
+   * orange light lit while Shift or Caps Lock is on. The plate's dark
+   * surroundings on the texture are transparent.
    */
   class VrTerminalImage {
 
   public:
 
-    VrTerminalImage();
+    /// Image pixels per texel of the terminal texture
+    constexpr static uint32_t Scale  = 5;
+    constexpr static uint32_t Width  = uint32_t(VrTerminalKeyboard::Plate.width())  * Scale;
+    constexpr static uint32_t Height = uint32_t(VrTerminalKeyboard::Plate.height()) * Scale;
 
     /**
-     * \brief Draws what changed since the previous update
+     * \brief Prepares the plate and the font
      *
-     * \param [in] view What the terminal shows
+     * \param [in] texture The terminal texture (terminal01.dds)
+     * \param [in] font The terminal font's metrics
+     * \param [in] glyphs The terminal font's texture, glyphs in its alpha
+     * \returns \c false if the texture is too small to hold the plate
+     */
+    bool initialize(const VrImage& texture, const VrBitmapFont& font, const VrImage& glyphs);
+
+    /**
+     * \brief Draws the keyboard again if its look changed
+     *
+     * \param [in] view What the keyboard shows
      * \returns Whether the image changed
      */
-    bool update(const VrTerminalView& view);
+    bool update(const VrTerminalKeyboardView& view);
 
     /**
-     * \brief The image
-     *
-     * VrTerminalLayout::ImageWidth by ImageHeight pixels, rows from the
-     * top, each pixel 0xAARRGGBB with straight alpha. The rounded corners
-     * of the case are transparent.
+     * \brief The image, Width by Height pixels, see VrImage
      */
     const uint32_t* pixels() const {
       return m_pixels.data();
@@ -107,30 +75,23 @@ namespace dxvk {
 
   private:
 
-    std::vector<uint32_t> m_base;
-    std::vector<uint32_t> m_pixels;
-    std::vector<uint8_t>  m_mask;
-    std::vector<uint16_t> m_blur;
+    std::vector<uint32_t>  m_plate;
+    std::vector<uint32_t>  m_pixels;
+    VrBitmapFont           m_font;
+    VrImage                m_glyphs;
 
-    // Text of each line of the screen as drawn, and the cursor's column on
-    // the command line, -1 while it is off
-    std::vector<std::string> m_lines;
-    int32_t               m_cursorColumn = -1;
+    VrTerminalKeyboardView m_drawn;
+    bool                   m_valid = false;
 
-    VrTerminalView        m_drawn;
-    bool                  m_valid = false;
+    void buildPlate(const VrImage& texture);
 
-    void drawBase();
+    void drawKey(const VrTerminalKey& key, bool hovered, bool pressed, bool shifted);
 
-    bool drawScreen(const VrTerminalView& view);
+    void drawLabel(const char* text, float centreX, float centreY, float maxWidth, float scale);
 
-    void composeLine(uint32_t line);
+    void drawGlyph(const VrGlyph& glyph, float x, float baseline, float scale);
 
-    void drawKey(int32_t index, const VrTerminalView& view);
-
-    void printLine(uint32_t line, uint32_t column, const std::string& text);
-
-    void invertCell(uint32_t line, uint32_t column);
+    void drawLight();
 
   };
 

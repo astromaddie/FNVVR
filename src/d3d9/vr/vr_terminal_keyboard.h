@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+#include "vr_types.h"
+
 namespace dxvk {
 
   /**
@@ -39,25 +41,40 @@ namespace dxvk {
     Edit,
     /// Shifts the next character
     Shift,
+    /// Shifts the letters until pressed again
+    CapsLock,
     /// Closes the console
     Close,
   };
 
   /**
+   * \brief A rectangle on the keyboard's texture, in texels
+   */
+  struct VrTexelRect {
+    float left;
+    float top;
+    float right;
+    float bottom;
+
+    constexpr float width() const {
+      return right - left;
+    }
+
+    constexpr float height() const {
+      return bottom - top;
+    }
+  };
+
+  /**
    * \brief One key of the virtual keyboard
-   *
-   * Positions are in key units: a character key is one unit wide and
-   * one row high, and the keyboard is VrTerminalKeyboard::Width units
-   * wide and VrTerminalKeyboard::Rows rows high.
    */
   struct VrTerminalKey {
     VrTerminalKeyKind kind;
-    float             x;
-    uint32_t          row;
-    float             width;
+    /// Where the key is drawn on the terminal texture
+    VrTexelRect       rect;
     /// Character typed, for VrTerminalKeyKind::Char
     char              lower;
-    /// Character typed while Shift is on
+    /// Character typed while shifted
     char              upper;
     /// VrConsoleKey code, for VrTerminalKeyKind::Edit
     uint32_t          code;
@@ -68,35 +85,54 @@ namespace dxvk {
   /**
    * \brief Layout of the virtual keyboard
    *
-   * A US layout without the keys the console cannot use ('`', '~' and
-   * '|': the game draws the console's text cursor with '|'), with the
-   * console's editing keys on the bottom row: the arrows move the text
-   * cursor and walk the command history, Page Up and Page Down scroll the
-   * output.
+   * The keyboard is the one of the terminals in the game's world, whose
+   * texture (textures\\terminals\\terminal01.dds, 512 texels square) has
+   * a keyboard plate with unlabelled keys, see findings/console.md §7.
+   * Every key of the plate gets a key of a US layout or of the console:
+   * the yellow keys above scroll the output and close the console, the
+   * arrows move the text cursor and walk the command history. The
+   * orange light shows that Shift or Caps Lock is on.
+   *
+   * Key rectangles were measured on the texture, in texels.
    */
   struct VrTerminalKeyboard {
-    constexpr static float    Width = 14.0f;
-    constexpr static uint32_t Rows  = 5;
+    /// The plate shown as the keyboard, on the texture
+    constexpr static VrTexelRect Plate = { 2.0f, 287.0f, 294.0f, 386.0f };
+    /// A piece of another part of the terminal inside the plate's
+    /// rectangle, below its left wing, left out
+    constexpr static VrTexelRect OtherPiece = { 2.0f, 358.0f, 19.0f, 386.0f };
+    /// Centre and radius of the orange light, on the texture
+    constexpr static float LightX      = 84.2f;
+    constexpr static float LightY      = 364.0f;
+    constexpr static float LightRadius = 2.6f;
 
     /// All keys, with their count
     static const VrTerminalKey* keys(uint32_t& count);
 
     /**
-     * \brief Finds the key at a point
+     * \brief Finds the key at a point of the plate
      *
-     * \param [in] x Distance from the keyboard's left edge, in key units
-     * \param [in] y Distance from the keyboard's top edge, in rows
+     * Points in the narrow gaps between keys belong to the nearest key.
+     *
+     * \param [in] uv Point on the plate, (0, 0) top left, (1, 1) bottom right
      * \returns Index of the key, or -1 if the point is on no key
      */
-    static int32_t findKey(float x, float y);
+    static int32_t findKey(VrVector2 uv);
+
+    /**
+     * \brief Whether a key shows and types its shifted character
+     *
+     * Shift shifts every character, Caps Lock only the letters.
+     */
+    static bool isShifted(const VrTerminalKey& key, bool shift, bool capsLock);
 
     /**
      * \brief Code a character or editing key sends to the console
      *
      * \param [in] key Key of kind Char or Edit
-     * \param [in] shift Whether Shift is on
+     * \param [in] shifted Whether the key is shifted, see isShifted
      */
-    static uint32_t code(const VrTerminalKey& key, bool shift);
+    static uint32_t code(const VrTerminalKey& key, bool shifted);
   };
 
 }

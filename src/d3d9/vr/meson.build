@@ -24,9 +24,11 @@ vr_src = files([
   'vr_weapon_types.cpp',
   'vr_power_attack.cpp',
   'vr_magazine.cpp',
-  'vr_terminal_font.cpp',
+  'vr_dds.cpp',
+  'vr_bitmap_font.cpp',
   'vr_terminal_keyboard.cpp',
   'vr_terminal_image.cpp',
+  'vr_terminal_text.cpp',
 ])
 
 # Parts that depend on DXVK and Vulkan, only built into d3d9.dll
@@ -59,8 +61,10 @@ vr_dxvk_src = files([
   'vr_melee_swing.cpp',
   'vr_power_attack_rules.cpp',
   'vr_charge_ring.cpp',
+  'vr_console_screen.cpp',
   'vr_console_terminal.cpp',
   'vr_game_console.cpp',
+  'vr_game_file.cpp',
   'vr_menu_scenes.cpp',
   'vr_manual_reload.cpp',
   'vr_reload_animation.cpp',

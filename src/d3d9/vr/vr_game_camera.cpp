@@ -15,6 +15,7 @@ namespace dxvk {
 
     // The frustum starts with left, right, top, bottom, followed by near and far
     constexpr uint32_t FrustumPlaneCount = 4;
+    constexpr uint32_t FrustumNearIndex  = 4;
 
   }
 
@@ -72,6 +73,13 @@ namespace dxvk {
     float planes[FrustumPlaneCount] = { frustum.left, frustum.right, frustum.top, frustum.bottom };
     std::memcpy(m_camera + VrGame::CameraFrustum, planes, sizeof(planes));
 
+    refresh();
+  }
+
+
+  void VrGameCamera::setDepthRange(float nearPlane, float farPlane) {
+    const float planes[2] = { nearPlane, farPlane };
+    std::memcpy(m_camera + VrGame::CameraFrustum + FrustumNearIndex * sizeof(float), planes, sizeof(planes));
     refresh();
   }
 

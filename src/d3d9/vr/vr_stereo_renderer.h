@@ -515,7 +515,7 @@ namespace dxvk {
 
     bool updatePowerCharge(const VrInputState& input, int32_t& cost);
 
-    void updateControls(const VrInputState& input, VrGameStateKind state, float dt);
+    void updateControls(const VrInputState& input, VrGameStateKind state, bool stereo, float dt);
 
     VrGameCameraPose handInGame(const VrControllerState& controller) const;
 

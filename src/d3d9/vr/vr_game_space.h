@@ -143,6 +143,28 @@ namespace dxvk {
   VrGameFrustum vrComputeGameFrustum(const VrFov& fov);
 
   /**
+   * \brief Places the camera of a menu's own scene for a VR eye
+   *
+   * Rendered menus, such as the game's terminals, draw a model with a
+   * camera of their own, in a space of their own where the camera looks
+   * along +X with +Y up and +Z to its right. The model's point \c target
+   * of that space is shown at the pose \c anchor of the room, whose -Z
+   * axis points away from the viewer: an eye then sees the model as if it
+   * stood there, scaled by \c unitsPerMetre.
+   *
+   * \param [in] anchor Where the target is shown, in tracking space
+   * \param [in] eye Eye pose in tracking space
+   * \param [in] target Point of the menu's space shown at the anchor
+   * \param [in] unitsPerMetre Menu units per metre of the room
+   * \returns The eye's camera in the menu's space
+   */
+  VrGameCameraPose vrComputeMenuSceneCameraPose(
+    const VrPose&           anchor,
+    const VrPose&           eye,
+    const VrVector3&        target,
+          float             unitsPerMetre);
+
+  /**
    * \brief Field of view that covers both eyes, widened by a margin
    *
    * Each side takes the wider of the two eyes and the margin, and is
