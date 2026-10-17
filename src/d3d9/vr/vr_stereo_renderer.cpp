@@ -869,15 +869,21 @@ namespace dxvk {
       hands.grip         = input.actions.isPressed(VrAction::Magazine);
     }
 
-    // The magazine was measured when the model was last drawn
+    // The magazine and the rack part were measured when the model was
+    // last drawn
     if (m_weaponHand) {
-      hands.well      = m_weaponHand->magazineWell();
-      hands.axis      = m_weaponHand->magazineAxis();
-      hands.held      = m_weaponHand->magazineHeld();
-      hands.animation = m_weaponHand->reloadAnimation();
+      hands.well       = m_weaponHand->magazineWell();
+      hands.axis       = m_weaponHand->magazineAxis();
+      hands.held       = m_weaponHand->magazineHeld();
+      hands.animation  = m_weaponHand->reloadAnimation();
+      hands.rack       = m_weaponHand->rackPart();
+      hands.rackAxis   = m_weaponHand->rackAxis();
+      hands.rackTravel = m_weaponHand->rackTravel();
     }
 
-    switch (m_manualReload->updateHands(hands)) {
+    VrReloadEvents events = m_manualReload->updateHands(hands);
+
+    switch (events.magazine) {
       case VrMagazineEvent::Ejected:
       case VrMagazineEvent::Taken:
         m_backend.applyHaptic(VrHand::Left, MagazineTakenHaptic, MagazineHapticDuration);
@@ -899,8 +905,25 @@ namespace dxvk {
         break;
     }
 
-    if (m_weaponHand)
+    switch (events.rack) {
+      case VrRackEvent::Grabbed:
+        m_backend.applyHaptic(VrHand::Left, MagazineFaintHaptic, MagazineHapticDuration);
+        break;
+
+      case VrRackEvent::Racked:
+        m_backend.applyHaptic(VrHand::Left, MagazineInsertedHaptic, MagazineHapticDuration);
+        m_backend.applyHaptic(VrHand::Right, MagazineInsertedHaptic, MagazineHapticDuration);
+        break;
+
+      case VrRackEvent::Released:
+      case VrRackEvent::None:
+        break;
+    }
+
+    if (m_weaponHand) {
       m_weaponHand->setMagazine(m_manualReload->magazineState(), m_manualReload->magazineSeat());
+      m_weaponHand->setRack(m_manualReload->rackHeld(), m_manualReload->rackPull(), m_manualReload->rackLockedBack());
+    }
   }
 
 

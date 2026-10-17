@@ -72,6 +72,12 @@ namespace dxvk {
     // How long the magazine takes to move between the hand and its well
     constexpr float MagazineBlendTime = 0.12f;
 
+    // Without a reload animation that racks it, the rack part is pulled
+    // straight back along the barrel (the weapon node's -x), this far in
+    // metres
+    constexpr VrVector3 FallbackRackAxis   = { -1.0f, 0.0f, 0.0f };
+    constexpr float     FallbackRackTravel = 0.04f;
+
     // How many times the reload animation of a weapon is read, in case its
     // animations are not loaded yet, and how many draws apart (two per frame)
     constexpr uint32_t ReloadAnimationTries      = 3;
@@ -676,6 +682,7 @@ namespace dxvk {
       writeVector(camera, VrGame::CameraWorldTranslation, m_eyePosition - shift);
 
     m_hasMagazine = false;
+    m_hasRack     = false;
 
     if (m_mode == VrFirstPersonMode::Hidden) {
       m_hasAim    = false;
@@ -784,13 +791,24 @@ namespace dxvk {
 
     bool handPlaced = forearm && m_hasOtherHand && !m_twoHanded && !m_braced;
 
-    // The magazine out of the weapon is placed first: a hand holding it in
-    // its well follows it there
+    // The magazine out of the weapon and the rack part are placed first: a
+    // hand holding the magazine in its well, or the rack part, follows it
     VrGameTransform magazinePose;
     uint8_t* magazine = placeMagazine(root, weapon, otherHand, handPlaced, hand, form, shift, magazinePose);
 
-    if (handPlaced)
-      placeOtherHand(root, otherHand, shift, updateData, magazine && holdsMagazine() ? &magazinePose : nullptr);
+    VrGameTransform rackPose;
+    uint8_t* rack = placeRack(weapon, hand, rackPose);
+
+    if (handPlaced) {
+      HeldPart held = { };
+
+      if (magazine && holdsMagazine())
+        held = { magazinePose, &m_reloadAnimation.magazineInHand, &m_reloadAnimation.fingers };
+      else if (rack && holdsRack())
+        held = { rackPose, &m_reloadAnimation.rack.partInHand, &m_reloadAnimation.rack.fingers };
+
+      placeOtherHand(root, otherHand, shift, updateData, held.inHand ? &held : nullptr);
+    }
 
     // Held still, the blade does not move in the hand
     if (held && !m_bladeMeasured)
@@ -802,7 +820,10 @@ namespace dxvk {
     hideArms(root, false);
 
     if (magazine)
-      drawMagazine(magazine, magazinePose, updateData);
+      drawPart(magazine, magazinePose, updateData);
+
+    if (rack)
+      drawPart(rack, rackPose, updateData);
 
     uint8_t* muzzle = findObject(weapon, VrGame::ProjectileNodeName);
 
@@ -1055,7 +1076,7 @@ namespace dxvk {
           uint8_t*              otherHand,
     const VrVector3&            shift,
           void*                 updateData,
-    const VrGameTransform*      magazine) {
+    const HeldPart*             held) {
     // The game animates the free hand anywhere, so its pose is not kept:
     // it takes a fixed pose around its controller. The forearm carries the
     // hand, and the hand's meshes only use bones below the forearm.
@@ -1070,13 +1091,14 @@ namespace dxvk {
 
     VrGameTransform target = vrComputeHeldTransform(controller, FreeHandPose);
 
-    // A hand holding a magazine holds it where it is drawn, in its well too
-    if (magazine) {
-      const VrGameTransform& inHand = m_reloadAnimation.magazineInHand;
+    // A hand holding a part holds it where it is drawn: a magazine in its
+    // well too, the rack part on its way back
+    if (held) {
+      const VrGameTransform& inHand = *held->inHand;
       float handScale = field<float>(otherHand, VrGame::ObjectWorldScale);
 
-      target.rotate    = magazine->rotate * vrTranspose(inHand.rotate);
-      target.translate = magazine->translate - target.rotate * inHand.translate * handScale;
+      target.rotate    = held->pose.rotate * vrTranspose(inHand.rotate);
+      target.translate = held->pose.translate - target.rotate * inHand.translate * handScale;
     }
 
     // The forearm is placed so that the hand, at its fixed wrist rotation,
@@ -1096,14 +1118,14 @@ namespace dxvk {
     writeVector(forearm, VrGame::NodeLocalTranslate, parent.toLocal(worldTranslation));
 
     // The wrist, the twist bone and the fingers take the pose too. A hand
-    // holding a magazine closes its fingers on it as the game's reload
+    // holding a part closes its fingers on it as the game's reload
     // animation does.
     struct SavedBone {
       uint8_t*       bone;
       VrGameRotation rotate;
     };
 
-    const std::vector<VrBonePose>* grip = holdsMagazine() ? &m_reloadAnimation.fingers : nullptr;
+    const std::vector<VrBonePose>* grip = held ? held->fingers : nullptr;
 
     std::array<SavedBone, MaxPosedBones> saved;
     uint32_t savedCount = 0;
@@ -1188,6 +1210,19 @@ namespace dxvk {
   }
 
 
+  void VrWeaponHand::setRack(bool held, float pull, bool lockedBack) {
+    m_rackHeld       = held;
+    m_rackPull       = pull;
+    m_rackLockedBack = lockedBack;
+  }
+
+
+  bool VrWeaponHand::holdsRack() const {
+    return m_mode == VrFirstPersonMode::Hands && m_rackHeld
+      && m_hasReloadAnimation && m_reloadAnimation.hasRack && m_reloadAnimation.rack.held;
+  }
+
+
   uint8_t* VrWeaponHand::placeMagazine(
           uint8_t*              root,
           uint8_t*              weapon,
@@ -1240,7 +1275,8 @@ namespace dxvk {
       } else {
         m_reloadTries += 1;
         m_reloadWait   = ReloadAnimationRetryDraws;
-        m_hasReloadAnimation = vrReadReloadAnimation(player(), root, weapon, magazine, leftHand, m_reloadAnimation);
+        m_hasReloadAnimation = vrReadReloadAnimation(player(), root, weapon, magazine,
+          vrFindWeaponPart(weapon, VrWeaponPartKind::Rack), leftHand, m_reloadAnimation);
       }
     }
 
@@ -1358,22 +1394,92 @@ namespace dxvk {
   }
 
 
-  void VrWeaponHand::drawMagazine(
-          uint8_t*              magazine,
+  uint8_t* VrWeaponHand::placeRack(
+          uint8_t*              weapon,
+    const VrGameCameraPose&     hand,
+          VrGameTransform&      pose) {
+    // Only the weapons reloaded by hand are racked by hand
+    uint8_t* rack = m_hasMagazine ? vrFindWeaponPart(weapon, VrWeaponPartKind::Rack) : nullptr;
+    auto bound    = rack ? field<const uint8_t*>(rack, VrGame::ObjectWorldBound) : nullptr;
+
+    if (!bound)
+      return nullptr;
+
+    const VrRackAnimation* animation = m_hasReloadAnimation && m_reloadAnimation.hasRack
+      ? &m_reloadAnimation.rack : nullptr;
+
+    VrGameRotation weaponRotation = readRotation(weapon, VrGame::ObjectWorldRotation);
+    VrVector3 weaponPosition      = readVector(weapon, VrGame::ObjectWorldTranslation);
+    float weaponScale             = field<float>(weapon, VrGame::ObjectWorldScale);
+
+    VrVector3 axis = weaponRotation * (animation ? animation->axis : FallbackRackAxis);
+    float travel   = animation ? animation->travel : FallbackRackTravel;
+
+    // Where the game draws it, home
+    m_rackCentre = vrPointToHand(hand, readVector(bound, 0));
+    m_rackAxis   = { vrDot(axis, hand.forward), vrDot(axis, hand.up), vrDot(axis, hand.right) };
+    m_rackTravel = travel;
+    m_hasRack    = true;
+
+    if (rack != m_loggedRack) {
+      auto name = field<const char*>(rack, VrGame::ObjectName);
+      Logger::info(str::format("VR: The weapon's rack part is '", name ? name : "", "', pulled back ",
+        travel * 100.0f, animation ? " cm as the reload animation does" : " cm along the barrel"));
+      m_loggedRack = rack;
+    }
+
+    float pull = m_rackHeld ? m_rackPull : (m_rackLockedBack ? travel : 0.0f);
+
+    if (!m_rackHeld && pull <= 0.0f)
+      return nullptr;
+
+    if (animation && !animation->poses.empty()) {
+      // Between the two poses of the animation the pull falls between
+      const std::vector<VrRackPose>& poses = animation->poses;
+      size_t next = 0;
+
+      while (next + 1 < poses.size() && poses[next].along < pull)
+        next += 1;
+
+      VrGameTransform local = poses[next].pose;
+
+      if (next > 0 && poses[next].along > poses[next - 1].along) {
+        const VrRackPose& last = poses[next - 1];
+        float t = std::clamp((pull - last.along) / (poses[next].along - last.along), 0.0f, 1.0f);
+
+        local.translate = last.pose.translate + (local.translate - last.pose.translate) * t;
+        local.rotate    = vrGameRotationFromQuaternion(vrSlerp(
+          vrQuaternionFromGameRotation(last.pose.rotate),
+          vrQuaternionFromGameRotation(local.rotate), t));
+      }
+
+      pose.rotate    = weaponRotation * local.rotate;
+      pose.translate = weaponPosition + weaponRotation * local.translate * weaponScale;
+    } else {
+      pose.rotate    = readRotation(rack, VrGame::ObjectWorldRotation);
+      pose.translate = readVector(rack, VrGame::ObjectWorldTranslation) + axis * (pull * VrGameUnitsPerMetre);
+    }
+
+    return rack;
+  }
+
+
+  void VrWeaponHand::drawPart(
+          uint8_t*              part,
     const VrGameTransform&      pose,
           void*                 updateData) {
-    ParentFrame parent = parentFrame(magazine);
+    ParentFrame parent = parentFrame(part);
 
-    VrGameRotation localRotation  = readRotation(magazine, VrGame::ObjectLocalRotation);
-    VrVector3 localTranslation    = readVector(magazine, VrGame::NodeLocalTranslate);
+    VrGameRotation localRotation  = readRotation(part, VrGame::ObjectLocalRotation);
+    VrVector3 localTranslation    = readVector(part, VrGame::NodeLocalTranslate);
 
-    writeRotation(magazine, VrGame::ObjectLocalRotation, vrTranspose(parent.rotate) * pose.rotate);
-    writeVector(magazine, VrGame::NodeLocalTranslate, parent.toLocal(pose.translate));
-    updateObject(magazine, updateData);
+    writeRotation(part, VrGame::ObjectLocalRotation, vrTranspose(parent.rotate) * pose.rotate);
+    writeVector(part, VrGame::NodeLocalTranslate, parent.toLocal(pose.translate));
+    updateObject(part, updateData);
 
     // The next eye's update starts from the game's pose again
-    writeRotation(magazine, VrGame::ObjectLocalRotation, localRotation);
-    writeVector(magazine, VrGame::NodeLocalTranslate, localTranslation);
+    writeRotation(part, VrGame::ObjectLocalRotation, localRotation);
+    writeVector(part, VrGame::NodeLocalTranslate, localTranslation);
   }
 
 

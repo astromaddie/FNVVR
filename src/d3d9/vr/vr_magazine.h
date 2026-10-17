@@ -20,6 +20,9 @@ namespace dxvk {
     None,
     /// A detachable magazine or energy cell
     Magazine,
+    /// What is pulled back to chamber a round: a slide, charging handle,
+    /// bolt or cocking lever
+    Rack,
   };
 
   /**
@@ -28,12 +31,29 @@ namespace dxvk {
    * A magazine is a part whose name contains "clip", "magazine", "drum",
    * "cell" or "battery", in any case, unless it also names something next to the
    * magazine (its release, latch or bay) or a magazine that is not
-   * detachable (a revolver's moon clip). A table of exceptions comes first.
-   * The ":n" suffix of a part's geometry is ignored.
+   * detachable (a revolver's moon clip). A rack part is one whose name
+   * contains "slide", "bolt", "charginghandle", "lever" or "bar", unless it
+   * also names a barrel, a lock, a pin, a release or a trigger. A table of
+   * exceptions comes first. The ":n" suffix of a part's geometry is
+   * ignored.
    *
    * \param [in] name Name of the object, with its "##" prefix
    */
   VrWeaponPartKind vrClassifyWeaponPart(const char* name);
+
+  /**
+   * \brief Distance from a point to a segment
+   *
+   * \param [in] point The point
+   * \param [in] start Where the segment starts
+   * \param [in] axis Direction it goes along from there, unit
+   * \param [in] length Its length, in the units of the points
+   */
+  float vrDistanceToSegment(
+    const VrVector3&            point,
+    const VrVector3&            start,
+    const VrVector3&            axis,
+          float                 length);
 
   /**
    * \brief Where new magazines are taken: behind the back, over the left shoulder
@@ -114,6 +134,9 @@ namespace dxvk {
     bool             active = false;
     /// The left grip is held
     bool             grip = false;
+    /// A press of the grip does not take the magazine out: it is nearer
+    /// the weapon's rack, see VrRackHand
+    bool             blocked = false;
     /// Left hand: the middle of the grip
     VrVector3        hand;
     /// Where the centre of a magazine held by the left hand is
@@ -199,6 +222,12 @@ namespace dxvk {
      */
     void reset();
 
+    /**
+     * \brief How far the hand is from where a press of the grip takes the
+     *    magazine out, in metres
+     */
+    float ejectDistance(const VrMagazineInput& input) const;
+
     VrMagazineState state() const {
       return m_state;
     }
@@ -228,6 +257,120 @@ namespace dxvk {
     VrVector3       m_acrossStart;
 
     void seat(const VrMagazineInput& input, float start);
+
+  };
+
+  /**
+   * \brief What the left hand did with the weapon's rack part in a frame
+   */
+  enum class VrRackEvent {
+    None,
+    /// The hand took the rack part
+    Grabbed,
+    /// The hand let go of it before it was pulled back all the way
+    Released,
+    /// The hand let go of it after pulling it back all the way: it goes
+    /// home and chambers a round
+    Racked,
+  };
+
+  /**
+   * \brief What the rack logic sees in a frame
+   *
+   * Positions in the game world, in game units.
+   */
+  struct VrRackInput {
+    /// The weapon in the right hand has a rack part, and the left hand is
+    /// tracked, free (not on the weapon) and holds no magazine
+    bool      active = false;
+    /// The left grip is held
+    bool      grip = false;
+    /// A press of the grip does not take the rack part: it is nearer the
+    /// magazine, see VrMagazineHand
+    bool      blocked = false;
+    /// The rack part is locked back: nothing is chambered
+    bool      lockedBack = false;
+    /// Left hand: the middle of the grip
+    VrVector3 hand;
+    /// Where the centre of the rack part is when it is home
+    VrVector3 rack;
+    /// Direction it is pulled back along, unit
+    VrVector3 axis;
+    /// How far it is pulled back, in metres
+    float     travel = 0.0f;
+  };
+
+  /**
+   * \brief Distances of the rack gesture, in metres
+   */
+  struct VrRackReach {
+    /// How close the hand must be to the rack part, or to the way it is
+    /// pulled back along, to take it
+    float grab  = 0.10f;
+    /// How far the hand may move across that way before it lets go
+    float leave = 0.10f;
+    /// Part of the travel it must be pulled back by to chamber a round
+    float full  = 0.85f;
+  };
+
+  /**
+   * \brief Follows the rack part of the weapon in the right hand
+   *
+   * The left grip pressed near the rack part, or along the way it is
+   * pulled back, takes it: it follows the hand back along its way, up to
+   * its travel. Let go of, or left sideways, it goes home by itself, and
+   * chambers a round if it was pulled back all the way. A part locked
+   * back is already all the way back: taking it and letting it go is
+   * enough.
+   */
+  class VrRackHand {
+
+  public:
+
+    explicit VrRackHand(const VrRackReach& reach = VrRackReach())
+    : m_reach(reach) { }
+
+    /**
+     * \brief Takes the frame's input
+     * \returns What happened in this frame
+     */
+    VrRackEvent update(const VrRackInput& input);
+
+    /**
+     * \brief Lets go of the rack part, when the weapon changes
+     */
+    void reset();
+
+    /**
+     * \brief How far the hand is from where a press of the grip takes the
+     *    rack part, in metres
+     */
+    float grabDistance(const VrRackInput& input) const;
+
+    bool held() const {
+      return m_held;
+    }
+
+    /**
+     * \brief How far the hand holds the rack part back, in metres
+     */
+    float pull() const {
+      return m_pull;
+    }
+
+  private:
+
+    VrRackReach m_reach;
+    bool        m_gripDown = false;
+    bool        m_held     = false;
+    bool        m_full     = false;
+    float       m_pull     = 0.0f;
+
+    // Where the hand was along and across the way back when it took the
+    // part, and how far back the part was then
+    float       m_alongStart = 0.0f;
+    float       m_pullStart  = 0.0f;
+    VrVector3   m_acrossStart;
 
   };
 
@@ -293,6 +436,36 @@ namespace dxvk {
   size_t vrFindMagazineHold(
     const VrGameTransform*      inHand,
           size_t                count);
+
+  /**
+   * \brief How the game's reload animation pulls the rack part back
+   */
+  struct VrRackMotion {
+    /// The sample it starts moving at, and the one it is furthest back at
+    size_t    start = 0;
+    size_t    back  = 0;
+    /// Direction it is pulled back along, unit, in the weapon's frame
+    VrVector3 axis;
+    /// How far, in metres
+    float     travel = 0.0f;
+  };
+
+  /**
+   * \brief Finds how the game's reload animation racks the weapon
+   *
+   * The rack part is furthest back where it is furthest from its place,
+   * which must be more than a centimetre; it starts moving the last time
+   * before that it was within a few millimetres of its place.
+   *
+   * \param [in] samples The rack part through the animation, in time order
+   * \param [in] count Number of samples
+   * \param [out] motion How it is pulled back
+   * \returns \c false if the animation does not move it that far
+   */
+  bool vrFindRackMotion(
+    const VrMagazineSample*     samples,
+          size_t                count,
+          VrRackMotion&         motion);
 
   /**
    * \brief Finds the sound played nearest a time

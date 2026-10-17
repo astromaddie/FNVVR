@@ -65,6 +65,10 @@ namespace dxvk {
    *   weapon, see VrMagazineHand. The game's reload animation of the
    *   weapon tells how the hand holds it and along which direction it
    *   comes out, see vrReadReloadAnimation.
+   * - The weapon's rack part (slide, charging handle, bolt) is drawn back
+   *   while the left hand pulls it, see VrRackHand, and locked back while
+   *   nothing is chambered, along the way the reload animation pulls it,
+   *   the left hand holding it as the animation does.
    *
    * Only used on the game's main thread.
    */
@@ -226,6 +230,47 @@ namespace dxvk {
     }
 
     /**
+     * \brief Sets where the rack part of the weapon in the hand is drawn
+     *
+     * Applied when the model is next drawn.
+     *
+     * \param [in] held The left hand holds it
+     * \param [in] pull How far back the hand holds it, in metres
+     * \param [in] lockedBack Nothing is chambered: let go of, it stays
+     *    all the way back
+     */
+    void setRack(bool held, float pull, bool lockedBack);
+
+    /**
+     * \brief Where the rack part's centre is when it is home
+     *
+     * In the right hand's frame (see vrPointFromHand), measured each time
+     * the model is drawn.
+     *
+     * \returns The point, or \c nullptr if the weapon in the hand is not
+     *    reloaded by hand or has no rack part
+     */
+    const VrVector3* rackPart() const {
+      return m_hasRack ? &m_rackCentre : nullptr;
+    }
+
+    /**
+     * \brief Direction the rack part is pulled back along
+     *
+     * A unit vector in the right hand's frame, valid with rackPart.
+     */
+    const VrVector3& rackAxis() const {
+      return m_rackAxis;
+    }
+
+    /**
+     * \brief How far the rack part is pulled back, in metres
+     */
+    float rackTravel() const {
+      return m_rackTravel;
+    }
+
+    /**
      * \brief The game's reload animation of the weapon in the hand
      *
      * \returns The animation, or \c nullptr if it was not read
@@ -354,6 +399,18 @@ namespace dxvk {
     VrGameTransform  m_magazineFrom;
     float            m_magazineBlend = 1.0f;
 
+    // Rack part of the weapon in the hand: how the hand holds it, where it
+    // is home in the right hand's frame, the way back and its length, and
+    // its rack part the name was logged for, compared but not dereferenced
+    bool             m_rackHeld = false;
+    float            m_rackPull = 0.0f;
+    bool             m_rackLockedBack = false;
+    VrVector3        m_rackCentre;
+    VrVector3        m_rackAxis;
+    float            m_rackTravel = 0.0f;
+    bool             m_hasRack = false;
+    const uint8_t*   m_loggedRack = nullptr;
+
     // The game's reload animation of the weapon form it was read for,
     // compared but not dereferenced, how many times it was tried for it and
     // how many draws to wait before the next try
@@ -447,18 +504,30 @@ namespace dxvk {
     void measureBlade(const uint8_t* weapon, const VrGameCameraPose& hand);
 
     /**
+     * \brief A part of the weapon the left hand holds as the reload
+     *    animation does
+     */
+    struct HeldPart {
+      /// Where the part is drawn
+      VrGameTransform                pose;
+      /// The part in the hand bone's frame, in units of the hand's scale
+      const VrGameTransform*         inHand;
+      /// Rotations of the bones below the hand
+      const std::vector<VrBonePose>* fingers;
+    };
+
+    /**
      * \brief Puts the free left hand around its controller
      *
-     * \param [in] magazine Where the magazine the hand holds with the
-     *    reload animation's grip is drawn, or \c nullptr: the hand then
-     *    holds it there
+     * \param [in] held The part the hand holds where it is drawn, or
+     *    \c nullptr
      */
     void placeOtherHand(
             uint8_t*              root,
             uint8_t*              otherHand,
       const VrVector3&            shift,
             void*                 updateData,
-      const VrGameTransform*      magazine);
+      const HeldPart*             held);
 
     /**
      * \brief Finds the weapon's magazine and where it is drawn
@@ -478,12 +547,30 @@ namespace dxvk {
       const VrVector3&            shift,
             VrGameTransform&      pose);
 
-    void drawMagazine(
-            uint8_t*              magazine,
+    /**
+     * \brief Finds the weapon's rack part and where it is drawn
+     *
+     * \param [out] pose Where the rack part is drawn, in the model's
+     *    drawing space
+     * \returns The rack part to draw at the pose, or \c nullptr if the
+     *    game draws it
+     */
+    uint8_t* placeRack(
+            uint8_t*              weapon,
+      const VrGameCameraPose&     hand,
+            VrGameTransform&      pose);
+
+    /**
+     * \brief Draws a part of the weapon at a pose for this update only
+     */
+    void drawPart(
+            uint8_t*              part,
       const VrGameTransform&      pose,
             void*                 updateData);
 
     bool holdsMagazine() const;
+
+    bool holdsRack() const;
 
     void hideArms(uint8_t* root, bool rightHand);
 

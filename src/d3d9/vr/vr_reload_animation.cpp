@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cfloat>
 #include <cstring>
 
@@ -83,6 +84,10 @@ namespace dxvk {
     // The bones below the left hand are a few levels deep
     constexpr uint32_t MaxHandDepth = 8;
 
+    // How near the left hand bone the rack part's centre must be for the
+    // animation's hand to hold it, in metres
+    constexpr float RackHeldReach = 0.15f;
+
     template<typename T>
     T readField(const uint8_t* base, uintptr_t offset) {
       return *reinterpret_cast<const T*>(base + offset);
@@ -102,6 +107,11 @@ namespace dxvk {
 
     const char* objectName(const uint8_t* object) {
       return readField<const char*>(object, VrGame::ObjectName);
+    }
+
+    const char* partName(const uint8_t* part) {
+      const char* name = objectName(part);
+      return name ? name : "";
     }
 
     /**
@@ -281,13 +291,132 @@ namespace dxvk {
     }
 
 
+    /**
+     * \brief The centre of a part's meshes in its own frame
+     */
+    VrVector3 meshCentre(const uint8_t* part) {
+      float scale = readField<float>(part, VrGame::ObjectWorldScale);
+      auto bound  = readField<const uint8_t*>(part, VrGame::ObjectWorldBound);
+
+      if (!bound || scale <= 0.0f)
+        return VrVector3();
+
+      return vrTranspose(readRotation(part, VrGame::ObjectWorldRotation))
+        * (readVector(bound, 0) - readVector(part, VrGame::ObjectWorldTranslation)) * (1.0f / scale);
+    }
+
+
+    /**
+     * \brief The bones below the left hand the sequence rotates, at a time
+     */
+    std::vector<VrBonePose> readFingers(const SequenceTracks& tracks, uint8_t* leftHand, float time) {
+      std::vector<VrBonePose> fingers;
+
+      vrVisitGameObjects(reinterpret_cast<uintptr_t>(leftHand), MaxHandDepth,
+        [&tracks, &fingers, leftHand, time] (uintptr_t object, uint32_t) {
+          auto bone = reinterpret_cast<uint8_t*>(object);
+          auto name = objectName(bone);
+          bool rotated = false;
+
+          if (bone == leftHand || !name)
+            return;
+
+          Pose pose = tracks.local(bone, time, &rotated);
+
+          if (rotated)
+            fingers.push_back({ name, pose.rotate });
+        });
+
+      return fingers;
+    }
+
+
+    /**
+     * \brief Reads how the sequence pulls the rack part back
+     *
+     * \param [out] time When it is furthest back
+     */
+    bool readRack(
+      const SequenceTracks&       tracks,
+            uint8_t*              root,
+            uint8_t*              weapon,
+            uint8_t*              rack,
+            uint8_t*              leftHand,
+            float                 begin,
+            float                 end,
+            VrRackAnimation&      animation,
+            float&                time) {
+      std::vector<VrMagazineSample> samples;
+      std::vector<Pose> poses;
+
+      for (uint32_t i = 0; begin + float(i) / SamplesPerSecond <= end; i++) {
+        float t = begin + float(i) / SamplesPerSecond;
+        Pose pose;
+
+        if (!tracks.toAncestor(rack, weapon, t, pose))
+          return false;
+
+        VrVector3 offset = poses.empty() ? VrVector3() : (pose.translate - poses.front().translate);
+        samples.push_back({ t, offset * (1.0f / VrGameUnitsPerMetre) });
+        poses.push_back(pose);
+      }
+
+      VrRackMotion motion;
+
+      if (!vrFindRackMotion(samples.data(), samples.size(), motion))
+        return false;
+
+      animation.axis   = motion.axis;
+      animation.travel = motion.travel;
+      animation.poses.clear();
+
+      float along = 0.0f;
+
+      for (size_t i = motion.start; i <= motion.back; i++) {
+        along = std::max(along, vrDot(samples[i].offset, motion.axis));
+
+        VrRackPose pose;
+        pose.along          = along;
+        pose.pose.rotate    = poses[i].rotate;
+        pose.pose.translate = poses[i].translate;
+        animation.poses.push_back(pose);
+      }
+
+      // The left hand holds the part all the way back if it is at its
+      // centre then; the right hand may rack some weapons
+      time = samples[motion.back].time;
+
+      Pose hand, part;
+      animation.held = false;
+
+      if (tracks.toAncestor(leftHand, root, time, hand) && tracks.toAncestor(rack, root, time, part)
+       && hand.scale > 0.0f) {
+        VrVector3 middle = part.translate + part.rotate * meshCentre(rack) * part.scale;
+        float distance   = vrLength(middle - hand.translate) / VrGameUnitsPerMetre;
+
+        VrGameRotation toHand = vrTranspose(hand.rotate);
+        animation.held                 = distance <= RackHeldReach;
+        animation.partInHand.rotate    = toHand * part.rotate;
+        animation.partInHand.translate = (toHand * (part.translate - hand.translate)) * (1.0f / hand.scale);
+        animation.fingers              = animation.held ? readFingers(tracks, leftHand, time) : std::vector<VrBonePose>();
+
+        Logger::info(str::format("VR: Reload animation racks '", partName(rack), "' ", motion.travel * 100.0f,
+          " cm back along ", motion.axis.x, ", ", motion.axis.y, ", ", motion.axis.z, " in the weapon, from ",
+          samples[motion.start].time, " to ", time, " s; its centre is then ", distance * 100.0f,
+          " cm from the left hand bone", animation.held ? ", which holds it" : ", which does not hold it"));
+      }
+
+      return true;
+    }
+
+
     const char* soundFile(const uint8_t* sound) {
       const char* file = sound ? reinterpret_cast<GetFilenameFn>(VrGame::SoundGetFilename)(sound, nullptr) : nullptr;
       return file ? file : "";
     }
 
 
-    void readSounds(const uint8_t* sequence, const VrMagazineTiming& timing, VrReloadAnimation& animation) {
+    void readSounds(const uint8_t* sequence, const VrMagazineTiming& timing, float rackTime, VrReloadAnimation& animation) {
       auto group = readField<const uint8_t*>(sequence, VrGame::AnimSequenceGroup);
 
       if (!group)
@@ -324,14 +453,30 @@ namespace dxvk {
         return sound;
       };
 
+      // The rack's sound is neither of the magazine's
+      std::vector<float> others = times;
+
+      for (int32_t index : { out, in }) {
+        if (index >= 0)
+          others[index] = FLT_MAX;
+      }
+
+      int32_t rack = animation.hasRack
+        ? vrFindNearestSound(others.data(), others.size(), rackTime, SoundWindow, -1)
+        : -1;
+
       animation.out = toSound(out);
       animation.in  = toSound(in);
+
+      if (animation.hasRack)
+        animation.rack.sound = toSound(rack);
 
       for (size_t i = 0; i < entries.size(); i++) {
         Logger::info(str::format("VR: Reload animation sound at ", times[i], " s: '",
           soundFile(readField<const uint8_t*>(entries[i], VrGame::AnimGroupSoundForm)), "'",
-          int32_t(i) == out ? ", the magazine going out" : "",
-          int32_t(i) == in  ? ", the magazine going in" : ""));
+          int32_t(i) == out  ? ", the magazine going out" : "",
+          int32_t(i) == in   ? ", the magazine going in" : "",
+          int32_t(i) == rack ? ", the weapon chambering" : ""));
       }
     }
 
@@ -343,6 +488,7 @@ namespace dxvk {
           uint8_t*              root,
           uint8_t*              weapon,
           uint8_t*              magazine,
+          uint8_t*              rack,
           uint8_t*              leftHand,
           VrReloadAnimation&    animation) {
     const uint8_t* sequence = findReloadSequence(player);
@@ -385,14 +531,7 @@ namespace dxvk {
     }
 
     // The centre of the magazine's meshes in its own frame
-    VrVector3 centre;
-    float magazineScale = readField<float>(magazine, VrGame::ObjectWorldScale);
-    auto bound = readField<const uint8_t*>(magazine, VrGame::ObjectWorldBound);
-
-    if (bound && magazineScale > 0.0f) {
-      centre = vrTranspose(readRotation(magazine, VrGame::ObjectWorldRotation))
-        * (readVector(bound, 0) - readVector(magazine, VrGame::ObjectWorldTranslation)) * (1.0f / magazineScale);
-    }
+    VrVector3 centre = meshCentre(magazine);
 
     // The magazine in the left hand's frame while it is out, to find when
     // the hand carries it
@@ -446,24 +585,15 @@ namespace dxvk {
     animation.axis = timing.axis;
 
     // The fingers the animation moves
-    animation.fingers.clear();
+    animation.fingers = readFingers(tracks, leftHand, timing.grip);
 
-    vrVisitGameObjects(reinterpret_cast<uintptr_t>(leftHand), MaxHandDepth,
-      [&tracks, &timing, &animation, leftHand] (uintptr_t object, uint32_t) {
-        auto bone = reinterpret_cast<uint8_t*>(object);
-        auto name = objectName(bone);
-        bool rotated = false;
+    float rackTime = 0.0f;
+    animation.hasRack = rack && readRack(tracks, root, weapon, rack, leftHand, begin, end, animation.rack, rackTime);
 
-        if (bone == leftHand || !name)
-          return;
+    if (rack && !animation.hasRack)
+      Logger::info(str::format("VR: The reload animation does not rack '", partName(rack), "'"));
 
-        Pose pose = tracks.local(bone, timing.grip, &rotated);
-
-        if (rotated)
-          animation.fingers.push_back({ name, pose.rotate });
-      });
-
-    readSounds(sequence, timing, animation);
+    readSounds(sequence, timing, rackTime, animation);
 
     Logger::info(str::format("VR: Reload animation '", sequenceName ? sequenceName : "", "' from ", begin, " to ", end,
       " s: the magazine goes out at ", timing.out, " s and in at ", timing.in, " s, along ",

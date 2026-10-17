@@ -1,3 +1,5 @@
+#include <cfloat>
+
 #include "../../util/log/log.h"
 #include "../../util/util_string.h"
 
@@ -170,14 +172,19 @@ namespace dxvk {
   }
 
 
-  VrMagazineEvent VrManualReload::updateHands(const VrManualReloadInput& input) {
+  VrReloadEvents VrManualReload::updateHands(const VrManualReloadInput& input) {
     uint8_t* character = player();
     uint8_t* entry     = weaponEntry(character);
     uint8_t* weapon    = entry ? readField<uint8_t*>(entry, VrGame::InventoryEntryForm) : nullptr;
+    int32_t  clip      = clipCount(character);
 
     if (weapon != m_lastWeapon) {
       m_magazine.reset();
-      m_lastWeapon = weapon;
+      m_rack.reset();
+      m_pendingFill = false;
+      m_fillFrames  = 0;
+      m_lastWeapon  = weapon;
+      m_lastClip    = clip;
     }
 
     // A weapon is reloaded by hand once its magazine was found in the
@@ -194,20 +201,32 @@ namespace dxvk {
 
     if (!handled) {
       m_magazine.reset();
-      return VrMagazineEvent::None;
+      m_rack.reset();
+      m_pendingFill = false;
+      m_lockedBack  = false;
+      m_lastClip    = clip;
+      return VrReloadEvents();
     }
 
     // The game filled the clip itself: equipping, V.A.T.S., an ammunition
-    // swap, a pickup... The magazine is back in the weapon.
-    if (m_magazine.state() != VrMagazineState::InWeapon && clipCount(character) > 0) {
+    // swap, a pickup... The magazine is back in the weapon, loaded.
+    if (clip > m_lastClip && (m_magazine.state() != VrMagazineState::InWeapon || m_pendingFill)) {
       Logger::info(str::format("VR: The game filled the clip of '", weaponName(weapon),
         "', its magazine is back in the weapon"));
       m_magazine.reset();
+      m_pendingFill = false;
     }
 
     VrMagazineInput magazine;
     magazine.active = input.head && input.rightHand && input.leftHand && input.well && !input.leftOnWeapon;
     magazine.grip   = input.grip;
+
+    // The rack part is taken by a hand that holds no magazine
+    VrRackInput rack;
+    rack.active = magazine.active && input.rack
+      && (m_magazine.state() == VrMagazineState::InWeapon || m_magazine.state() == VrMagazineState::Out);
+    rack.grip       = input.grip;
+    rack.lockedBack = m_lockedBack;
 
     if (magazine.active) {
       const VrGameCameraPose& right = *input.rightHand;
@@ -220,15 +239,41 @@ namespace dxvk {
       magazine.roundsHeld = m_magazine.state() != VrMagazineState::Out || holdsRounds(character);
     }
 
-    VrMagazineEvent event = m_magazine.update(magazine);
+    if (rack.active) {
+      const VrGameCameraPose& right = *input.rightHand;
 
-    switch (event) {
+      rack.hand   = input.leftHand->position;
+      rack.rack   = vrPointFromHand(right, *input.rack);
+      rack.axis   = right.forward * input.rackAxis.x + right.up * input.rackAxis.y + right.right * input.rackAxis.z;
+      rack.travel = input.rackTravel;
+    }
+
+    // A press takes the nearer of the magazine and the rack part
+    float toEject = magazine.active && m_magazine.state() == VrMagazineState::InWeapon
+      ? m_magazine.ejectDistance(magazine) : FLT_MAX;
+    float toRack  = rack.active ? m_rack.grabDistance(rack) : FLT_MAX;
+
+    magazine.blocked = toRack < toEject;
+    rack.blocked     = !magazine.blocked;
+
+    VrReloadEvents events;
+    events.rack = m_rack.update(rack);
+
+    // The hand on the rack part does nothing with magazines
+    if (m_rack.held() || events.rack != VrRackEvent::None)
+      magazine.active = false;
+
+    events.magazine = m_magazine.update(magazine);
+
+    switch (events.magazine) {
       case VrMagazineEvent::Ejected:
-        ejectMagazine(character, weapon, input.animation ? &input.animation->out : nullptr, magazine.well);
+        ejectMagazine(character, weapon, input.animation ? &input.animation->out : nullptr, magazine.well,
+          input.rack && clip > 0);
         break;
 
       case VrMagazineEvent::Inserted:
-        insertMagazine(character, weapon, input.animation ? &input.animation->in : nullptr, magazine.well);
+        insertMagazine(character, weapon, input.animation ? &input.animation->in : nullptr, magazine.well,
+          !input.rack || clipCount(character) > 0);
         break;
 
       case VrMagazineEvent::Cleared:
@@ -255,28 +300,101 @@ namespace dxvk {
         break;
     }
 
-    return event;
+    switch (events.rack) {
+      case VrRackEvent::Grabbed:
+        Logger::info(str::format("VR: The rack part of '", weaponName(weapon), "' is taken",
+          m_lockedBack ? ", locked back" : ""));
+        break;
+
+      case VrRackEvent::Released:
+        Logger::info(str::format("VR: The rack part of '", weaponName(weapon), "' is let go of before it was all the way back"));
+        break;
+
+      case VrRackEvent::Racked:
+        rackWeapon(character, weapon, input.animation && input.animation->hasRack ? &input.animation->rack.sound : nullptr,
+          rack.rack);
+        break;
+
+      case VrRackEvent::None:
+        break;
+    }
+
+    if (m_fillFrames)
+      m_fillFrames -= 1;
+
+    m_lastClip   = clipCount(character);
+    m_lockedBack = input.rack && m_lastClip == 0 && !m_fillFrames;
+    return events;
   }
 
 
-  void VrManualReload::ejectMagazine(uint8_t* player, const uint8_t* weapon, const VrReloadSound* sound, const VrVector3& well) {
+  void VrManualReload::ejectMagazine(uint8_t* player, const uint8_t* weapon, const VrReloadSound* sound,
+      const VrVector3& well, bool chamber) {
     // The rounds of the clip are still counted in the inventory: emptying
-    // it loses none (findings/reload.md §1)
+    // it loses none (findings/reload.md §1). A chambered round stays.
     uint8_t* clip = currentAmmo(player);
     int32_t  rounds = clip ? readField<int32_t>(clip, VrGame::InventoryEntryCount) : NoClip;
 
     if (clip)
-      *reinterpret_cast<int32_t*>(clip + VrGame::InventoryEntryCount) = 0;
+      *reinterpret_cast<int32_t*>(clip + VrGame::InventoryEntryCount) = chamber ? 1 : 0;
+
+    m_pendingFill = false;
 
     if (sound)
       vrPlayReloadSound(*sound, well);
 
     Logger::info(str::format("VR: The magazine of '", weaponName(weapon), "' is taken out with ",
-      rounds, " round(s), they stay in the inventory"));
+      rounds, " round(s), they stay in the inventory", chamber ? "; one stays chambered" : ""));
   }
 
 
-  void VrManualReload::insertMagazine(uint8_t* player, uint8_t* weapon, const VrReloadSound* sound, const VrVector3& well) {
+  void VrManualReload::insertMagazine(uint8_t* player, uint8_t* weapon, const VrReloadSound* sound,
+      const VrVector3& well, bool chambered) {
+    if (!chambered) {
+      // The clip is filled when the weapon is racked
+      m_pendingFill = true;
+
+      if (sound)
+        vrPlayReloadSound(*sound, well);
+
+      Logger::info(str::format("VR: A magazine is pushed into '", weaponName(weapon),
+        "' with nothing chambered, the weapon must be racked"));
+      return;
+    }
+
+    if (fillClip(player, weapon) && sound)
+      vrPlayReloadSound(*sound, well);
+  }
+
+
+  void VrManualReload::rackWeapon(uint8_t* player, uint8_t* weapon, const VrReloadSound* sound, const VrVector3& rack) {
+    if (sound)
+      vrPlayReloadSound(*sound, rack);
+
+    int32_t clip = clipCount(player);
+
+    if (m_magazine.state() == VrMagazineState::InWeapon && m_pendingFill) {
+      m_pendingFill = false;
+      Logger::info(str::format("VR: '", weaponName(weapon), "' is racked, a round is chambered"));
+
+      if (fillClip(player, weapon))
+        m_fillFrames = ClipWatchFrames;
+    } else if (m_magazine.state() == VrMagazineState::InWeapon) {
+      Logger::info(str::format("VR: '", weaponName(weapon), "' is racked, clip ", clip,
+        clip > 0 ? ": a round was already chambered, none is lost" : ": the magazine is empty"));
+    } else if (clip > 0) {
+      // The chambered round comes out, it stays in the inventory
+      if (uint8_t* entry = currentAmmo(player))
+        *reinterpret_cast<int32_t*>(entry + VrGame::InventoryEntryCount) = 0;
+
+      Logger::info(str::format("VR: '", weaponName(weapon), "' is racked with no magazine, the chambered round is taken out"));
+    } else {
+      Logger::info(str::format("VR: '", weaponName(weapon), "' is racked with no magazine and nothing chambered"));
+    }
+  }
+
+
+  bool VrManualReload::fillClip(uint8_t* player, uint8_t* weapon) {
     // As the game's callers do, the extended magazine counts if it is installed
     uint8_t* entry = weaponEntry(player);
     uint32_t extended = entry
@@ -288,13 +406,11 @@ namespace dxvk {
     uint32_t result = reinterpret_cast<ReloadWeaponFn>(VrGame::PlayerReloadWeapon)(
       player, nullptr, weapon, 0, extended, 0);
 
-    if (sound && (result & 0xFF))
-      vrPlayReloadSound(*sound, well);
-
-    Logger::info(str::format("VR: A magazine is pushed into '", weaponName(weapon), "' (extended magazine ",
+    Logger::info(str::format("VR: The clip of '", weaponName(weapon), "' is filled (extended magazine ",
       extended, "): ", (result & 0xFF) ? "reload started" : "refused, no rounds left"));
 
     watchClip(clipCount(player));
+    return result & 0xFF;
   }
 
 

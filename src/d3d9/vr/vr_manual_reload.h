@@ -34,9 +34,24 @@ namespace dxvk {
     /// Where a magazine held by the left hand has its centre, in the left
     /// hand's frame (VrWeaponHand::magazineHeld), valid with the well
     VrVector3               held;
+    /// Where the rack part's centre is home, in the right hand's frame
+    /// (VrWeaponHand::rackPart), or \c nullptr without one
+    const VrVector3*        rack = nullptr;
+    /// Direction it is pulled back along, in the right hand's frame, and
+    /// how far in metres, valid with the rack part
+    VrVector3               rackAxis;
+    float                   rackTravel = 0.0f;
     /// The game's reload animation of the weapon, for its sounds, or
     /// \c nullptr
     const VrReloadAnimation* animation = nullptr;
+  };
+
+  /**
+   * \brief What the left hand did in a frame, for the manual reload
+   */
+  struct VrReloadEvents {
+    VrMagazineEvent magazine = VrMagazineEvent::None;
+    VrRackEvent     rack     = VrRackEvent::None;
   };
 
   /**
@@ -57,6 +72,14 @@ namespace dxvk {
    * animation. The magazine goes out and in with the sounds of the
    * weapon's reload animation. Every other reload (equipping, V.A.T.S., an ammunition
    * swap...) is the game's, and puts the magazine back in the weapon.
+   *
+   * Phase 2 (findings/reload.md §8.3): a weapon with a rack part has a
+   * round chambered while its clip is not empty. Taking its magazine out
+   * leaves the chambered round (a clip of one). A magazine pushed in with
+   * nothing chambered fills the clip only once the weapon is racked, see
+   * VrRackHand; until then the rack part is locked back. Racking with the
+   * magazine out takes the chambered round out (it stays in the
+   * inventory).
    *
    * The reloads may be started from the game's other threads, so the clip
    * left to watch is shared under a lock, and the weapon reloaded by hand
@@ -96,9 +119,9 @@ namespace dxvk {
      * Called once per frame on the game's main thread, while the game
      * is not running its update.
      *
-     * \returns What the left hand did with the magazine
+     * \returns What the left hand did with the magazine and the rack part
      */
-    VrMagazineEvent updateHands(const VrManualReloadInput& input);
+    VrReloadEvents updateHands(const VrManualReloadInput& input);
 
     /**
      * \brief Where the magazine is drawn, see VrWeaponHand::setMagazine
@@ -112,6 +135,27 @@ namespace dxvk {
      */
     float magazineSeat() const {
       return m_magazine.seat();
+    }
+
+    /**
+     * \brief Whether the left hand holds the rack part, see VrWeaponHand::setRack
+     */
+    bool rackHeld() const {
+      return m_rack.held();
+    }
+
+    /**
+     * \brief How far back the left hand holds the rack part, see VrRackHand::pull
+     */
+    float rackPull() const {
+      return m_rack.pull();
+    }
+
+    /**
+     * \brief Whether nothing is chambered in a weapon with a rack part
+     */
+    bool rackLockedBack() const {
+      return m_lockedBack;
     }
 
   private:
@@ -137,12 +181,30 @@ namespace dxvk {
     const uint8_t*  m_wellWeapon = nullptr;
 
     VrMagazineHand  m_magazine;
+    VrRackHand      m_rack;
+
+    // A magazine went in with nothing chambered: racking fills the clip.
+    // The clip count at the last frame, to tell when the game fills it, and
+    // whether the rack part is locked back.
+    bool            m_pendingFill = false;
+    int32_t         m_lastClip = 0;
+    bool            m_lockedBack = false;
+
+    // Frames left until the clip a rack filled is counted: the rack part
+    // is not locked back meanwhile
+    uint32_t        m_fillFrames = 0;
 
     void watchClip(int32_t clip);
 
-    void ejectMagazine(uint8_t* player, const uint8_t* weapon, const VrReloadSound* sound, const VrVector3& well);
+    void ejectMagazine(uint8_t* player, const uint8_t* weapon, const VrReloadSound* sound,
+      const VrVector3& well, bool chamber);
 
-    void insertMagazine(uint8_t* player, uint8_t* weapon, const VrReloadSound* sound, const VrVector3& well);
+    void insertMagazine(uint8_t* player, uint8_t* weapon, const VrReloadSound* sound,
+      const VrVector3& well, bool chambered);
+
+    void rackWeapon(uint8_t* player, uint8_t* weapon, const VrReloadSound* sound, const VrVector3& rack);
+
+    bool fillClip(uint8_t* player, uint8_t* weapon);
 
     static uint32_t __fastcall reloadHook(
             uint8_t*              player,

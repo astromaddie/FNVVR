@@ -51,6 +51,32 @@ namespace {
     return { Well.x, Well.y, Well.z - metres * M };
   }
 
+  // Rack part above the well, pulled back towards the player (south)
+  const VrVector3 Rack = { 0.0f, 0.45f * M, 1.3f * M };
+  const VrVector3 Back = { 0.0f, -1.0f, 0.0f };
+  constexpr float Travel = 0.04f;
+
+  VrRackInput rackInput(bool grip, const VrVector3& hand, bool lockedBack = false) {
+    VrRackInput in;
+    in.active     = true;
+    in.grip       = grip;
+    in.lockedBack = lockedBack;
+    in.hand       = hand;
+    in.rack       = Rack;
+    in.axis       = Back;
+    in.travel     = Travel;
+    return in;
+  }
+
+  // A point pulled back from the rack part by some metres, or beside it
+  VrVector3 behindRack(float metres) {
+    return { Rack.x, Rack.y - metres * M, Rack.z };
+  }
+
+  VrVector3 besideRack(float metres) {
+    return { Rack.x + metres * M, Rack.y, Rack.z };
+  }
+
   // Takes the magazine out and lets go of it
   void emptyWeapon(VrMagazineHand& magazine) {
     magazine.update(input(true, nearWell(0.0f)));
@@ -87,7 +113,7 @@ TEST_CASE(parts_next_to_the_magazine_are_not_magazines) {
 
 
 TEST_CASE(other_parts_are_not_magazines) {
-  CHECK(vrClassifyWeaponPart("##Slide") == VrWeaponPartKind::None);
+  CHECK(vrClassifyWeaponPart("##Cover") == VrWeaponPartKind::None);
   CHECK(vrClassifyWeaponPart("##Cylinder") == VrWeaponPartKind::None);
   CHECK(vrClassifyWeaponPart("##Shells") == VrWeaponPartKind::None);
   CHECK(vrClassifyWeaponPart("Clip") == VrWeaponPartKind::None);
@@ -408,4 +434,147 @@ TEST_CASE(magazine_hold_needs_the_hand_to_carry_it) {
 
   CHECK(vrFindMagazineHold(samples.data(), samples.size()) == samples.size());
   CHECK(vrFindMagazineHold(samples.data(), 0) == 0);
+}
+
+
+TEST_CASE(rack_parts_are_found_by_keyword) {
+  CHECK(vrClassifyWeaponPart("##Slide") == VrWeaponPartKind::Rack);
+  CHECK(vrClassifyWeaponPart("##nmBar") == VrWeaponPartKind::Rack);
+  CHECK(vrClassifyWeaponPart("##ChargingHandle") == VrWeaponPartKind::Rack);
+  CHECK(vrClassifyWeaponPart("##127SmgChargingHandle:0") == VrWeaponPartKind::Rack);
+  CHECK(vrClassifyWeaponPart("##HRBolt") == VrWeaponPartKind::Rack);
+  CHECK(vrClassifyWeaponPart("##Bolt") == VrWeaponPartKind::Rack);
+  CHECK(vrClassifyWeaponPart("##SRLever") == VrWeaponPartKind::Rack);
+  CHECK(vrClassifyWeaponPart("##G3Lever") == VrWeaponPartKind::Rack);
+  CHECK(vrClassifyWeaponPart("##cmSlide") == VrWeaponPartKind::Rack);
+}
+
+
+TEST_CASE(parts_next_to_the_rack_are_not_rack_parts) {
+  CHECK(vrClassifyWeaponPart("##nmBarLock") == VrWeaponPartKind::None);
+  CHECK(vrClassifyWeaponPart("##BoltLock") == VrWeaponPartKind::None);
+  CHECK(vrClassifyWeaponPart("##MinigunBarrel") == VrWeaponPartKind::None);
+  CHECK(vrClassifyWeaponPart("##Barrels") == VrWeaponPartKind::None);
+  CHECK(vrClassifyWeaponPart("##LR_TriggerSlide") == VrWeaponPartKind::None);
+  CHECK(vrClassifyWeaponPart("##dgLeverPin") == VrWeaponPartKind::None);
+  CHECK(vrClassifyWeaponPart("##CockingMech") == VrWeaponPartKind::None);
+  CHECK(vrClassifyWeaponPart("##Hammer") == VrWeaponPartKind::None);
+  CHECK(vrClassifyWeaponPart("##Clip") == VrWeaponPartKind::Magazine);
+}
+
+
+TEST_CASE(rack_pulled_back_all_the_way_racks) {
+  VrRackHand rack;
+
+  CHECK(rack.update(rackInput(true, besideRack(0.05f))) == VrRackEvent::Grabbed);
+  CHECK(rack.held());
+
+  CHECK(rack.update(rackInput(true, behindRack(0.02f))) == VrRackEvent::None);
+  CHECK(std::abs(rack.pull() - 0.02f) < 1e-3f);
+
+  // Not further than its travel
+  CHECK(rack.update(rackInput(true, behindRack(0.10f))) == VrRackEvent::None);
+  CHECK(std::abs(rack.pull() - Travel) < 1e-4f);
+
+  CHECK(rack.update(rackInput(false, behindRack(0.10f))) == VrRackEvent::Racked);
+  CHECK(!rack.held());
+  CHECK(rack.pull() == 0.0f);
+}
+
+
+TEST_CASE(rack_let_go_early_does_not_rack) {
+  VrRackHand rack;
+
+  CHECK(rack.update(rackInput(true, Rack)) == VrRackEvent::Grabbed);
+  CHECK(rack.update(rackInput(true, behindRack(0.02f))) == VrRackEvent::None);
+  CHECK(rack.update(rackInput(false, behindRack(0.02f))) == VrRackEvent::Released);
+}
+
+
+TEST_CASE(rack_pulled_back_and_pushed_home_racks) {
+  VrRackHand rack;
+
+  rack.update(rackInput(true, Rack));
+  rack.update(rackInput(true, behindRack(Travel)));
+  rack.update(rackInput(true, Rack));
+  CHECK(rack.pull() == 0.0f);
+  CHECK(rack.update(rackInput(false, Rack)) == VrRackEvent::Racked);
+}
+
+
+TEST_CASE(rack_locked_back_racks_when_let_go) {
+  VrRackHand rack;
+
+  CHECK(rack.update(rackInput(true, Rack, true)) == VrRackEvent::Grabbed);
+  CHECK(std::abs(rack.pull() - Travel) < 1e-4f);
+  CHECK(rack.update(rackInput(false, Rack, true)) == VrRackEvent::Racked);
+}
+
+
+TEST_CASE(rack_is_let_go_when_the_hand_leaves_sideways) {
+  VrRackHand rack;
+
+  rack.update(rackInput(true, Rack));
+  CHECK(rack.update(rackInput(true, besideRack(0.15f))) == VrRackEvent::Released);
+  CHECK(!rack.held());
+}
+
+
+TEST_CASE(rack_needs_a_press_near_it) {
+  VrRackHand rack;
+
+  CHECK(rack.update(rackInput(true, besideRack(0.2f))) == VrRackEvent::None);
+  // Holding the grip while the hand comes near takes nothing
+  CHECK(rack.update(rackInput(true, Rack)) == VrRackEvent::None);
+  CHECK(rack.update(rackInput(false, Rack)) == VrRackEvent::None);
+
+  VrRackInput blocked = rackInput(true, Rack);
+  blocked.blocked = true;
+  CHECK(rack.update(blocked) == VrRackEvent::None);
+  CHECK(!rack.held());
+
+  rack.update(rackInput(false, Rack));
+  // Along the way back counts as near it
+  CHECK(rack.update(rackInput(true, behindRack(Travel))) == VrRackEvent::Grabbed);
+}
+
+
+TEST_CASE(magazine_is_not_ejected_when_the_rack_takes_the_press) {
+  VrMagazineHand magazine;
+  VrMagazineInput in = input(true, nearWell(0.0f));
+  in.blocked = true;
+
+  CHECK(magazine.update(in) == VrMagazineEvent::None);
+  CHECK(magazine.state() == VrMagazineState::InWeapon);
+}
+
+
+TEST_CASE(rack_motion_is_found_where_it_goes_furthest_back) {
+  std::vector<VrMagazineSample> samples(40);
+
+  // Home, pulled back 4 cm from sample 10 to 20, home again at 30
+  for (size_t i = 0; i < samples.size(); i++) {
+    float back = i < 10 ? 0.0f : i < 20 ? 0.004f * float(i - 10 + 1) : i < 30 ? 0.004f * float(30 - i) : 0.0f;
+    samples[i].time   = float(i) / 60.0f;
+    samples[i].offset = { -back, 0.0f, 0.0f };
+  }
+
+  VrRackMotion motion;
+  CHECK(vrFindRackMotion(samples.data(), samples.size(), motion));
+  CHECK(motion.back == 19);
+  CHECK(motion.start == 10);
+  CHECK(std::abs(motion.travel - 0.04f) < 1e-4f);
+  CHECK(std::abs(motion.axis.x + 1.0f) < 1e-4f);
+}
+
+
+TEST_CASE(rack_motion_needs_the_part_to_move) {
+  std::vector<VrMagazineSample> samples(20);
+
+  for (size_t i = 0; i < samples.size(); i++)
+    samples[i].offset = { 0.002f, 0.0f, 0.0f };
+
+  VrRackMotion motion;
+  CHECK(!vrFindRackMotion(samples.data(), samples.size(), motion));
+  CHECK(!vrFindRackMotion(samples.data(), 0, motion));
 }

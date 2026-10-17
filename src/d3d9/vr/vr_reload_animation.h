@@ -27,6 +27,37 @@ namespace dxvk {
   };
 
   /**
+   * \brief The rack part at a point of its way back
+   */
+  struct VrRackPose {
+    /// How far back along the way it is, in metres
+    float           along = 0.0f;
+    /// The part in the weapon node's frame
+    VrGameTransform pose;
+  };
+
+  /**
+   * \brief What the game's reload animation does with a weapon's rack part
+   */
+  struct VrRackAnimation {
+    /// The part from home to all the way back, \c along never going down
+    std::vector<VrRackPose> poses;
+    /// Direction it is pulled back along, unit, in the weapon node's frame
+    VrVector3               axis;
+    /// How far, in metres
+    float                   travel = 0.0f;
+    /// The left hand holds it all the way back
+    bool                    held = false;
+    /// The rack part in the left hand bone's frame then, in units of the
+    /// hand's scale
+    VrGameTransform         partInHand;
+    /// Rotations of the bones below the left hand in their parents then
+    std::vector<VrBonePose> fingers;
+    /// The weapon chambering a round
+    VrReloadSound           sound;
+  };
+
+  /**
    * \brief What the game's reload animation does with a weapon's magazine
    *
    * Read from the first-person reload animation the game would play for
@@ -46,6 +77,9 @@ namespace dxvk {
     /// The magazine going out and going in
     VrReloadSound           out;
     VrReloadSound           in;
+    /// How the animation racks the weapon, valid if \c hasRack
+    VrRackAnimation         rack;
+    bool                    hasRack = false;
   };
 
   /**
@@ -56,7 +90,9 @@ namespace dxvk {
    * player's first-person animations. The magazine's track tells when it
    * goes out and in and along which direction, the left hand's tracks how
    * the hand holds it, and the animation's sounds nearest those times are
-   * the magazine's.
+   * the magazine's. The rack part's track, if there is one, tells how the
+   * weapon is racked, and the sound nearest the time it is furthest back
+   * is the chambering.
    *
    * Only called on the game's main thread, while the animation is not
    * played. Evaluating a track keeps nothing but its last time.
@@ -65,6 +101,7 @@ namespace dxvk {
    * \param [in] root Root of the first-person model
    * \param [in] weapon The weapon node in it
    * \param [in] magazine The magazine part below the weapon node
+   * \param [in] rack The rack part below the weapon node, or \c nullptr
    * \param [in] leftHand The left hand bone
    * \param [out] animation What the animation does
    * \returns \c false if the weapon has no first-person reload animation
@@ -75,6 +112,7 @@ namespace dxvk {
           uint8_t*              root,
           uint8_t*              weapon,
           uint8_t*              magazine,
+          uint8_t*              rack,
           uint8_t*              leftHand,
           VrReloadAnimation&    animation);
 

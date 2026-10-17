@@ -30,12 +30,10 @@ namespace dxvk {
     // Parts next to the magazine, or magazines that do not come out
     const char* const NotMagazineWords[] = { "release", "latch", "spring", "peg", "bay", "assembly", "moon" };
 
-    // Distance from a point to a segment that starts at a point and goes
-    // along a unit axis
-    float distanceToSegment(const VrVector3& point, const VrVector3& start, const VrVector3& axis, float length) {
-      float along = std::clamp(vrDot(point - start, axis), 0.0f, length);
-      return vrLength(point - (start + axis * along));
-    }
+    const char* const RackWords[] = { "slide", "bolt", "charginghandle", "lever", "bar" };
+
+    // Barrels, and parts next to the rack part
+    const char* const NotRackWords[] = { "barrel", "lock", "pin", "release", "trigger" };
 
     template<size_t N>
     bool containsAny(const std::string& name, const char* const (&words)[N]) {
@@ -67,7 +65,20 @@ namespace dxvk {
     if (containsAny(part, MagazineWords) && !containsAny(part, NotMagazineWords))
       return VrWeaponPartKind::Magazine;
 
+    if (containsAny(part, RackWords) && !containsAny(part, NotRackWords))
+      return VrWeaponPartKind::Rack;
+
     return VrWeaponPartKind::None;
+  }
+
+
+  float vrDistanceToSegment(
+    const VrVector3&            point,
+    const VrVector3&            start,
+    const VrVector3&            axis,
+          float                 length) {
+    float along = std::clamp(vrDot(point - start, axis), 0.0f, length);
+    return vrLength(point - (start + axis * along));
   }
 
 
@@ -113,12 +124,11 @@ namespace dxvk {
     // The mouth of the well, where a magazine enters it, and the way into
     // it from there
     VrVector3 mouth = input.well + input.axis * (m_reach.depth * M);
-    float toWay     = distanceToSegment(input.held, mouth, input.axis, m_reach.approach * M) / M;
+    float toWay     = vrDistanceToSegment(input.held, mouth, input.axis, m_reach.approach * M) / M;
 
     switch (m_state) {
       case VrMagazineState::InWeapon:
-        if (input.active && pressed
-         && distanceToSegment(input.hand, input.well, input.axis, m_reach.below * M) / M <= m_reach.eject) {
+        if (input.active && pressed && !input.blocked && ejectDistance(input) <= m_reach.eject) {
           seat(input, along);
           m_canInsert = false;
           return VrMagazineEvent::Ejected;
@@ -202,6 +212,62 @@ namespace dxvk {
   }
 
 
+  float VrMagazineHand::ejectDistance(const VrMagazineInput& input) const {
+    constexpr float M = VrGameUnitsPerMetre;
+    return vrDistanceToSegment(input.hand, input.well, input.axis, m_reach.below * M) / M;
+  }
+
+
+  VrRackEvent VrRackHand::update(const VrRackInput& input) {
+    bool pressed = input.grip && !m_gripDown;
+    m_gripDown = input.grip;
+
+    VrVector3 offset = (input.hand - input.rack) * (1.0f / VrGameUnitsPerMetre);
+    float along      = vrDot(offset, input.axis);
+    VrVector3 across = offset - input.axis * along;
+
+    if (!m_held) {
+      if (!input.active || !pressed || input.blocked || grabDistance(input) > m_reach.grab)
+        return VrRackEvent::None;
+
+      // A part locked back is taken where it is, all the way back
+      m_held        = true;
+      m_pullStart   = input.lockedBack ? input.travel : 0.0f;
+      m_full        = input.lockedBack;
+      m_pull        = m_pullStart;
+      m_alongStart  = along;
+      m_acrossStart = across;
+      return VrRackEvent::Grabbed;
+    }
+
+    if (!input.grip || !input.active || vrLength(across - m_acrossStart) > m_reach.leave) {
+      bool racked = m_full;
+      reset();
+      return racked ? VrRackEvent::Racked : VrRackEvent::Released;
+    }
+
+    m_pull = std::clamp(m_pullStart + along - m_alongStart, 0.0f, input.travel);
+
+    if (m_pull >= m_reach.full * input.travel)
+      m_full = true;
+
+    return VrRackEvent::None;
+  }
+
+
+  void VrRackHand::reset() {
+    m_held = false;
+    m_full = false;
+    m_pull = 0.0f;
+  }
+
+
+  float VrRackHand::grabDistance(const VrRackInput& input) const {
+    constexpr float M = VrGameUnitsPerMetre;
+    return vrDistanceToSegment(input.hand, input.rack, input.axis, input.travel * M) / M;
+  }
+
+
   bool vrFindMagazineTiming(
     const VrMagazineSample*     samples,
           size_t                count,
@@ -270,6 +336,43 @@ namespace dxvk {
     }
 
     return best;
+  }
+
+
+  bool vrFindRackMotion(
+    const VrMagazineSample*     samples,
+          size_t                count,
+          VrRackMotion&         motion) {
+    // Pulled back by more than this, the part racks the weapon
+    constexpr float Moved = 0.01f;
+    // Within this of its place, the part is home
+    constexpr float Home  = 0.003f;
+
+    size_t back = count;
+    float  far  = Moved;
+
+    for (size_t i = 0; i < count; i++) {
+      float distance = vrLength(samples[i].offset);
+
+      if (distance > far) {
+        back = i;
+        far  = distance;
+      }
+    }
+
+    if (back == count)
+      return false;
+
+    size_t start = back;
+
+    while (start > 0 && vrLength(samples[start - 1].offset) > Home)
+      start -= 1;
+
+    motion.start  = start;
+    motion.back   = back;
+    motion.axis   = samples[back].offset * (1.0f / far);
+    motion.travel = far;
+    return true;
   }
 
 
