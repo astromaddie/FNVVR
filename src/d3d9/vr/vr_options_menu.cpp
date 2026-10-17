@@ -29,7 +29,6 @@ namespace dxvk {
     // The game keeps these pointers and never frees them
     constexpr char PageText[]       = "VR";
     constexpr char ConsoleText[]    = "Console";
-    constexpr char ConsoleOpenText[] = "Open";
     constexpr char TurnText[]       = "Turning";
     constexpr char TurnSnapText[]   = "Snap";
     constexpr char TurnSmoothText[] = "Smooth";
@@ -115,32 +114,17 @@ namespace dxvk {
     }
 
 
-    void openConsole() {
-      if (g_onConsole)
-        g_onConsole();
-    }
-
-
-    // The console entry is a toggle with a single value, so that clicking
-    // its value or arrows is a change, which the game reports here
-    void __cdecl onConsoleChosen(void* option) {
-      optionValue(option)   = 0u;
-      optionDefault(option) = 0u;
-
-      if (optionsInitialised())
-        openConsole();
-    }
-
-
-    // Clicking the entry's row calls its Option callback, after the game
-    // disabled the options list as it does before opening another page
-    void __cdecl onConsoleRowClicked() {
+    // The Console entry of the Settings list. The game disabled the list
+    // before calling this, as before opening one of its pages; the
+    // console opens over the list instead, which stays usable.
+    void __cdecl chooseConsole() {
       uint8_t* menu = startMenu();
 
       if (menu)
-        reinterpret_cast<SetEnabledFn>(VrGame::SetListEnabled)(menu + VrGame::StartMenuOptionsList, true);
+        reinterpret_cast<SetEnabledFn>(VrGame::SetListEnabled)(menu + VrGame::StartMenuSettingsList, true);
 
-      openConsole();
+      if (g_onConsole)
+        g_onConsole();
     }
 
 
@@ -228,15 +212,16 @@ namespace dxvk {
 
       append(optionArray, nullptr, &option);
 
-      // The page lists its options in the order they are added
-      void* console = appendUserOption(ConsoleText, &onConsoleChosen, ToggleType, 1, ArrowSpacing,
-        ConsoleOpenText);
+      void* consoleMemory = allocate(VrGame::OptionSize);
 
-      if (console) {
-        using RowCallback = void (__cdecl*)();
-        *reinterpret_cast<RowCallback*>(static_cast<uint8_t*>(console) + VrGame::OptionCallback) = &onConsoleRowClicked;
+      if (consoleMemory) {
+        void* console = reinterpret_cast<OptionCtorFn>(VrGame::OptionConstruct)(
+          consoleMemory, ConsoleText, &chooseConsole, VrGame::OptionMaskSettingsList);
+
+        append(optionArray, nullptr, &console);
       }
 
+      // The page lists its options in the order they are added
       appendUserOption(TurnText, &onTurnChanged, ToggleType, ToggleValues, ArrowSpacing,
         TurnSnapText, TurnSmoothText);
       appendUserOption(SpeedText, &onSpeedChanged, SliderType, VrSmoothTurnSpeedSteps, 0);
@@ -246,7 +231,7 @@ namespace dxvk {
 
 
     // Replaces the call that adds the Controls entry to the Settings list:
-    // adds it, then the VR entry and its options
+    // adds it, then the VR entry and its options, and the Console entry
     int __fastcall appendControlsEntry(void* optionArray, void* unused, void** option) {
       int index = reinterpret_cast<AppendFn>(VrGame::OptionArrayAppend)(optionArray, nullptr, option);
       appendPage(optionArray);

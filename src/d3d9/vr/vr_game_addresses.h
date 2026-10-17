@@ -1063,17 +1063,6 @@ namespace dxvk {
     constexpr uint8_t   SetListEnabledPrologue[]      = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x4E, 0xEA };
 
     /**
-     * A Settings page entry that runs a command when its row is clicked, see
-     * findings/console.md §3. StartMenu::DoClick calls the Option callback
-     * (OptionCallback, void __cdecl()) of the clicked row of any of the
-     * menu's list boxes, after disabling that list box; a user option's
-     * callback is null, its constructor passes none. The options page's
-     * list box is at StartMenuOptionsList.
-     */
-    constexpr uintptr_t OptionCallback       = 0x08;
-    constexpr uintptr_t StartMenuOptionsList = 0x114;
-
-    /**
      * The console, see findings/console.md.
      *
      * - ConsoleGlobal: MenuConsole*, null until the interface creates it;
