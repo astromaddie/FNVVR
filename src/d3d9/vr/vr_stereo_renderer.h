@@ -24,6 +24,7 @@
 #include "vr_charge_ring.h"
 #include "vr_melee_swing.h"
 #include "vr_menu_scenes.h"
+#include "vr_manual_reload.h"
 #include "vr_npc_gaze.h"
 #include "vr_pipboy_animation.h"
 #include "vr_weapon_drawn.h"
@@ -346,6 +347,9 @@ namespace dxvk {
 
     // The other actors look at the head
     std::unique_ptr<VrNpcGaze> m_npcGaze;
+
+    // Reloading with the hands
+    std::unique_ptr<VrManualReload> m_manualReload;
 
     // God mode, weapons and ammunition, for testing (d3d9.vrDeveloperMode)
     std::unique_ptr<VrDeveloperMode> m_developerMode;

@@ -10,6 +10,7 @@
 #include "vr_game_memory.h"
 #include "vr_game_nodes.h"
 #include "vr_weapon_hand.h"
+#include "vr_weapon_parts.h"
 
 namespace dxvk {
 
@@ -803,6 +804,15 @@ namespace dxvk {
         up * DegreesPerRadian, " degrees up of the hand",
         muzzle ? "" : " (no projectile node, the shots follow the hand)"));
       m_loggedBarrelWeapon = weapon;
+    }
+
+    // The weapon's model is attached below the node once it is loaded
+    uint32_t objects = vrCountWeaponObjects(weapon);
+
+    if (form != m_loggedPartsForm || objects != m_loggedPartsObjects) {
+      vrLogWeaponParts(weapon, form);
+      m_loggedPartsForm    = form;
+      m_loggedPartsObjects = objects;
     }
 
     if (!m_loggedActive) {

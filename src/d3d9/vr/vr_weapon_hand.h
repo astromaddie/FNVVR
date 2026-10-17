@@ -269,6 +269,11 @@ namespace dxvk {
     // dereferenced
     const uint8_t*   m_loggedBarrelWeapon = nullptr;
 
+    // Weapon whose parts were last logged, compared but not dereferenced,
+    // and the number of objects of its model then
+    const uint8_t*   m_loggedPartsForm    = nullptr;
+    uint32_t         m_loggedPartsObjects = 0;
+
     bool             m_loggedActive = false;
     bool             m_loggedFrame  = false;
     bool             m_loggedArms   = false;

@@ -56,6 +56,7 @@ vr_dxvk_src = files([
   'vr_power_attack_rules.cpp',
   'vr_charge_ring.cpp',
   'vr_menu_scenes.cpp',
+  'vr_manual_reload.cpp',
   'vr_npc_gaze.cpp',
   'vr_pipboy_animation.cpp',
   'vr_pipboy_control.cpp',
@@ -70,6 +71,7 @@ vr_dxvk_src = files([
   'vr_tile_texture_retry.cpp',
   'vr_weapon_drawn.cpp',
   'vr_weapon_hand.cpp',
+  'vr_weapon_parts.cpp',
 ])
 
 # Unit tests for the VR layer. They are built with the host compiler so they

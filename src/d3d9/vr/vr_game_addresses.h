@@ -1302,6 +1302,47 @@ namespace dxvk {
     /// ActorValue::Index of ActionPoints
     constexpr uint32_t  AvActionPoints          = 12;
 
+    /**
+     * Manual reload, see findings/reload.md. Every reload of the player goes
+     * through PlayerCharacter::ReloadWeaponNV, reached through this entry
+     * of the PlayerCharacter vtable: __thiscall with the weapon, the reload
+     * animation (0 none, 1 queued, 2 played at once), whether the extended
+     * magazine counts and whether a looping weapon loads the whole
+     * inventory (both bools on the stack), ret 0x10, returns a bool in AL.
+     * Its callers are told apart by their return address: the reload
+     * control (CheckUserInputAttacks) and the automatic reload when a shot
+     * empties the clip (Actor::UseAmmo).
+     */
+    constexpr uintptr_t PlayerReloadWeaponSlot = 0x0108AE28;
+    constexpr uintptr_t PlayerReloadWeapon     = 0x0095D3F0;
+    constexpr uintptr_t ReloadReturnControl    = 0x00949803;
+    constexpr uintptr_t ReloadReturnEmptyClip  = 0x008A8C31;
+
+    /**
+     * The clip: the process's virtual GetCurrentAmmo (MiddleHighProcess
+     * 0x005F7590 reads +0x118) returns an inventory entry whose count is
+     * the rounds in the clip.
+     */
+    constexpr uintptr_t ProcessCurrentAmmoSlot = 0x14C;
+    constexpr uintptr_t InventoryEntryCount    = 0x04;
+
+    /**
+     * Jams: when Actor::StartAttack rolls a jam it looks up the jam
+     * animation group with Actor::GetAnimGroup (__thiscall with the group,
+     * the weapon entry, a hand-to-hand check and the animation, ret 0x10,
+     * returns the 16-bit group) at this call, and starts neither the jam
+     * nor the attack if the group returned is not the jam group.
+     */
+    constexpr uintptr_t JamAnimGroupCallSite   = 0x00894040;
+    constexpr uintptr_t ActorGetAnimGroup      = 0x00897910;
+
+    /**
+     * Weapon form: the data of its name (TESFullName at +0x30) and of its
+     * model's path (TESModel at +0x3C). Its clip size is WeaponClipRounds.
+     */
+    constexpr uintptr_t WeaponFullName         = 0x34;
+    constexpr uintptr_t WeaponModelPath        = 0x40;
+
   }
 
 }

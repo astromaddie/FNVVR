@@ -275,6 +275,11 @@ namespace dxvk {
     if (!renderer->m_npcGaze)
       Logger::info("VR: The player's look-at location was not found, actors look at the game's camera");
 
+    renderer->m_manualReload = VrManualReload::install();
+
+    if (!renderer->m_manualReload)
+      Logger::info("VR: The player's reload was not found, the weapons are reloaded as in the game");
+
     if (developer.enabled) {
       renderer->m_developerMode = VrDeveloperMode::install(developer.weaponTypes);
 
@@ -426,6 +431,9 @@ namespace dxvk {
 
     if (m_developerMode)
       m_developerMode->update(state);
+
+    if (m_manualReload)
+      m_manualReload->update();
 
     if (showsPanel(state)) {
       m_layer = InterfaceLayer::None;
