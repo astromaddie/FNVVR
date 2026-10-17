@@ -441,9 +441,11 @@ namespace dxvk {
    * \brief How the game's reload animation pulls the rack part back
    */
   struct VrRackMotion {
-    /// The sample it starts moving at, and the one it is furthest back at
+    /// The sample it starts moving at, the one it is furthest back at
+    /// and the one it is home again at (the last if it stays back)
     size_t    start = 0;
     size_t    back  = 0;
+    size_t    home  = 0;
     /// Direction it is pulled back along, unit, in the weapon's frame
     VrVector3 axis;
     /// How far, in metres
@@ -455,7 +457,8 @@ namespace dxvk {
    *
    * The rack part is furthest back where it is furthest from its place,
    * which must be more than a centimetre; it starts moving the last time
-   * before that it was within a few millimetres of its place.
+   * before that it was within a few millimetres of its place, and is home
+   * the first time after that it is that near again.
    *
    * \param [in] samples The rack part through the animation, in time order
    * \param [in] count Number of samples
@@ -481,6 +484,25 @@ namespace dxvk {
     const float*                times,
           size_t                count,
           float                 time,
+          float                 window,
+          int32_t               exclude);
+
+  /**
+   * \brief Finds the sound played nearest a stretch of time
+   *
+   * \param [in] times Times of the sounds
+   * \param [in] count Number of sounds
+   * \param [in] from Start of the stretch
+   * \param [in] to End of the stretch
+   * \param [in] window How far outside the stretch a sound may be
+   * \param [in] exclude A sound not to pick, or -1
+   * \returns The sound's index, or -1 if none is that near
+   */
+  int32_t vrFindSoundDuring(
+    const float*                times,
+          size_t                count,
+          float                 from,
+          float                 to,
           float                 window,
           int32_t               exclude);
 

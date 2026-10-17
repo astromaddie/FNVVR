@@ -334,7 +334,8 @@ namespace dxvk {
     /**
      * \brief Reads how the sequence pulls the rack part back
      *
-     * \param [out] time When it is furthest back
+     * \param [out] from When it starts moving
+     * \param [out] to When it is home again
      */
     bool readRack(
       const SequenceTracks&       tracks,
@@ -345,7 +346,8 @@ namespace dxvk {
             float                 begin,
             float                 end,
             VrRackAnimation&      animation,
-            float&                time) {
+            float&                from,
+            float&                to) {
       std::vector<VrMagazineSample> samples;
       std::vector<Pose> poses;
 
@@ -384,7 +386,9 @@ namespace dxvk {
 
       // The left hand holds the part all the way back if it is at its
       // centre then; the right hand may rack some weapons
-      time = samples[motion.back].time;
+      float time = samples[motion.back].time;
+      from = samples[motion.start].time;
+      to   = samples[motion.home].time;
 
       Pose hand, part;
       animation.held = false;
@@ -402,7 +406,7 @@ namespace dxvk {
 
         Logger::info(str::format("VR: Reload animation racks '", partName(rack), "' ", motion.travel * 100.0f,
           " cm back along ", motion.axis.x, ", ", motion.axis.y, ", ", motion.axis.z, " in the weapon, from ",
-          samples[motion.start].time, " to ", time, " s; its centre is then ", distance * 100.0f,
+          from, " to ", time, " s, home at ", to, " s; its centre is then ", distance * 100.0f,
           " cm from the left hand bone", animation.held ? ", which holds it" : ", which does not hold it"));
       }
 
@@ -416,7 +420,7 @@ namespace dxvk {
     }
 
 
-    void readSounds(const uint8_t* sequence, const VrMagazineTiming& timing, float rackTime, VrReloadAnimation& animation) {
+    void readSounds(const uint8_t* sequence, const VrMagazineTiming& timing, float rackFrom, float rackTo, VrReloadAnimation& animation) {
       auto group = readField<const uint8_t*>(sequence, VrGame::AnimSequenceGroup);
 
       if (!group)
@@ -453,7 +457,8 @@ namespace dxvk {
         return sound;
       };
 
-      // The rack's sound is neither of the magazine's
+      // The rack's sound is neither of the magazine's; it is played from
+      // the time the part leaves its place to the time it is home again
       std::vector<float> others = times;
 
       for (int32_t index : { out, in }) {
@@ -462,7 +467,7 @@ namespace dxvk {
       }
 
       int32_t rack = animation.hasRack
-        ? vrFindNearestSound(others.data(), others.size(), rackTime, SoundWindow, -1)
+        ? vrFindSoundDuring(others.data(), others.size(), rackFrom, rackTo, SoundWindow, -1)
         : -1;
 
       animation.out = toSound(out);
@@ -587,13 +592,14 @@ namespace dxvk {
     // The fingers the animation moves
     animation.fingers = readFingers(tracks, leftHand, timing.grip);
 
-    float rackTime = 0.0f;
-    animation.hasRack = rack && readRack(tracks, root, weapon, rack, leftHand, begin, end, animation.rack, rackTime);
+    float rackFrom = 0.0f;
+    float rackTo   = 0.0f;
+    animation.hasRack = rack && readRack(tracks, root, weapon, rack, leftHand, begin, end, animation.rack, rackFrom, rackTo);
 
     if (rack && !animation.hasRack)
       Logger::info(str::format("VR: The reload animation does not rack '", partName(rack), "'"));
 
-    readSounds(sequence, timing, rackTime, animation);
+    readSounds(sequence, timing, rackFrom, rackTo, animation);
 
     Logger::info(str::format("VR: Reload animation '", sequenceName ? sequenceName : "", "' from ", begin, " to ", end,
       " s: the magazine goes out at ", timing.out, " s and in at ", timing.in, " s, along ",

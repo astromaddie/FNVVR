@@ -368,8 +368,14 @@ namespace dxvk {
     while (start > 0 && vrLength(samples[start - 1].offset) > Home)
       start -= 1;
 
+    size_t home = back;
+
+    while (home + 1 < count && vrLength(samples[home].offset) > Home)
+      home += 1;
+
     motion.start  = start;
     motion.back   = back;
+    motion.home   = home;
     motion.axis   = samples[back].offset * (1.0f / far);
     motion.travel = far;
     return true;
@@ -382,11 +388,22 @@ namespace dxvk {
           float                 time,
           float                 window,
           int32_t               exclude) {
+    return vrFindSoundDuring(times, count, time, time, window, exclude);
+  }
+
+
+  int32_t vrFindSoundDuring(
+    const float*                times,
+          size_t                count,
+          float                 from,
+          float                 to,
+          float                 window,
+          int32_t               exclude) {
     int32_t nearest = -1;
     float   best    = window;
 
     for (size_t i = 0; i < count; i++) {
-      float distance = std::abs(times[i] - time);
+      float distance = std::max({ from - times[i], times[i] - to, 0.0f });
 
       if (int32_t(i) != exclude && distance <= best) {
         nearest = int32_t(i);

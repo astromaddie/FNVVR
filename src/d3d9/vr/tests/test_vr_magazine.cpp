@@ -563,8 +563,35 @@ TEST_CASE(rack_motion_is_found_where_it_goes_furthest_back) {
   CHECK(vrFindRackMotion(samples.data(), samples.size(), motion));
   CHECK(motion.back == 19);
   CHECK(motion.start == 10);
+  CHECK(motion.home == 30);
   CHECK(std::abs(motion.travel - 0.04f) < 1e-4f);
   CHECK(std::abs(motion.axis.x + 1.0f) < 1e-4f);
+}
+
+
+TEST_CASE(rack_motion_stays_back_to_the_end) {
+  std::vector<VrMagazineSample> samples(30);
+
+  // Locked back at sample 10 and never sent home
+  for (size_t i = 0; i < samples.size(); i++)
+    samples[i].offset = { i < 10 ? 0.0f : -0.05f, 0.0f, 0.0f };
+
+  VrRackMotion motion;
+  CHECK(vrFindRackMotion(samples.data(), samples.size(), motion));
+  CHECK(motion.start == 10);
+  CHECK(motion.back == 10);
+  CHECK(motion.home == 29);
+}
+
+
+TEST_CASE(rack_sound_is_found_while_the_part_is_away) {
+  // Slide locked back at 0.1 s, sent home with its sound at 1.4 s
+  const float times[] = { 0.0f, 0.8f, 1.4f };
+
+  CHECK(vrFindSoundDuring(times, 3, 0.1f, 0.5f, 0.4f, -1) == 0);
+  CHECK(vrFindSoundDuring(times, 3, 1.0f, 1.45f, 0.4f, -1) == 2);
+  CHECK(vrFindSoundDuring(times, 3, 1.6f, 1.7f, 0.1f, -1) == -1);
+  CHECK(vrFindSoundDuring(times, 3, 1.6f, 1.7f, 0.4f, -1) == 2);
 }
 
 
