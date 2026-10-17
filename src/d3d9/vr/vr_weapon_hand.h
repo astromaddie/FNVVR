@@ -236,10 +236,11 @@ namespace dxvk {
      *
      * \param [in] held The left hand holds it
      * \param [in] pull How far back the hand holds it, in metres
-     * \param [in] lockedBack Nothing is chambered: let go of, it stays
-     *    all the way back
+     * \param [in] rest How far back it rests while the hand does not hold
+     *    it, in metres: all the way back while nothing is chambered, part
+     *    of the way while the weapon is jammed
      */
-    void setRack(bool held, float pull, bool lockedBack);
+    void setRack(bool held, float pull, float rest);
 
     /**
      * \brief Where the rack part's centre is when it is home
@@ -404,7 +405,7 @@ namespace dxvk {
     // its rack part the name was logged for, compared but not dereferenced
     bool             m_rackHeld = false;
     float            m_rackPull = 0.0f;
-    bool             m_rackLockedBack = false;
+    float            m_rackRest = 0.0f;
     VrVector3        m_rackCentre;
     VrVector3        m_rackAxis;
     float            m_rackTravel = 0.0f;

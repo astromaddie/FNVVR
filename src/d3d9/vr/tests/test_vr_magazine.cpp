@@ -56,11 +56,11 @@ namespace {
   const VrVector3 Back = { 0.0f, -1.0f, 0.0f };
   constexpr float Travel = 0.04f;
 
-  VrRackInput rackInput(bool grip, const VrVector3& hand, bool lockedBack = false) {
+  VrRackInput rackInput(bool grip, const VrVector3& hand, float rest = 0.0f) {
     VrRackInput in;
     in.active     = true;
     in.grip       = grip;
-    in.lockedBack = lockedBack;
+    in.rest       = rest;
     in.hand       = hand;
     in.rack       = Rack;
     in.axis       = Back;
@@ -505,9 +505,24 @@ TEST_CASE(rack_pulled_back_and_pushed_home_racks) {
 TEST_CASE(rack_locked_back_racks_when_let_go) {
   VrRackHand rack;
 
-  CHECK(rack.update(rackInput(true, Rack, true)) == VrRackEvent::Grabbed);
+  CHECK(rack.update(rackInput(true, Rack, Travel)) == VrRackEvent::Grabbed);
   CHECK(std::abs(rack.pull() - Travel) < 1e-4f);
-  CHECK(rack.update(rackInput(false, Rack, true)) == VrRackEvent::Racked);
+  CHECK(rack.update(rackInput(false, Rack, Travel)) == VrRackEvent::Racked);
+}
+
+
+TEST_CASE(rack_jammed_is_taken_where_it_rests_and_pulled_all_the_way) {
+  VrRackHand rack;
+  float rest = 0.3f * Travel;
+
+  CHECK(rack.update(rackInput(true, Rack, rest)) == VrRackEvent::Grabbed);
+  CHECK(std::abs(rack.pull() - rest) < 1e-4f);
+  CHECK(rack.update(rackInput(false, Rack, rest)) == VrRackEvent::Released);
+
+  rack.update(rackInput(true, Rack, rest));
+  rack.update(rackInput(true, behindRack(Travel), rest));
+  CHECK(std::abs(rack.pull() - Travel) < 1e-4f);
+  CHECK(rack.update(rackInput(false, behindRack(Travel), rest)) == VrRackEvent::Racked);
 }
 
 

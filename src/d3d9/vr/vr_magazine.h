@@ -288,8 +288,10 @@ namespace dxvk {
     /// A press of the grip does not take the rack part: it is nearer the
     /// magazine, see VrMagazineHand
     bool      blocked = false;
-    /// The rack part is locked back: nothing is chambered
-    bool      lockedBack = false;
+    /// How far back the rack part rests when no hand holds it, in metres:
+    /// its travel when it is locked back (nothing is chambered), part of
+    /// it when the weapon is jammed, 0 when it is home
+    float     rest = 0.0f;
     /// Left hand: the middle of the grip
     VrVector3 hand;
     /// Where the centre of the rack part is when it is home
@@ -319,9 +321,9 @@ namespace dxvk {
    * The left grip pressed near the rack part, or along the way it is
    * pulled back, takes it: it follows the hand back along its way, up to
    * its travel. Let go of, or left sideways, it goes home by itself, and
-   * chambers a round if it was pulled back all the way. A part locked
-   * back is already all the way back: taking it and letting it go is
-   * enough.
+   * chambers a round if it was pulled back all the way. It is taken
+   * where it rests: a part locked back is already all the way back, so
+   * taking it and letting it go is enough.
    */
   class VrRackHand {
 

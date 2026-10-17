@@ -920,9 +920,12 @@ namespace dxvk {
         break;
     }
 
+    if (events.jammed)
+      m_backend.applyHaptic(VrHand::Right, MagazineInsertedHaptic, MagazineHapticDuration);
+
     if (m_weaponHand) {
       m_weaponHand->setMagazine(m_manualReload->magazineState(), m_manualReload->magazineSeat());
-      m_weaponHand->setRack(m_manualReload->rackHeld(), m_manualReload->rackPull(), m_manualReload->rackLockedBack());
+      m_weaponHand->setRack(m_manualReload->rackHeld(), m_manualReload->rackPull(), m_manualReload->rackRest());
     }
   }
 

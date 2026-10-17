@@ -1337,6 +1337,24 @@ namespace dxvk {
     constexpr uintptr_t ActorGetAnimGroup      = 0x00897910;
 
     /**
+     * Before it rolls a jam, Actor::StartAttack reads the clip's count
+     * with the inventory entry's GetCount (__thiscall, returns [ecx+4]) at
+     * these two calls: with fewer rounds than a shot uses and none at all,
+     * the attack does not start and the player hears the weapon's attack
+     * fail sound (the dry click) when the attack control was just pressed.
+     * See findings/reload.md §5.2.
+     */
+    constexpr uintptr_t StartAttackClipCallSite    = 0x00893B88;
+    constexpr uintptr_t StartAttackClipEmptyCallSite = 0x00893C24;
+    constexpr uintptr_t InventoryEntryGetCount     = 0x00726070;
+
+    /**
+     * Weapon form: its attack fail sound (TESSound*,
+     * TESObjectWEAP::GetAttackFailSound 0x005224C0)
+     */
+    constexpr uintptr_t WeaponAttackFailSound      = 0x22C;
+
+    /**
      * Weapon form: the data of its name (TESFullName at +0x30) and of its
      * model's path (TESModel at +0x3C). Its clip size is WeaponClipRounds.
      */

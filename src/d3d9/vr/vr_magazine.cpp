@@ -230,10 +230,10 @@ namespace dxvk {
       if (!input.active || !pressed || input.blocked || grabDistance(input) > m_reach.grab)
         return VrRackEvent::None;
 
-      // A part locked back is taken where it is, all the way back
+      // The part is taken where it rests: locked back, all the way back
       m_held        = true;
-      m_pullStart   = input.lockedBack ? input.travel : 0.0f;
-      m_full        = input.lockedBack;
+      m_pullStart   = std::clamp(input.rest, 0.0f, input.travel);
+      m_full        = m_pullStart >= m_reach.full * input.travel;
       m_pull        = m_pullStart;
       m_alongStart  = along;
       m_acrossStart = across;

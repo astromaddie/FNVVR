@@ -47,7 +47,17 @@ namespace dxvk {
     // Clip count logged when the player has no clip
     constexpr int32_t NoClip = -1;
 
+    // Animation group StartAttack does not take for the jam's, so that it
+    // plays no jam animation
+    constexpr uint32_t NoAnimGroup = 0xFFFF;
+
+    // Part of its travel the rack part of a jammed weapon rests back by
+    constexpr float JamRest = 0.3f;
+
     VrManualReload* g_manualReload = nullptr;
+
+    // StartAttack's clip reads were redirected: jams can be held
+    bool g_holdsJams = false;
 
     template<typename T>
     T readField(const uint8_t* base, uintptr_t offset) {
@@ -110,6 +120,10 @@ namespace dxvk {
       }
     }
 
+    bool inVats() {
+      return *reinterpret_cast<const uint32_t*>(VrGame::VatsCameraState) != 0;
+    }
+
     const char* weaponName(const uint8_t* weapon) {
       const char* name = weapon ? readField<const char*>(weapon, VrGame::WeaponFullName) : nullptr;
       return name ? name : "";
@@ -136,6 +150,15 @@ namespace dxvk {
     if (!VrGameMemory::redirectCall(VrGame::JamAnimGroupCallSite, VrGame::ActorGetAnimGroup,
         reinterpret_cast<const void*>(&VrManualReload::jamGroupHook)))
       Logger::warn("VR: The jam animation call was not found, the player's jams are not logged");
+
+    // Both reads of the clip, or the attack would start after the first
+    g_holdsJams = VrGameMemory::redirectCall(VrGame::StartAttackClipCallSite, VrGame::InventoryEntryGetCount,
+        reinterpret_cast<const void*>(&VrManualReload::clipCountHook))
+      && VrGameMemory::redirectCall(VrGame::StartAttackClipEmptyCallSite, VrGame::InventoryEntryGetCount,
+        reinterpret_cast<const void*>(&VrManualReload::clipCountHook));
+
+    if (!g_holdsJams)
+      Logger::warn("VR: The clip reads of the attack were not found, jams are left to the game");
 
     std::unique_ptr<VrManualReload> reload(new VrManualReload());
     g_manualReload = reload.get();
@@ -183,6 +206,7 @@ namespace dxvk {
       m_rack.reset();
       m_pendingFill = false;
       m_fillFrames  = 0;
+      m_jammed      = false;
       m_lastWeapon  = weapon;
       m_lastClip    = clip;
     }
@@ -204,6 +228,9 @@ namespace dxvk {
       m_rack.reset();
       m_pendingFill = false;
       m_lockedBack  = false;
+      m_jammed      = false;
+      m_jamStarted  = false;
+      m_rackRest    = 0.0f;
       m_lastClip    = clip;
       return VrReloadEvents();
     }
@@ -215,6 +242,7 @@ namespace dxvk {
         "', its magazine is back in the weapon"));
       m_magazine.reset();
       m_pendingFill = false;
+      clearJam(weapon, "the game reloaded it");
     }
 
     VrMagazineInput magazine;
@@ -226,7 +254,7 @@ namespace dxvk {
     rack.active = magazine.active && input.rack
       && (m_magazine.state() == VrMagazineState::InWeapon || m_magazine.state() == VrMagazineState::Out);
     rack.grip       = input.grip;
-    rack.lockedBack = m_lockedBack;
+    rack.rest       = m_rackRest;
 
     if (magazine.active) {
       const VrGameCameraPose& right = *input.rightHand;
@@ -257,6 +285,15 @@ namespace dxvk {
     rack.blocked     = !magazine.blocked;
 
     VrReloadEvents events;
+    events.jammed = m_jamStarted.exchange(false);
+
+    // The trigger was pulled and nothing fired: the dry click
+    if (events.jammed && input.rightHand) {
+      VrReloadSound click;
+      click.sound = readField<const uint8_t*>(weapon, VrGame::WeaponAttackFailSound);
+      vrPlayReloadSound(click, rack.active ? rack.rack : input.rightHand->position);
+    }
+
     events.rack = m_rack.update(rack);
 
     // The hand on the rack part does nothing with magazines
@@ -269,6 +306,10 @@ namespace dxvk {
       case VrMagazineEvent::Ejected:
         ejectMagazine(character, weapon, input.animation ? &input.animation->out : nullptr, magazine.well,
           input.rack && clip > 0);
+
+        // Without a rack part, changing the magazine clears a jam
+        if (!input.rack)
+          clearJam(weapon, "its magazine was taken out");
         break;
 
       case VrMagazineEvent::Inserted:
@@ -303,7 +344,7 @@ namespace dxvk {
     switch (events.rack) {
       case VrRackEvent::Grabbed:
         Logger::info(str::format("VR: The rack part of '", weaponName(weapon), "' is taken",
-          m_lockedBack ? ", locked back" : ""));
+          m_lockedBack ? ", locked back" : (m_jammed ? ", jammed" : "")));
         break;
 
       case VrRackEvent::Released:
@@ -313,6 +354,7 @@ namespace dxvk {
       case VrRackEvent::Racked:
         rackWeapon(character, weapon, input.animation && input.animation->hasRack ? &input.animation->rack.sound : nullptr,
           rack.rack);
+        clearJam(weapon, "it was racked");
         break;
 
       case VrRackEvent::None:
@@ -324,7 +366,21 @@ namespace dxvk {
 
     m_lastClip   = clipCount(character);
     m_lockedBack = input.rack && m_lastClip == 0 && !m_fillFrames;
+
+    if (!input.rack)
+      m_rackRest = 0.0f;
+    else if (m_lockedBack)
+      m_rackRest = input.rackTravel;
+    else
+      m_rackRest = m_jammed ? JamRest * input.rackTravel : 0.0f;
+
     return events;
+  }
+
+
+  void VrManualReload::clearJam(const uint8_t* weapon, const char* how) {
+    if (m_jammed.exchange(false))
+      Logger::info(str::format("VR: '", weaponName(weapon), "' is no longer jammed: ", how));
   }
 
 
@@ -459,22 +515,49 @@ namespace dxvk {
   }
 
 
+  int32_t __fastcall VrManualReload::clipCountHook(
+          uint8_t*              entry,
+          void*                 unused) {
+    // A jammed weapon does not fire: the attack sees an empty clip and
+    // clicks. The game's own jam goes on in V.A.T.S.
+    if (g_manualReload && g_manualReload->m_jammed.load() && !inVats() && entry == currentAmmo(player()))
+      return 0;
+
+    return readField<int32_t>(entry, VrGame::InventoryEntryCount);
+  }
+
+
   uint32_t __fastcall VrManualReload::jamGroupHook(
           uint8_t*              actor,
           void*                 unused,
           uint32_t              group,
-          void*                 weaponEntry,
+          void*                 entry,
           uint32_t              checkHandToHand,
           void*                 animation) {
     uint32_t found = reinterpret_cast<GetAnimGroupFn>(VrGame::ActorGetAnimGroup)(
-      actor, nullptr, group, weaponEntry, checkHandToHand, animation);
+      actor, nullptr, group, entry, checkHandToHand, animation);
 
-    if (actor == player()) {
-      Logger::info(str::format("VR: The player's weapon jammed (group 0x", std::hex, group,
-        ", animation group 0x", found & 0xFFFF, std::dec, "), clip ", clipCount(actor)));
-    }
+    if (actor != player())
+      return found;
 
-    return found;
+    uint8_t* weapon = weaponEntry(actor);
+    weapon = weapon ? readField<uint8_t*>(weapon, VrGame::InventoryEntryForm) : nullptr;
+
+    // A weapon reloaded by hand stays jammed until it is racked: no jam
+    // animation, and no attack
+    bool byHand = g_manualReload && g_holdsJams && weapon
+      && weapon == g_manualReload->m_handWeapon.load() && !inVats();
+
+    Logger::info(str::format("VR: The player's weapon jammed (group 0x", std::hex, group,
+      ", animation group 0x", found & 0xFFFF, std::dec, "), clip ", clipCount(actor),
+      byHand ? ": it must be racked, the game's jam animation is not played" : ""));
+
+    if (!byHand)
+      return found;
+
+    g_manualReload->m_jammed     = true;
+    g_manualReload->m_jamStarted = true;
+    return NoAnimGroup;
   }
 
 }

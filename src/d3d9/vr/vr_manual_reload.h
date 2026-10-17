@@ -52,6 +52,8 @@ namespace dxvk {
   struct VrReloadEvents {
     VrMagazineEvent magazine = VrMagazineEvent::None;
     VrRackEvent     rack     = VrRackEvent::None;
+    /// The weapon jammed since the last frame
+    bool            jammed   = false;
   };
 
   /**
@@ -80,6 +82,13 @@ namespace dxvk {
    * VrRackHand; until then the rack part is locked back. Racking with the
    * magazine out takes the chambered round out (it stays in the
    * inventory).
+   *
+   * Phase 3 (findings/reload.md §8.4): when the game rolls a jam of a
+   * weapon reloaded by hand, its jam animation is not played and the
+   * weapon stays jammed: the game sees an empty clip when an attack
+   * starts, so the trigger only clicks, and the rack part rests part of
+   * the way back. Racking clears the jam; without a rack part, taking
+   * the magazine out does. In V.A.T.S. the game's own jam is kept.
    *
    * The reloads may be started from the game's other threads, so the clip
    * left to watch is shared under a lock, and the weapon reloaded by hand
@@ -152,10 +161,10 @@ namespace dxvk {
     }
 
     /**
-     * \brief Whether nothing is chambered in a weapon with a rack part
+     * \brief How far back the rack part rests, see VrWeaponHand::setRack
      */
-    bool rackLockedBack() const {
-      return m_lockedBack;
+    float rackRest() const {
+      return m_rackRest;
     }
 
   private:
@@ -194,6 +203,16 @@ namespace dxvk {
     // is not locked back meanwhile
     uint32_t        m_fillFrames = 0;
 
+    // The weapon reloaded by hand is jammed, and it jammed since the last
+    // frame; set by the game's attack, which may run on another thread
+    std::atomic<bool> m_jammed     = { false };
+    std::atomic<bool> m_jamStarted = { false };
+
+    // How far back the rack part rests, in metres
+    float           m_rackRest = 0.0f;
+
+    void clearJam(const uint8_t* weapon, const char* how);
+
     void watchClip(int32_t clip);
 
     void ejectMagazine(uint8_t* player, const uint8_t* weapon, const VrReloadSound* sound,
@@ -213,6 +232,10 @@ namespace dxvk {
             uint32_t              animation,
             uint32_t              useMod,
             uint32_t              fromInventory);
+
+    static int32_t __fastcall clipCountHook(
+            uint8_t*              entry,
+            void*                 unused);
 
     static uint32_t __fastcall jamGroupHook(
             uint8_t*              actor,

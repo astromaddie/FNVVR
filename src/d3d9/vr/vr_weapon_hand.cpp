@@ -1210,10 +1210,10 @@ namespace dxvk {
   }
 
 
-  void VrWeaponHand::setRack(bool held, float pull, bool lockedBack) {
-    m_rackHeld       = held;
-    m_rackPull       = pull;
-    m_rackLockedBack = lockedBack;
+  void VrWeaponHand::setRack(bool held, float pull, float rest) {
+    m_rackHeld = held;
+    m_rackPull = pull;
+    m_rackRest = rest;
   }
 
 
@@ -1428,7 +1428,7 @@ namespace dxvk {
       m_loggedRack = rack;
     }
 
-    float pull = m_rackHeld ? m_rackPull : (m_rackLockedBack ? travel : 0.0f);
+    float pull = std::min(m_rackHeld ? m_rackPull : m_rackRest, travel);
 
     if (!m_rackHeld && pull <= 0.0f)
       return nullptr;
