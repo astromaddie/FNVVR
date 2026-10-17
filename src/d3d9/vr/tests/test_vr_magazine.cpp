@@ -149,6 +149,20 @@ TEST_CASE(magazine_is_ejected_near_the_well) {
 }
 
 
+TEST_CASE(magazine_is_ejected_from_below) {
+  VrMagazineHand magazine;
+
+  // The left hand cannot come near a pistol's magazine, inside the right
+  // hand: it takes it from below, along the way out of the well
+  VrVector3 below = belowWell(0.14f);
+  below.x += 0.1f * M;
+  CHECK(magazine.update(input(true, below)) == VrMagazineEvent::Ejected);
+
+  VrMagazineHand far;
+  CHECK(far.update(input(true, belowWell(0.3f))) == VrMagazineEvent::None);
+}
+
+
 TEST_CASE(holding_the_grip_does_not_eject) {
   VrMagazineHand magazine;
 
@@ -243,10 +257,29 @@ TEST_CASE(magazine_pulled_out_of_the_well_does_not_enter_at_once) {
   CHECK(magazine.update(input(true, belowWell(0.04f))) == VrMagazineEvent::Engaged);
   CHECK(magazine.update(input(true, belowWell(0.1f))) == VrMagazineEvent::Cleared);
 
-  // Back near the mouth: it must move away first
+  // Back near the mouth: it must move away from the way in first
   CHECK(magazine.update(input(true, belowWell(0.05f))) == VrMagazineEvent::None);
   CHECK(magazine.update(input(true, belowWell(0.2f))) == VrMagazineEvent::None);
+  CHECK(magazine.update(input(true, belowWell(0.05f))) == VrMagazineEvent::None);
+  CHECK(magazine.update(input(true, belowWell(0.25f))) == VrMagazineEvent::None);
   CHECK(magazine.update(input(true, belowWell(0.05f))) == VrMagazineEvent::Engaged);
+}
+
+
+TEST_CASE(magazine_enters_from_the_way_in) {
+  VrMagazineHand magazine;
+  emptyWeapon(magazine);
+  magazine.update(input(true, Pouch));
+
+  // 10 cm below the mouth and 5 cm aside, it enters at the mouth, and the
+  // hand pushes it in from there
+  VrVector3 hand = belowWell(0.13f);
+  hand.x += 0.05f * M;
+  CHECK(magazine.update(input(true, hand)) == VrMagazineEvent::Engaged);
+  CHECK(std::abs(magazine.seat() - 0.03f) < 1e-4f);
+
+  hand.z += 0.03f * M;
+  CHECK(magazine.update(input(true, hand)) == VrMagazineEvent::Inserted);
 }
 
 
@@ -330,4 +363,49 @@ TEST_CASE(sounds_are_matched_by_time) {
   CHECK(vrFindNearestSound(times, 3, 1.3f, 0.35f, 0) == 1);
   CHECK(vrFindNearestSound(times, 3, 3.0f, 0.35f, -1) == -1);
   CHECK(vrFindNearestSound(times, 3, 0.45f, 0.35f, 0) == -1);
+}
+
+
+namespace {
+
+  VrGameTransform heldAt(float x, float turn) {
+    VrGameTransform t;
+    t.translate = { x, 0.0f, 0.0f };
+    t.rotate.m[0][0] = std::cos(turn);
+    t.rotate.m[0][1] = -std::sin(turn);
+    t.rotate.m[1][0] = std::sin(turn);
+    t.rotate.m[1][1] = std::cos(turn);
+    t.rotate.m[2][2] = 1.0f;
+    return t;
+  }
+
+}
+
+
+TEST_CASE(magazine_hold_is_where_the_hand_carries_it) {
+  std::vector<VrGameTransform> samples;
+
+  // Falling away from the hand, carried 8 cm from the hand bone, then
+  // pushed in by the palm 12 cm from it
+  for (int32_t i = 0; i < 10; i++)
+    samples.push_back(heldAt(0.05f + 0.02f * float(i), 0.0f));
+  for (int32_t i = 0; i < 10; i++)
+    samples.push_back(heldAt(0.08f, 0.5f));
+  for (int32_t i = 0; i < 10; i++)
+    samples.push_back(heldAt(0.12f, 1.0f));
+
+  size_t hold = vrFindMagazineHold(samples.data(), samples.size());
+  CHECK(hold >= 10 && hold < 20);
+}
+
+
+TEST_CASE(magazine_hold_needs_the_hand_to_carry_it) {
+  std::vector<VrGameTransform> samples;
+
+  // Turning in the hand all the time
+  for (int32_t i = 0; i < 10; i++)
+    samples.push_back(heldAt(0.08f, 0.1f * float(i)));
+
+  CHECK(vrFindMagazineHold(samples.data(), samples.size()) == samples.size());
+  CHECK(vrFindMagazineHold(samples.data(), 0) == 0);
 }

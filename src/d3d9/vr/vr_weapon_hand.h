@@ -446,13 +446,29 @@ namespace dxvk {
 
     void measureBlade(const uint8_t* weapon, const VrGameCameraPose& hand);
 
+    /**
+     * \brief Puts the free left hand around its controller
+     *
+     * \param [in] magazine Where the magazine the hand holds with the
+     *    reload animation's grip is drawn, or \c nullptr: the hand then
+     *    holds it there
+     */
     void placeOtherHand(
             uint8_t*              root,
             uint8_t*              otherHand,
       const VrVector3&            shift,
-            void*                 updateData);
+            void*                 updateData,
+      const VrGameTransform*      magazine);
 
-    void placeMagazine(
+    /**
+     * \brief Finds the weapon's magazine and where it is drawn
+     *
+     * \param [out] pose Where the magazine is drawn, in the model's
+     *    drawing space
+     * \returns The magazine to draw at the pose, or \c nullptr if the
+     *    game draws it in the weapon or it is not drawn
+     */
+    uint8_t* placeMagazine(
             uint8_t*              root,
             uint8_t*              weapon,
             uint8_t*              leftHand,
@@ -460,6 +476,11 @@ namespace dxvk {
       const VrGameCameraPose&     hand,
       const uint8_t*              form,
       const VrVector3&            shift,
+            VrGameTransform&      pose);
+
+    void drawMagazine(
+            uint8_t*              magazine,
+      const VrGameTransform&      pose,
             void*                 updateData);
 
     bool holdsMagazine() const;

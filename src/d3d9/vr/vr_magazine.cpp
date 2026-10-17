@@ -30,6 +30,13 @@ namespace dxvk {
     // Parts next to the magazine, or magazines that do not come out
     const char* const NotMagazineWords[] = { "release", "latch", "spring", "peg", "bay", "assembly", "moon" };
 
+    // Distance from a point to a segment that starts at a point and goes
+    // along a unit axis
+    float distanceToSegment(const VrVector3& point, const VrVector3& start, const VrVector3& axis, float length) {
+      float along = std::clamp(vrDot(point - start, axis), 0.0f, length);
+      return vrLength(point - (start + axis * along));
+    }
+
     template<size_t N>
     bool containsAny(const std::string& name, const char* const (&words)[N]) {
       for (const char* word : words) {
@@ -103,13 +110,15 @@ namespace dxvk {
     VrVector3 fromWell = (input.held - input.well) * (1.0f / M);
     float along = vrDot(fromWell, input.axis);
 
-    // The mouth of the well, where a magazine enters it
+    // The mouth of the well, where a magazine enters it, and the way into
+    // it from there
     VrVector3 mouth = input.well + input.axis * (m_reach.depth * M);
-    float toMouth   = vrLength(input.held - mouth) / M;
+    float toWay     = distanceToSegment(input.held, mouth, input.axis, m_reach.approach * M) / M;
 
     switch (m_state) {
       case VrMagazineState::InWeapon:
-        if (input.active && pressed && vrLength(input.hand - input.well) / M <= m_reach.eject) {
+        if (input.active && pressed
+         && distanceToSegment(input.hand, input.well, input.axis, m_reach.below * M) / M <= m_reach.eject) {
           seat(input, along);
           m_canInsert = false;
           return VrMagazineEvent::Ejected;
@@ -147,11 +156,11 @@ namespace dxvk {
           return VrMagazineEvent::Dropped;
         }
 
-        if (toMouth > m_reach.rearm)
+        if (toWay > m_reach.capture + m_reach.rearm)
           m_canEnter = true;
 
         // A magazine coming from beyond the mouth starts at the mouth
-        if (m_canEnter && toMouth <= m_reach.capture) {
+        if (m_canEnter && toWay <= m_reach.capture) {
           seat(input, std::max(along - m_reach.depth, 0.0f));
           m_canInsert = true;
           return VrMagazineEvent::Engaged;
@@ -164,7 +173,7 @@ namespace dxvk {
             return VrMagazineEvent::NoRounds;
 
           m_state    = VrMagazineState::InHand;
-          m_canEnter = toMouth > m_reach.rearm;
+          m_canEnter = toWay > m_reach.capture + m_reach.rearm;
           return VrMagazineEvent::Taken;
         }
         break;
@@ -235,6 +244,32 @@ namespace dxvk {
     timing.grip = samples[grip].time;
     timing.axis = samples[grip].offset * (1.0f / length);
     return true;
+  }
+
+
+  size_t vrFindMagazineHold(
+    const VrGameTransform*      inHand,
+          size_t                count) {
+    // Moving with the hand, between two samples: metres and radians (2 degrees)
+    constexpr float MaxStep = 0.003f;
+    constexpr float MaxTurn = 0.035f;
+
+    auto carried = [inHand] (size_t a, size_t b) {
+      return vrLength(inHand[b].translate - inHand[a].translate) <= MaxStep
+          && vrRotationAngle(inHand[a].rotate, inHand[b].rotate) <= MaxTurn;
+    };
+
+    size_t best = count;
+
+    for (size_t i = 1; i + 1 < count; i++) {
+      if (!carried(i - 1, i) || !carried(i, i + 1))
+        continue;
+
+      if (best == count || vrLength(inHand[i].translate) < vrLength(inHand[best].translate))
+        best = i;
+    }
+
+    return best;
   }
 
 

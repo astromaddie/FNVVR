@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "vr_game_space.h"
+#include "vr_weapon_aim.h"
 
 namespace dxvk {
 
@@ -131,26 +132,31 @@ namespace dxvk {
    * \brief Distances of the magazine gestures, in metres
    */
   struct VrMagazineReach {
-    /// How close the hand must be to the magazine to take it out
-    float eject   = 0.10f;
+    /// How close the hand must be to the magazine, or to the way it comes
+    /// out of the weapon, to take it out
+    float eject   = 0.12f;
+    /// How far that way goes from the magazine's centre
+    float below   = 0.15f;
     /// How far the magazine slides along its well, from its place to the
     /// mouth of the well
     float depth   = 0.03f;
     /// How far past the mouth of the well the magazine is pulled before it
     /// comes out
     float slack   = 0.02f;
-    /// How close to the mouth of the well a magazine in the hand must come
+    /// How close to the way into the well a magazine in the hand must come
     /// to enter it
-    float capture = 0.04f;
+    float capture = 0.06f;
+    /// How far that way goes beyond the mouth of the well
+    float approach = 0.10f;
     /// How far the hand may move across the well before the magazine comes
     /// out of it sideways
     float leave   = 0.06f;
     /// How far a magazine just taken out must slide before pushing it back
     /// puts it in again
     float armed   = 0.01f;
-    /// How far from the mouth of the well a magazine that came out of it
-    /// must move before it can enter again
-    float rearm   = 0.08f;
+    /// How far past that capture a magazine that came out of the well must
+    /// move before it can enter again
+    float rearm   = 0.02f;
     /// Where new magazines are taken
     VrMagazinePouch pouch;
   };
@@ -158,12 +164,14 @@ namespace dxvk {
   /**
    * \brief Follows the magazine of the weapon in the right hand
    *
-   * The left grip pressed near the magazine takes it out: it slides along
+   * The left grip pressed near the magazine, or below it along the way it
+   * comes out, takes it out: it slides along
    * its well with the hand, and comes free past the mouth of the well or
    * when the hand moves across it. It stays in the hand while the grip is
    * held. Let go of, it disappears. With no magazine in the weapon, the
    * left grip pressed behind the back takes a new one if rounds are left.
-   * A magazine in the hand brought to the mouth of the well enters it,
+   * A magazine in the hand brought near the way into the well enters it
+   * at its mouth,
    * and goes in once it is pushed home. Only a press of the grip takes a
    * magazine: holding it while the hand moves takes nothing.
    *
@@ -266,6 +274,25 @@ namespace dxvk {
     const VrMagazineSample*     samples,
           size_t                count,
           VrMagazineTiming&     timing);
+
+  /**
+   * \brief Finds when the game's reload animation holds the magazine best
+   *
+   * The left hand holds the magazine while it carries it: from one sample
+   * to the next, the magazine moves by less than a few millimetres and
+   * turns by less than a few degrees in the hand's frame. Of those times,
+   * the hand holds it best where its centre is nearest the hand bone, in
+   * the palm rather than at the fingertips or pushed in by the palm.
+   *
+   * \param [in] inHand The magazine's centre (in metres) and rotation in
+   *    the left hand bone's frame, sampled 60 times per second
+   * \param [in] count Number of samples
+   * \returns The sample, or \c count if the hand never carries the
+   *    magazine
+   */
+  size_t vrFindMagazineHold(
+    const VrGameTransform*      inHand,
+          size_t                count);
 
   /**
    * \brief Finds the sound played nearest a time

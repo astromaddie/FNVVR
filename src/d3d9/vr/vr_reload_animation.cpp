@@ -384,6 +384,54 @@ namespace dxvk {
       return false;
     }
 
+    // The centre of the magazine's meshes in its own frame
+    VrVector3 centre;
+    float magazineScale = readField<float>(magazine, VrGame::ObjectWorldScale);
+    auto bound = readField<const uint8_t*>(magazine, VrGame::ObjectWorldBound);
+
+    if (bound && magazineScale > 0.0f) {
+      centre = vrTranspose(readRotation(magazine, VrGame::ObjectWorldRotation))
+        * (readVector(bound, 0) - readVector(magazine, VrGame::ObjectWorldTranslation)) * (1.0f / magazineScale);
+    }
+
+    // The magazine in the left hand's frame while it is out, to find when
+    // the hand carries it
+    std::vector<VrGameTransform> inHand;
+    std::vector<float> inHandTimes;
+
+    for (const VrMagazineSample& sample : samples) {
+      Pose hand, held;
+
+      if (sample.time < timing.out || sample.time >= timing.in
+       || !tracks.toAncestor(leftHand, root, sample.time, hand)
+       || !tracks.toAncestor(magazine, root, sample.time, held))
+        continue;
+
+      VrGameRotation toHand = vrTranspose(hand.rotate);
+      VrVector3 middle = held.translate + held.rotate * centre * held.scale;
+
+      VrGameTransform transform;
+      transform.rotate    = toHand * held.rotate;
+      transform.translate = toHand * (middle - hand.translate) * (1.0f / VrGameUnitsPerMetre);
+
+      // What the hand does through the animation, for findings/reload.md
+      if (!inHand.empty() && !(inHand.size() % 3)) {
+        const VrGameTransform& last = inHand.back();
+        Logger::info(str::format("VR: Reload animation at ", sample.time, " s: the magazine ",
+          vrLength(sample.offset) * 100.0f, " cm out, its centre ", vrLength(transform.translate) * 100.0f,
+          " cm from the left hand bone, moving ", vrLength(transform.translate - last.translate) * 100.0f,
+          " cm and ", vrRotationAngle(last.rotate, transform.rotate) * 57.2957795f, " degrees in the hand"));
+      }
+
+      inHand.push_back(transform);
+      inHandTimes.push_back(sample.time);
+    }
+
+    size_t carried = vrFindMagazineHold(inHand.data(), inHand.size());
+
+    if (carried < inHand.size())
+      timing.grip = inHandTimes[carried];
+
     // The magazine in the left hand's frame while the hand holds it
     Pose hand, held;
 
@@ -420,7 +468,8 @@ namespace dxvk {
     Logger::info(str::format("VR: Reload animation '", sequenceName ? sequenceName : "", "' from ", begin, " to ", end,
       " s: the magazine goes out at ", timing.out, " s and in at ", timing.in, " s, along ",
       timing.axis.x, ", ", timing.axis.y, ", ", timing.axis.z, " in the weapon; the left hand holds it at ", timing.grip,
-      " s, ", animation.magazineInHand.translate.x, ", ", animation.magazineInHand.translate.y, ", ",
+      carried < inHand.size() ? " s, where it carries it" : " s, before it goes in (the hand never carries it)",
+      ", ", animation.magazineInHand.translate.x, ", ", animation.magazineInHand.translate.y, ", ",
       animation.magazineInHand.translate.z, " units from the hand bone, with ", animation.fingers.size(), " finger bone(s)"));
     return true;
   }
