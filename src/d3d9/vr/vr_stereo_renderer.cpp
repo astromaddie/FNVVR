@@ -440,7 +440,7 @@ namespace dxvk {
     VrGameStateKind state = readGameState();
 
     if (m_comfortSettings)
-      m_comfortSettings->update();
+      m_comfortSettings->update(state == VrGameStateKind::InGame);
 
     if (m_developerMode)
       m_developerMode->update(state);

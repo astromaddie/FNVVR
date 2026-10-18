@@ -611,6 +611,19 @@ namespace dxvk {
       0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x08, 0x89, 0x4D, 0xF8, 0x8B, 0x4D, 0xF8, 0xE8, 0x5F, 0x00, 0x00, 0x00,
     };
 
+    /**
+     * The view the player asks for, see findings/camera.md §3 and §8. The
+     * player's bWant3rdPerson byte is set by the POV control and kept in
+     * saves; PlayerCharacter::SetFirstPerson (__thiscall, bool first)
+     * clears it, and the camera update then goes back to first person.
+     */
+    constexpr uintptr_t PlayerWantsThirdPerson = 0x64C;
+    constexpr uintptr_t SetFirstPerson         = 0x00950110;
+    constexpr uint8_t   SetFirstPersonPrologue[] = {
+      0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x08, 0x89, 0x4D, 0xF8, 0x8B, 0x45, 0xF8,
+      0x0F, 0xB6, 0x88, 0x4C, 0x06, 0x00, 0x00,
+    };
+
     /** LoadingMenu*, not null while a loading screen is shown */
     constexpr uintptr_t LoadingMenu = 0x011DA0C0;
 
