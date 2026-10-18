@@ -78,9 +78,11 @@ namespace dxvk {
     HudPrompt,
     /// Charge of a power attack, beside the right hand
     HudCharge,
+    /// The console's terminal and keyboard, in front of the player
+    Terminal,
   };
 
-  constexpr uint32_t VrPanelCount = 5;
+  constexpr uint32_t VrPanelCount = 6;
 
   /**
    * \brief What a panel's pose is relative to

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
 
 namespace dxvk {
@@ -7,7 +8,7 @@ namespace dxvk {
   /**
    * \brief Turns off the game's cameras that leave the first person
    *
-   * Two cameras of the game move the view away from the head:
+   * Three cameras of the game move the view away from the head:
    *
    * - The idle camera: after some time without input, the game switches to
    *   third person and turns the camera around the player (auto vanity
@@ -22,6 +23,10 @@ namespace dxvk {
    *   game's own PlayerCharacter::SetKillCamModeCallback, which ends a
    *   kill camera already running. The INI value is left alone, so the
    *   game's preference file keeps the user's choice.
+   * - The third-person view: the game's POV control, or a save made in
+   *   third person, asks for it. While the player plays (no menu, no
+   *   V.A.T.S. camera, not dead), the game's own
+   *   PlayerCharacter::SetFirstPerson puts the first person back.
    *
    * The cameras of V.A.T.S. itself are not changed here. See
    * findings/camera.md §7.
@@ -42,19 +47,24 @@ namespace dxvk {
     static std::unique_ptr<VrComfortSettings> install();
 
     /**
-     * \brief Keeps the kill camera in first person
+     * \brief Keeps the kill camera and the view in first person
      *
      * Called once per frame, before the frame is drawn. The player is
      * created after the device, and a value set by a script or the console
      * is put back.
+     *
+     * \param [in] inGame The game is played, with no menu open
      */
-    void update();
+    void update(bool inGame);
 
   private:
 
     VrComfortSettings() = default;
 
     bool m_loggedKillCam = false;
+    bool m_loggedView    = false;
+
+    void keepFirstPerson(uintptr_t player);
 
   };
 

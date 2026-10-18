@@ -611,6 +611,19 @@ namespace dxvk {
       0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x08, 0x89, 0x4D, 0xF8, 0x8B, 0x4D, 0xF8, 0xE8, 0x5F, 0x00, 0x00, 0x00,
     };
 
+    /**
+     * The view the player asks for, see findings/camera.md §3 and §8. The
+     * player's bWant3rdPerson byte is set by the POV control and kept in
+     * saves; PlayerCharacter::SetFirstPerson (__thiscall, bool first)
+     * clears it, and the camera update then goes back to first person.
+     */
+    constexpr uintptr_t PlayerWantsThirdPerson = 0x64C;
+    constexpr uintptr_t SetFirstPerson         = 0x00950110;
+    constexpr uint8_t   SetFirstPersonPrologue[] = {
+      0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x08, 0x89, 0x4D, 0xF8, 0x8B, 0x45, 0xF8,
+      0x0F, 0xB6, 0x88, 0x4C, 0x06, 0x00, 0x00,
+    };
+
     /** LoadingMenu*, not null while a loading screen is shown */
     constexpr uintptr_t LoadingMenu = 0x011DA0C0;
 
@@ -1024,7 +1037,19 @@ namespace dxvk {
      * - the tile of the menu holds the page's _center_x, copied from the
      *   Gameplay page's trait (PageCenterTraitGameplay);
      * - Tile::GetFloat and Tile::SetFloat: __thiscall on the tile with the
-     *   trait (and a float and a bool); AddUserTrait: __cdecl (name, id).
+     *   trait (and a float and a bool); AddUserTrait: __cdecl (name, id);
+     * - the option array holds OptionArrayCount pointers at OptionArrayData,
+     *   each option's mask at OptionMask;
+     * - StartMenu::_Create sets up the Settings list box with ListBoxInitialize
+     *   (__thiscall on the list box: its tile, the item template name) at
+     *   SettingsListInitCallSite. The first item added fixes the list's
+     *   height to the tile's _number_of_visible_items (5 in start_menu.xml),
+     *   which the game updates only after adding them, so a longer list is
+     *   cut off (findings/options-menu.md §4);
+     * - StartMenu::_Create sets the menu's in-game flag, then sorts the
+     *   options into its lists with Option::IsForModes (__thiscall on the
+     *   option with the modes, returns a bool in AL); the Settings list's
+     *   call is at SettingsEntryModesCallSite (findings/options-menu.md §5).
      */
     constexpr uintptr_t StartMenuGlobal              = 0x011DAAC0;
     constexpr uintptr_t OptionArray                  = 0x011DAB88;
@@ -1048,6 +1073,14 @@ namespace dxvk {
     constexpr uintptr_t UserOptionValue              = 0x14;
     constexpr uintptr_t UserOptionDefaultValue       = 0x18;
     constexpr uint32_t  OptionMaskSettingsList       = 0x04;
+    constexpr uintptr_t OptionArrayData              = 0x04;
+    constexpr uintptr_t OptionArrayCount             = 0x08;
+    constexpr uintptr_t OptionMask                   = 0x0C;
+    constexpr uintptr_t ListBoxInitialize            = 0x0075A0D0;
+    constexpr uintptr_t SettingsListInitCallSite     = 0x007CBBFD;
+    constexpr uintptr_t OptionIsForModes             = 0x007CC5D0;
+    constexpr uintptr_t SettingsEntryModesCallSite   = 0x007CBF27;
+    constexpr char      VisibleItemsTraitName[]      = "_number_of_visible_items";
     constexpr uint32_t  PageCenterTraitGameplay      = 0x1005;
     constexpr char      CenterXTraitName[]           = "_center_x";
 
@@ -1059,8 +1092,288 @@ namespace dxvk {
     constexpr uint8_t   TileGetFloatPrologue[]        = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x0C, 0x89, 0x4D };
     constexpr uint8_t   TileSetFloatPrologue[]        = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x62, 0xCD };
     constexpr uint8_t   AddUserTraitPrologue[]        = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x94, 0xCC };
+    constexpr uint8_t   OptionIsForModesPrologue[]    = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x8B, 0x45, 0xFC, 0x8B, 0x40, 0x0C };
     constexpr uint8_t   HeapAllocatePrologue[]        = { 0x55, 0x8B, 0xEC, 0x8B, 0x45, 0x08, 0x50, 0xE8 };
     constexpr uint8_t   SetListEnabledPrologue[]      = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x4E, 0xEA };
+    constexpr uint8_t   ListBoxInitializePrologue[]   = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x8B };
+
+    /**
+     * The console, see findings/console.md.
+     *
+     * - ConsoleGlobal: MenuConsole*, null until the interface creates it;
+     *   ConsoleVisible (char, > 0 while shown), the printed lines (a list of
+     *   nodes: next, previous, then a BSStringT, pointer and 16-bit length),
+     *   the index of the last line shown (ConsoleLastLine, lower while the
+     *   output is scrolled up) and the command line's position
+     *   (ConsoleTextX, ConsoleTextY, integers);
+     * - OpenConsoleRequest: byte TESMain::OnIdle reads each frame; when set,
+     *   it clears it and opens the console (Interface::OpenConsole);
+     * - CloseConsole: Interface::CloseConsole, __cdecl without arguments;
+     * - ConsoleKeyCallSite: InterfaceManager::Idle takes the first key
+     *   typed in a frame in menu mode from ConsoleReadKey
+     *   (GetKeyFromScancodeAndSetModifiers, __thiscall with the key state
+     *   and the scan code, returns the key or 0) and gives it to
+     *   MenuConsole::Idle while the console is shown;
+     * - DebugTextGlobal: DebugText*, which holds the command line; the
+     *   console's MenuConsole::Idle reads it back with GetDebugText
+     *   (__thiscall: a buffer of DebugTextBufferSize bytes, x and y as
+     *   floats, the alignment ConsoleTextAlignment; returns whether found).
+     *   The text cursor is drawn in it as ConsoleCursorChar.
+     */
+    constexpr uintptr_t ConsoleGlobal          = 0x011D8CE8;
+    constexpr uintptr_t ConsolePrintedLines    = 0x04;
+    constexpr uintptr_t ConsolePrintedCount    = 0x0C;
+    constexpr uintptr_t ConsoleLastLine        = 0x24;
+    constexpr uintptr_t ConsoleTextX           = 0x30;
+    constexpr uintptr_t ConsoleTextY           = 0x34;
+    constexpr uintptr_t ConsoleVisible         = 0x38;
+    constexpr uintptr_t ConsoleLineNodeText    = 0x08;
+    constexpr uintptr_t OpenConsoleRequest     = 0x011DEA2F;
+    constexpr uintptr_t SetOpenConsoleRequest  = 0x0070ED20;
+    constexpr uintptr_t CloseConsole           = 0x00703DA0;
+    constexpr uintptr_t ConsoleKeyCallSite     = 0x0070E02F;
+    constexpr uintptr_t ConsoleReadKey         = 0x007154B0;
+    constexpr uintptr_t DebugTextGlobal        = 0x011F33A8;
+    constexpr uintptr_t GetDebugText           = 0x00A103E0;
+    constexpr size_t    DebugTextBufferSize    = 0x800;
+    constexpr int32_t   ConsoleTextAlignment   = 1;
+    constexpr char      ConsoleCursorChar      = '|';
+
+    /** First bytes of the console functions above; SetOpenConsoleRequest writes OpenConsoleRequest */
+    constexpr uint8_t   SetOpenConsoleRequestBytes[] = { 0x55, 0x8B, 0xEC, 0x8A, 0x45, 0x08, 0xA2, 0x2F, 0xEA, 0x1D, 0x01 };
+    constexpr uint8_t   CloseConsolePrologue[]       = { 0x55, 0x8B, 0xEC, 0xE8, 0x68, 0x34, 0xDB, 0xFF };
+    constexpr uint8_t   ConsoleReadKeyPrologue[]     = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x0C, 0x89, 0x4D };
+    constexpr uint8_t   GetDebugTextPrologue[]       = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x3C, 0x89, 0x4D };
+
+    /**
+     * The game's rendered terminal, which shows the console in 3D, see
+     * findings/console.md §6. All checked in Ghidra on the Steam executable.
+     *
+     * - TerminalConstruct: FORenderedTerminal::FORenderedTerminal,
+     *   __thiscall on TerminalSize bytes from the game's heap. Its vtable:
+     *   Draw (+0x0C, target, clear flags, unused target), OnIdle (+0x14),
+     *   Initialize (+0x24), OnMenuOpen (+0x30), OnMenuClose (+0x34), all
+     *   __thiscall. Fields: screen geometry, model (the monitor), menu
+     *   root node (NiPointer), menu tile, camera (NiCamera*), initialised
+     *   flag;
+     * - InterfaceManager fields: the menus root tile, the "in a rendered
+     *   menu" flag and the current rendered menu;
+     * - the XML of the console's tiles is stored with CompressAndStoreXML
+     *   (__cdecl: name, text) and XmlCacheSetAt (__thiscall on XmlCache:
+     *   name, storage), then read by TileReadFile (__thiscall on the parent
+     *   tile: name), which frees the storage, and taken out of the cache
+     *   again with XmlCacheRemoveAt (__thiscall on XmlCache: name); TileGetChildByName (__thiscall: name), TileSetString
+     *   (__thiscall: trait, text, propagate), traits below, a tile's
+     *   destructor is vtable slot 0 (__thiscall, 1 frees);
+     * - OffscreenInterfaceCallSite: DrawWorld_UpdateOffscreenBuffers calls
+     *   UpdateOffscreenInterface (__cdecl) there, outside the renderer's
+     *   frame; the rendered menu's Draw renders into InterfaceFxTexture
+     *   (NiPointer<BSRenderedTexture>), borrowed from the texture manager
+     *   (GetTextureManager __cdecl, BorrowRenderedTexture __thiscall:
+     *   renderer, InterfaceFxTextureType, 0, 0, 0) and assigned with
+     *   NiPointerAssign (__thiscall on the pointer: object); Main::Swap
+     *   gives that texture back (ReturnRenderedTexture, __thiscall on the
+     *   texture manager: texture) and clears the pointer at the end of each
+     *   frame it draws, so the console keeps a texture of its own and lends
+     *   it to InterfaceFxTexture only while it draws its screen;
+     * - the debug text the console prints its lines and command line with
+     *   is drawn under the node at InterfaceDebugTextRoot (NiNode*), which
+     *   FORenderedMenu::Render culls for its own pass;
+     * - DrawRenderedMenuParent and RenderPipBoy (above) draw the current
+     *   rendered menu's model and screen with the menu's camera;
+     * - the world's culling process (WorldSceneGraph holds the scene graph,
+     *   its culling process at SceneGraphCuller) keeps the camera they set
+     *   at CullerCamera;
+     * - sComputersHeader1 and 2: the terminal's header lines (Setting*,
+     *   text at SettingValue, above), whose address ComputersMenu::FinishIntro
+     *   loads at ComputersHeaderUseSite.
+     */
+    constexpr uintptr_t TerminalConstruct          = 0x00705FE0;
+    constexpr size_t    TerminalSize               = 0xF0;
+    constexpr uintptr_t TerminalDraw               = 0x0C;
+    constexpr uintptr_t TerminalOnIdle             = 0x14;
+    constexpr uintptr_t TerminalInitialize         = 0x24;
+    constexpr uintptr_t TerminalOnMenuOpen         = 0x30;
+    constexpr uintptr_t TerminalOnMenuClose        = 0x34;
+    constexpr uintptr_t TerminalScreen             = 0x04;
+    constexpr uintptr_t TerminalModel              = 0x08;
+    constexpr uintptr_t TerminalMenuRoot           = 0x14;
+    constexpr uintptr_t TerminalMenuTile           = 0x18;
+    constexpr uintptr_t TerminalCamera             = 0x24;
+    constexpr uintptr_t TerminalInitialized        = 0x28;
+    constexpr uintptr_t InterfaceMenusRoot         = 0x9C;
+    constexpr uintptr_t InterfaceInRenderedMenu    = 0x168;
+    constexpr uintptr_t InterfaceRenderedMenu      = 0x16C;
+    constexpr uintptr_t CompressAndStoreXml        = 0x00A1CE70;
+    constexpr uintptr_t XmlCacheSetAt              = 0x00A0C900;
+    constexpr uintptr_t XmlCache                   = 0x011F34E0;
+    constexpr uintptr_t XmlCacheRemoveAt           = 0x00A1E240;
+    constexpr uintptr_t TileReadFile               = 0x00A01B00;
+    constexpr uintptr_t TileGetChildByName         = 0x00A03DA0;
+    constexpr uintptr_t TileSetString              = 0x00A01350;
+    constexpr uint32_t  TileTraitVisible           = 0xFA3;
+    constexpr uint32_t  TileTraitString            = 0xFC4;
+    constexpr uintptr_t OffscreenInterfaceCallSite = 0x008719F8;
+    constexpr uintptr_t UpdateOffscreenInterface   = 0x00871A50;
+    constexpr uintptr_t InterfaceFxTexture         = 0x011DEC64;
+    constexpr uintptr_t GetTextureManager          = 0x004A0EA0;
+    constexpr uintptr_t BorrowRenderedTexture      = 0x00B6E110;
+    constexpr uint32_t  InterfaceFxTextureType     = 0x2D;
+    constexpr uintptr_t NiPointerAssign            = 0x0066B0D0;
+    constexpr uintptr_t ReturnRenderedTexture      = 0x00B6DA10;
+    constexpr uintptr_t InterfaceDebugTextRoot     = 0xA4;
+    constexpr uintptr_t WorldSceneGraph            = 0x011DEB7C;
+    constexpr uintptr_t SceneGraphCuller           = 0xB4;
+    constexpr uintptr_t CullerCamera               = 0x0C;
+    constexpr uintptr_t ComputersHeader1           = 0x011D3D78;
+    constexpr uintptr_t ComputersHeader2           = 0x011D4978;
+
+    /** First bytes of the functions above, checked before any is used */
+    constexpr uint8_t   TerminalConstructPrologue[]    = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0xE8, 0x79, 0xF0, 0x00 };
+    constexpr uint8_t   CompressAndStoreXmlPrologue[]  = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x6C, 0xC7, 0x45, 0xF4 };
+    constexpr uint8_t   XmlCacheSetAtPrologue[]        = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x2C, 0x89, 0x4D, 0xD4 };
+    constexpr uint8_t   XmlCacheRemoveAtPrologue[]     = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x14, 0x89, 0x4D, 0xEC };
+    constexpr uint8_t   TileReadFilePrologue[]         = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x19, 0xCE, 0xF1, 0x00 };
+    constexpr uint8_t   TileGetChildByNamePrologue[]   = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0xC3, 0xCE, 0xF1, 0x00 };
+    constexpr uint8_t   TileSetStringPrologue[]        = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x85, 0xCD, 0xF1, 0x00 };
+    constexpr uint8_t   GetTextureManagerBytes[]       = { 0x55, 0x8B, 0xEC, 0xA1, 0xA8, 0x91, 0x1F, 0x01, 0x5D, 0xC3 };
+    constexpr uint8_t   BorrowRenderedTexturePrologue[] = { 0x6A, 0xFF, 0x68, 0xB8, 0x89, 0xF2, 0x00 };
+    constexpr uint8_t   ReturnRenderedTexturePrologue[] = { 0x6A, 0xFF, 0x68, 0xD0, 0x88, 0xF2, 0x00 };
+    constexpr uint8_t   NiPointerAssignPrologue[]      = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x8B, 0x45, 0xFC };
+    constexpr uint8_t   DrawRenderedMenuParentPrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x38, 0x56, 0x89, 0x4D, 0xE0 };
+    constexpr uint8_t   RenderPipBoyPrologue[]         = { 0x55, 0x8B, 0xEC, 0x81, 0xEC, 0xD0, 0x00, 0x00, 0x00 };
+    constexpr uint8_t   ComputersHeaderUse[]           = { 0xB9, 0x78, 0x3D, 0x1D, 0x01 };
+    constexpr uintptr_t ComputersHeaderUseSite         = 0x00758DCF;
+
+    /**
+     * The world terminal's keyboard on the console's monitor, see
+     * findings/console.md §11. Found in the GOG database, bytes compared
+     * with the Steam executable in Ghidra.
+     *
+     * - ModelLoaderLoadFile: ModelLoader::LoadFile, __thiscall on the
+     *   loader (ModelLoaderSingleton, loaded at ModelLoaderSingletonUseSite):
+     *   path, LOD fade type, assign shaders, 0, keep UVs, no use count;
+     *   returns the model's cached root (NiNode*), which the references of
+     *   the world may use directly, so it is cloned;
+     * - ObjectClone: NiObject::Clone, __thiscall: cloning process, built by
+     *   CloningProcessConstruct (__thiscall: scale) on CloningProcessSize
+     *   bytes and destroyed by CloningProcessDestruct (__thiscall);
+     * - ObjectGetController: NiObjectNET::GetController, __thiscall: RTTI,
+     *   with NiControllerManager's (ControllerManagerRtti, pushed at
+     *   ControllerManagerRttiUseSite);
+     * - NiControllerManager: its flags (NiTimeController, ControllerActive
+     *   set as NiTimeController::SetActive does), its sequences (NiTArray:
+     *   items, used size);
+     *   ActivateSequence (__thiscall: sequence, priority, start over,
+     *   weight, ease in, time sync sequence), DeactivateSequence
+     *   (__thiscall: sequence, ease out), DeactivateAll (__thiscall: ease
+     *   out); StartAnimations (__cdecl: object) starts every controller;
+     * - NiControllerSequence: name, end key time, last scaled time, offset
+     *   (SequenceOffset above; -FLT_MAX starts it at the next update);
+     * - NiControllerSequence: its text keys (NiTextKeyExtraData, held by
+     *   a NiPointer at SequenceTextKeys: key count and array of 8-byte
+     *   NiTextKey, time then text) and the scaled time of the update
+     *   before the last (SequenceStartTime), read as
+     *   BSAnimGroupSequence::PlaySounds (0x004EEF00) reads them. That
+     *   function plays a sound with no reference as a 3D sound at the
+     *   world's origin, out of hearing, so the fork plays the "Sound:"
+     *   keys itself: DataHandlerGetSound (__thiscall on the data handler:
+     *   editor ID) finds the TESSound;
+     * - NiNode vtable: AttachChild (__thiscall: child, first free slot),
+     *   DetachChild without result (__thiscall: child);
+     * - NiAVObject: its collision object (NiPointer); NiUpdateData (time,
+     *   then flags, the first one "update the controllers"), UpdateDataSize
+     *   bytes, for ObjectUpdate;
+     * - BSFadeNode: FadeNodeSetRange (__thiscall: near, far),
+     *   FadeNodeTurnOff (__thiscall) and the LOD multiplier type, set as
+     *   FORenderedTerminal sets them on its monitor (LodMultRenderedMenu);
+     * - ShadowSceneNodeAddObject and ShadowSceneNodeRemoveObject
+     *   (__thiscall: node) link a model's geometry with the lights of a
+     *   shadow scene node, here the menu scene's
+     *   (ShadowSceneNodes[MenuShadowSceneNode]);
+     * - shader property (ObjectGetProperty, ShadePropertyType): its
+     *   textures (array of texture arrays, [0][0] the base map), a texture's
+     *   renderer data, and the Direct3D texture in it.
+     */
+    constexpr uintptr_t ModelLoaderLoadFile           = 0x00447080;
+    constexpr uintptr_t ModelLoaderSingleton          = 0x011C3B3C;
+    constexpr uintptr_t ModelLoaderSingletonUseSite   = 0x007FEF24;
+    constexpr uintptr_t ObjectClone                   = 0x00A5D2C0;
+    constexpr uintptr_t CloningProcessConstruct       = 0x004AD050;
+    constexpr uintptr_t CloningProcessDestruct        = 0x004AD270;
+    constexpr size_t    CloningProcessSize            = 0x1C;
+    constexpr uintptr_t ObjectGetController           = 0x00A5C570;
+    constexpr uintptr_t ControllerManagerRtti         = 0x011F36AC;
+    constexpr uintptr_t ControllerManagerRttiUseSite  = 0x00732818;
+    constexpr uintptr_t ControllerManagerSequences    = 0x38;
+    constexpr uintptr_t ControllerManagerSequenceCount = 0x3E;
+    constexpr uintptr_t ControllerFlags               = 0x08;
+    constexpr uint16_t  ControllerActive              = 0x8;
+    constexpr uintptr_t ActivateSequence              = 0x0047AAB0;
+    constexpr uintptr_t DeactivateSequence            = 0x0047B220;
+    constexpr uintptr_t DeactivateAllSequences        = 0x0048FEF0;
+    constexpr uintptr_t StartAnimations               = 0x00A6D2D0;
+    constexpr uintptr_t SequenceName                  = 0x08;
+    constexpr uintptr_t SequenceLastScaledTime        = 0x3C;
+    constexpr uintptr_t SequenceTextKeys              = 0x20;
+    constexpr uintptr_t SequenceStartTime             = 0x4C;
+    constexpr uintptr_t TextKeyCount                  = 0x0C;
+    constexpr uintptr_t TextKeyArray                  = 0x10;
+    constexpr size_t    TextKeySize                   = 0x08;
+    constexpr uintptr_t TextKeyText                   = 0x04;
+    constexpr uintptr_t DataHandlerGetSound           = 0x004616C0;
+    constexpr uintptr_t NodeAttachChildSlot           = 0xDC;
+    constexpr uintptr_t NodeDetachChildSlot           = 0xE8;
+    constexpr uintptr_t ObjectCollision               = 0x1C;
+    constexpr size_t    UpdateDataSize                = 0x0C;
+    constexpr uintptr_t FadeNodeSetRange              = 0x00B4DFD0;
+    constexpr uintptr_t FadeNodeTurnOff               = 0x0054B800;
+    constexpr uintptr_t FadeNodeLodMultType           = 0xC4;
+    constexpr uint32_t  LodMultRenderedMenu           = 8;
+    constexpr uintptr_t ShadowSceneNodeAddObject      = 0x00B5EEB0;
+    constexpr uintptr_t ShadowSceneNodeRemoveObject   = 0x00B5B1C0;
+    constexpr uint32_t  MenuShadowSceneNode           = 1;
+    constexpr uint32_t  ShadePropertyType             = 3;
+    constexpr uintptr_t ShaderPropertyTextures        = 0xAC;
+    constexpr uintptr_t TextureRendererData           = 0x24;
+    constexpr uintptr_t TextureDataD3DTexture         = 0x64;
+
+    /** First bytes of the functions and uses above, checked before any is used */
+    constexpr uint8_t   ModelLoaderLoadFilePrologue[]     = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x88, 0xCA, 0xEE, 0x00 };
+    constexpr uint8_t   ModelLoaderSingletonUse[]         = { 0x8B, 0x0D, 0x3C, 0x3B, 0x1C, 0x01 };
+    constexpr uint8_t   ObjectClonePrologue[]             = { 0x53, 0x56, 0x57, 0x8B, 0x7C, 0x24, 0x10, 0x8B, 0xF1 };
+    constexpr uint8_t   CloningProcessConstructPrologue[] = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x58, 0x04, 0xEF, 0x00 };
+    constexpr uint8_t   CloningProcessDestructPrologue[]  = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x8B, 0x4D, 0xFC, 0xE8, 0x51, 0xFF, 0xFF, 0xFF };
+    constexpr uint8_t   ObjectGetControllerPrologue[]     = { 0x56, 0x8B, 0x71, 0x0C, 0x57, 0x85, 0xF6, 0x74, 0x29 };
+    constexpr uint8_t   ControllerManagerRttiUse[]        = { 0x68, 0xAC, 0x36, 0x1F, 0x01 };
+    constexpr uint8_t   ActivateSequencePrologue[]        = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x6A, 0x00, 0x8B, 0x45, 0x1C };
+    constexpr uint8_t   DeactivateSequencePrologue[]      = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x6A, 0x00, 0x51, 0xD9, 0x45, 0x0C };
+    constexpr uint8_t   DeactivateAllSequencesPrologue[]  = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x0C, 0x89, 0x4D, 0xF4 };
+    constexpr uint8_t   StartAnimationsPrologue[]         = { 0x56, 0x57, 0x8B, 0x7C, 0x24, 0x0C, 0x8B, 0x77, 0x0C };
+    constexpr uint8_t   DataHandlerGetSoundPrologue[]     = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x08, 0x89, 0x4D, 0xF8, 0x8B, 0x45, 0x08, 0x50 };
+    constexpr uint8_t   FadeNodeSetRangePrologue[]        = { 0x51, 0xA1, 0x4C, 0x91, 0x1F, 0x01, 0x89, 0x04, 0x24 };
+    constexpr uint8_t   FadeNodeTurnOffPrologue[]         = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x8B, 0x45, 0xFC, 0xD9, 0xEE };
+    constexpr uint8_t   ShadowSceneNodeAddObjectPrologue[] = { 0x8B, 0x44, 0x24, 0x04, 0x85, 0xC0, 0x74, 0x0E, 0xF6, 0x40, 0x30, 0x01 };
+    constexpr uint8_t   ShadowSceneNodeRemoveObjectPrologue[] = { 0x56, 0x8B, 0xF1, 0x8B, 0x4C, 0x24, 0x08, 0x85, 0xC9, 0x74, 0x13 };
+
+    /**
+     * Files of the game read through its own lookup, loose or in an archive,
+     * see findings/console.md §7. FileFinderGetFile: __cdecl (path, mode
+     * FileReadOnly, buffer size, archive type), returns a BSFile* or null.
+     * A BSFile: vtable slot 0 destroys it (__thiscall, 1 frees), slot
+     * FileGetSize (__thiscall) gives its size, FileRead (__cdecl: file,
+     * buffer, bytes, component sizes, component count) reads it, FilePosition
+     * is moved by the caller, FileGood is set when it opened.
+     */
+    constexpr uintptr_t FileFinderGetFile    = 0x00AFDF20;
+    constexpr uint32_t  FileReadOnly         = 0;
+    constexpr uint32_t  FileBufferSize       = 0x4000;
+    constexpr uint32_t  ArchiveTextures      = 0x2;
+    constexpr uintptr_t FileGetSize          = 0x28;
+    constexpr uintptr_t FileRead             = 0x08;
+    constexpr uintptr_t FilePosition         = 0x04;
+    constexpr uintptr_t FileGood             = 0x2C;
+    constexpr uint8_t   FileFinderGetFilePrologue[] = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x95, 0x37, 0xF2, 0x00 };
 
     /**
      * Menu tile internals (VrTileTextureRetry), see findings/pipboy.md §3.7.
@@ -1301,6 +1614,173 @@ namespace dxvk {
     constexpr uintptr_t PackRatThreshold        = 0x011C6478;
     /// ActorValue::Index of ActionPoints
     constexpr uint32_t  AvActionPoints          = 12;
+
+    /**
+     * Manual reload, see findings/reload.md. Every reload of the player goes
+     * through PlayerCharacter::ReloadWeaponNV, reached through this entry
+     * of the PlayerCharacter vtable: __thiscall with the weapon, the reload
+     * animation (0 none, 1 queued, 2 played at once), whether the extended
+     * magazine counts and whether a looping weapon loads the whole
+     * inventory (both bools on the stack), ret 0x10, returns a bool in AL.
+     * Its callers are told apart by their return address: the reload
+     * control (CheckUserInputAttacks) and the automatic reload when a shot
+     * empties the clip (Actor::UseAmmo).
+     */
+    constexpr uintptr_t PlayerReloadWeaponSlot = 0x0108AE28;
+    constexpr uintptr_t PlayerReloadWeapon     = 0x0095D3F0;
+    constexpr uintptr_t ReloadReturnControl    = 0x00949803;
+    constexpr uintptr_t ReloadReturnEmptyClip  = 0x008A8C31;
+
+    /**
+     * The clip: the process's virtual GetCurrentAmmo (MiddleHighProcess
+     * 0x005F7590 reads +0x118) returns an inventory entry whose count is
+     * the rounds in the clip.
+     */
+    constexpr uintptr_t ProcessCurrentAmmoSlot = 0x14C;
+    constexpr uintptr_t InventoryEntryCount    = 0x04;
+
+    /**
+     * Jams: when Actor::StartAttack rolls a jam it looks up the jam
+     * animation group with Actor::GetAnimGroup (__thiscall with the group,
+     * the weapon entry, a hand-to-hand check and the animation, ret 0x10,
+     * returns the 16-bit group) at this call, and starts neither the jam
+     * nor the attack if the group returned is not the jam group.
+     */
+    constexpr uintptr_t JamAnimGroupCallSite   = 0x00894040;
+    constexpr uintptr_t ActorGetAnimGroup      = 0x00897910;
+
+    /**
+     * Before it rolls a jam, Actor::StartAttack reads the clip's count
+     * with the inventory entry's GetCount (__thiscall, returns [ecx+4]) at
+     * these two calls: with fewer rounds than a shot uses and none at all,
+     * the attack does not start and the player hears the weapon's attack
+     * fail sound (the dry click) when the attack control was just pressed.
+     * See findings/reload.md §5.2.
+     */
+    constexpr uintptr_t StartAttackClipCallSite    = 0x00893B88;
+    constexpr uintptr_t StartAttackClipEmptyCallSite = 0x00893C24;
+    constexpr uintptr_t InventoryEntryGetCount     = 0x00726070;
+
+    /**
+     * Weapon form: its attack fail sound (TESSound*,
+     * TESObjectWEAP::GetAttackFailSound 0x005224C0)
+     */
+    constexpr uintptr_t WeaponAttackFailSound      = 0x22C;
+
+    /**
+     * Weapon form: the data of its name (TESFullName at +0x30) and of its
+     * model's path (TESModel at +0x3C). Its clip size is WeaponClipRounds.
+     */
+    constexpr uintptr_t WeaponFullName         = 0x34;
+    constexpr uintptr_t WeaponModelPath        = 0x40;
+
+    /**
+     * Whether the weapon reloads one round at a time (TESObjectWEAP::
+     * GetIsLoopingReload 0x004938C0 reads this byte).
+     */
+    constexpr uintptr_t WeaponLoopingReload    = 0x384;
+
+    /**
+     * The reload callers ask ItemHasModEffect (above) for the extended
+     * magazine's effect on the weapon's inventory entry. ReloadWeapon
+     * counts the rounds it can put in the clip with InventoryObjectCount
+     * (above) on GetInventoryChanges.
+     */
+    constexpr uint32_t  ModEffectClipSize      = 2;
+
+    /**
+     * The weapon's reload animation, read without playing it, see
+     * findings/reload.md §8.2 (GOG database, bytes checked in Ghidra).
+     *
+     * TESObjectWEAP::GetReloadAnim, __thiscall with the extended magazine
+     * bool, ret 4, returns the group (0xB1 + the weapon's reload
+     * animation). Actor::GetAnimGroup (above) turns it into the full
+     * 16-bit group of an AnimData, whose low byte is that group if the
+     * AnimData has it. The AnimData's sequences are a NiTPointerMap from
+     * the full group to an AnimSequenceBase, whose GetAt is __thiscall with
+     * the group and the result's address, ret 8, returns a bool in AL; the
+     * AnimSequenceBase's virtual GetSequenceToPlay (__thiscall with an
+     * index, 0 being the first) returns the BSAnimGroupSequence, which is a
+     * NiControllerSequence with its TESAnimGroup at +0x74.
+     */
+    constexpr uintptr_t WeaponGetReloadAnim        = 0x0051E2A0;
+    constexpr uintptr_t AnimDataSequences          = 0xDC;
+    constexpr uintptr_t AnimDataReloadSpeed        = 0x118;
+    constexpr uintptr_t AnimSequenceMapGetAt       = 0x0049C390;
+    constexpr uintptr_t AnimSequenceToPlaySlot     = 0x10;
+    constexpr uintptr_t AnimSequenceGroup          = 0x74;
+
+    /**
+     * NiControllerSequence: an array of tracks (InterpArrayItem, 0x10
+     * bytes, its interpolator first) and one of the same size naming
+     * their targets (IDTag, 0x14 bytes, the object's name first), and the
+     * time range of its keys (GetInterpolatorAt 0x004937A0, GetIDTag
+     * 0x007E4FC0, GetBeginKeyTime 0x00759450, GetEndKeyTime 0x00508100).
+     * A NiInterpolator's virtual UpdateTransform (__thiscall with the time,
+     * the target and a NiQuatTransform to fill, returns a bool in AL) gives
+     * the track's translation, rotation (NiQuaternion w, x, y, z) and scale
+     * at a time, each -FLT_MAX where the track has none
+     * (NiBSplineCompTransformInterpolator 0x00A50F60 at +0x8C of its
+     * vtable). IsTransformValueSupported says whether it has one.
+     */
+    constexpr uintptr_t SequenceArraySize          = 0x0C;
+    constexpr uintptr_t SequenceInterpolators      = 0x14;
+    constexpr uintptr_t SequenceInterpolatorSize   = 0x10;
+    constexpr uintptr_t SequenceIdTags             = 0x18;
+    constexpr uintptr_t SequenceIdTagSize          = 0x14;
+    constexpr uintptr_t SequenceBeginKeyTime       = 0x2C;
+    constexpr uintptr_t SequenceEndKeyTime         = 0x30;
+    constexpr uintptr_t InterpolatorUpdateTransformSlot = 0x8C;
+    constexpr uintptr_t InterpolatorIsTransformSlot     = 0xB8;
+
+    /**
+     * TESAnimGroup: the sounds of the animation's "Sound:" text keys,
+     * read when it is loaded (GetSound 0x005F3710): their count and an
+     * array of AnimGroupSound (0x10 bytes: the time, the volume as a byte
+     * out of 255, the pitch, the TESSound).
+     */
+    constexpr uintptr_t AnimGroupSoundCount        = 0x34;
+    constexpr uintptr_t AnimGroupSounds            = 0x38;
+    constexpr uintptr_t AnimGroupSoundSize         = 0x10;
+    constexpr uintptr_t AnimGroupSoundVolume       = 0x04;
+    constexpr uintptr_t AnimGroupSoundPitch        = 0x08;
+    constexpr uintptr_t AnimGroupSoundForm         = 0x0C;
+
+    /**
+     * How TESAnimGroup::PlaySounds (0x005F2B60) plays them for the player
+     * in first person: BSAudio::GetSoundHandleByFilename (__thiscall on the
+     * BSAudio singleton with the handle to fill, the sound's file name
+     * (TESSound::GetFilename, __thiscall), the flags and the TESSound, ret
+     * 0x10), then on the 12-byte BSSoundHandle SetPosition (three floats),
+     * SetVolume, SetModFrequency (the pitch times the reload speed) and
+     * Play (whether it loops). The flags are the TESSound's loop flag
+     * (ConvertLoopFlag, __cdecl, of its flags at +0x48), 2D if its flag
+     * 0x40 is set and 3D otherwise, one shot, first person, ignoring the
+     * time scale and driven by an animation. Sounds played with no
+     * reference (interface animations) are system sounds
+     * (BSAnimGroupSequence::PlaySounds, 0x004EF7D1). Sounds driven by an
+     * animation are paused while a menu is open
+     * (InterfaceManager::PreIdleStuff calls BSAudio::PauseAnimationSounds,
+     * 0x0070BBA0); the interface's own sounds are 2D, system and one shot
+     * only (InterfaceManager::PlayMenuSound, 0x00717280).
+     */
+    constexpr uintptr_t AudioSingleton             = 0x011F6D98;
+    constexpr uintptr_t AudioGetSoundByFilename    = 0x00AD7480;
+    constexpr uintptr_t SoundGetFilename           = 0x00511840;
+    constexpr uintptr_t SoundConvertLoopFlag       = 0x005E39B0;
+    constexpr uintptr_t SoundHandleSetPosition     = 0x00AD8B60;
+    constexpr uintptr_t SoundHandleSetVolume       = 0x00AD89E0;
+    constexpr uintptr_t SoundHandleSetFrequency    = 0x00AD8A90;
+    constexpr uintptr_t SoundHandlePlay            = 0x00AD8830;
+    constexpr uintptr_t SoundFormFlags             = 0x48;
+    constexpr uint32_t  SoundForm2D                = 0x40;
+    constexpr uint32_t  SoundFlag2D                = 0x1;
+    constexpr uint32_t  SoundFlag3D                = 0x2;
+    constexpr uint32_t  SoundFlagSystem            = 0x20;
+    constexpr uint32_t  SoundFlagOneShot           = 0x100;
+    constexpr uint32_t  SoundFlagFirstPerson       = 0x40000;
+    constexpr uint32_t  SoundFlagIgnoreTimescale   = 0x200000;
+    constexpr uint32_t  SoundFlagAnimationDriven   = 0x40000000;
 
   }
 

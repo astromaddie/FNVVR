@@ -22,8 +22,10 @@
 #include "vr_hud_layers.h"
 #include "vr_hud_meters.h"
 #include "vr_charge_ring.h"
+#include "vr_console_terminal.h"
 #include "vr_melee_swing.h"
 #include "vr_menu_scenes.h"
+#include "vr_manual_reload.h"
 #include "vr_npc_gaze.h"
 #include "vr_pipboy_animation.h"
 #include "vr_weapon_drawn.h"
@@ -195,6 +197,16 @@ namespace dxvk {
       m_pipBoyScale = scale;
     }
 
+    /**
+     * \brief Turns the reload with the hands on or off
+     *
+     * \param [in] enabled Off, every weapon is reloaded as in the game
+     */
+    void setManualReload(bool enabled) {
+      if (m_manualReload)
+        m_manualReload->setEnabled(enabled);
+    }
+
   private:
 
     static constexpr uint32_t NoEye = ~0u;
@@ -318,6 +330,9 @@ namespace dxvk {
     VrPowerCharge       m_powerCharge;
     uint32_t            m_loggedPowerHits = 0;
 
+    // The game's console, typed in on a terminal with the lasers
+    std::unique_ptr<VrConsoleTerminal> m_terminal;
+
     // The activation target, picked along the hands instead of the view
     std::unique_ptr<VrHandActivatePick> m_handPick;
     VrVector3           m_eyePosition;
@@ -346,6 +361,9 @@ namespace dxvk {
 
     // The other actors look at the head
     std::unique_ptr<VrNpcGaze> m_npcGaze;
+
+    // Reloading with the hands
+    std::unique_ptr<VrManualReload> m_manualReload;
 
     // God mode, weapons and ammunition, for testing (d3d9.vrDeveloperMode)
     std::unique_ptr<VrDeveloperMode> m_developerMode;
@@ -493,7 +511,11 @@ namespace dxvk {
 
     void updateMeleeSwing(const VrInputState& input, VrGameStateKind state, float dt);
 
+    void updateManualReload(const VrInputState& input, VrGameStateKind state, float dt);
+
     bool updatePowerCharge(const VrInputState& input, int32_t& cost);
+
+    void updateControls(const VrInputState& input, VrGameStateKind state, bool stereo, float dt);
 
     VrGameCameraPose handInGame(const VrControllerState& controller) const;
 

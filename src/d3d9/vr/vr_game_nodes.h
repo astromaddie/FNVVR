@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 
 #include "vr_types.h"
 
@@ -22,6 +23,17 @@ namespace dxvk {
    * \returns The first object found depth first, or 0
    */
   uintptr_t vrFindGameObject(uintptr_t root, const char* name, uint32_t maxDepth);
+
+  /**
+   * \brief Visits every object of a subtree of the game's scene graph
+   *
+   * \param [in] root NiAVObject* to start from, itself included
+   * \param [in] maxDepth Depth below the root to visit to
+   * \param [in] visit Called depth first with each object and its depth
+   *    below the root
+   */
+  void vrVisitGameObjects(uintptr_t root, uint32_t maxDepth,
+    const std::function<void (uintptr_t object, uint32_t depth)>& visit);
 
   /**
    * \brief Finds where an actor's head is, the way the dialogue camera does

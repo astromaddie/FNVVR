@@ -109,6 +109,45 @@ namespace dxvk {
   }
 
 
+  VrGameCameraPose vrComputeMenuSceneCameraPose(
+    const VrPose&           anchor,
+    const VrPose&           eye,
+    const VrVector3&        target,
+          float             unitsPerMetre) {
+    // The anchor's right, up and back axes are the menu's +Z, +Y and -X
+    auto toMenu = [] (const VrVector3& v) {
+      return VrVector3 { -v.z, v.y, v.x };
+    };
+
+    VrPose local = vrCompose(vrInverse(anchor), eye);
+
+    VrGameCameraPose pose;
+    pose.forward  = toMenu(vrRotate(local.orientation, VrVector3 { 0.0f, 0.0f, -1.0f }));
+    pose.up       = toMenu(vrRotate(local.orientation, VrVector3 { 0.0f, 1.0f,  0.0f }));
+    pose.right    = toMenu(vrRotate(local.orientation, VrVector3 { 1.0f, 0.0f,  0.0f }));
+    pose.position = target + toMenu(local.position) * unitsPerMetre;
+    return pose;
+  }
+
+
+  VrVector3 vrComputeMenuScenePointInRoom(
+    const VrPose&           anchor,
+    const VrVector3&        target,
+          float             unitsPerMetre,
+    const VrVector3&        point) {
+    VrVector3 offset = (point - target) * (1.0f / unitsPerMetre);
+    return vrTransformPoint(anchor, VrVector3 { offset.z, offset.y, -offset.x });
+  }
+
+
+  VrVector3 vrComputeMenuSceneDirectionInRoom(
+    const VrPose&           anchor,
+    const VrVector3&        direction) {
+    // The menu's +Z, +Y and -X are the anchor's right, up and back axes
+    return vrRotate(anchor.orientation, VrVector3 { direction.z, direction.y, -direction.x });
+  }
+
+
   VrFov vrComputeCullingFov(const VrFov& left, const VrFov& right, float margin) {
     // Left and down are negative angles
     VrFov fov;

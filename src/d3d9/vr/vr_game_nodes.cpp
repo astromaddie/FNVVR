@@ -55,6 +55,30 @@ namespace dxvk {
   }
 
 
+  void vrVisitGameObjects(uintptr_t root, uint32_t maxDepth,
+    const std::function<void (uintptr_t object, uint32_t depth)>& visit) {
+    std::function<void (uintptr_t, uint32_t)> walk = [&] (uintptr_t object, uint32_t depth) {
+      visit(object, depth);
+
+      uintptr_t node = vrGameAsNode(object);
+
+      if (!node || depth == maxDepth)
+        return;
+
+      auto children = readField<const uintptr_t*>(node, VrGame::NodeChildren);
+      auto count    = readField<uint16_t>(node, VrGame::NodeChildCount);
+
+      for (uint32_t i = 0; children && i < count; i++) {
+        if (children[i])
+          walk(children[i], depth + 1);
+      }
+    };
+
+    if (root)
+      walk(root, 0);
+  }
+
+
   bool vrFindActorHead(uintptr_t actor, VrVector3& position) {
     if (!actor)
       return false;

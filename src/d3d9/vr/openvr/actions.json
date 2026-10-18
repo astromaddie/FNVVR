@@ -96,6 +96,11 @@
       "requirement": "suggested"
     },
     {
+      "name": "/actions/game/in/magazine",
+      "type": "boolean",
+      "requirement": "suggested"
+    },
+    {
       "name": "/actions/game/out/haptic_left",
       "type": "vibration",
       "requirement": "optional"
@@ -177,6 +182,7 @@
       "/actions/game/in/pause": "Pause menu",
       "/actions/game/in/wait": "Wait",
       "/actions/game/in/grab": "Grab",
+      "/actions/game/in/magazine": "Take out, take and insert a magazine (left hand)",
       "/actions/game/out/haptic_left": "Left hand vibration",
       "/actions/game/out/haptic_right": "Right hand vibration",
       "/actions/menu/in/navigate": "Navigate",

@@ -319,3 +319,35 @@ TEST_CASE(barrel_direction_gives_the_node_heading_and_pitch) {
     CHECK_NEAR(angles.pitch, pitch, 1e-4);
   }
 }
+
+
+TEST_CASE(quaternions_follow_the_game_convention) {
+  // A quarter turn about Z, as NiQuaternion::ToRotation builds it: x goes to y
+  VrQuaternion quarter = vrQuaternionFromAxisAngle({ 0.0f, 0.0f, 1.0f }, Pi / 2.0f);
+  VrGameRotation r = vrGameRotationFromQuaternion(quarter);
+
+  checkVector(r * VrVector3 { 1.0f, 0.0f, 0.0f }, 0.0f, 1.0f, 0.0f);
+  checkVector(r * VrVector3 { 0.3f, -0.2f, 0.5f },
+    vrRotate(quarter, { 0.3f, -0.2f, 0.5f }).x,
+    vrRotate(quarter, { 0.3f, -0.2f, 0.5f }).y,
+    vrRotate(quarter, { 0.3f, -0.2f, 0.5f }).z);
+}
+
+
+TEST_CASE(quaternions_round_trip_game_rotations) {
+  const VrGameRotation rotations[] = {
+    VrGameRotation(),
+    rotationX(0.7f) * rotationY(-1.2f),
+    rotationZ(Pi) * rotationX(0.1f),
+    rotationY(Pi * 0.9f) * rotationZ(2.5f) * rotationX(-2.0f),
+  };
+
+  for (const VrGameRotation& r : rotations) {
+    VrGameRotation back = vrGameRotationFromQuaternion(vrQuaternionFromGameRotation(r));
+
+    for (uint32_t i = 0; i < 3; i++) {
+      for (uint32_t j = 0; j < 3; j++)
+        CHECK_NEAR(back.m[i][j], r.m[i][j], 1e-4);
+    }
+  }
+}

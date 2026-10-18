@@ -3,6 +3,23 @@
 #include <cstddef>
 #include <cstdint>
 
+#ifdef _MSC_VER
+#include <intrin.h>
+#endif
+
+/**
+ * \brief Address the current function returns to
+ *
+ * Tells the game's callers of a hooked function apart. Only valid in the
+ * hook itself, which the game calls through a pointer, so it is never
+ * inlined.
+ */
+#ifdef _MSC_VER
+#define VR_RETURN_ADDRESS() reinterpret_cast<uintptr_t>(_ReturnAddress())
+#else
+#define VR_RETURN_ADDRESS() reinterpret_cast<uintptr_t>(__builtin_return_address(0))
+#endif
+
 namespace dxvk {
 
   /**

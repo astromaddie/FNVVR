@@ -11,6 +11,11 @@ namespace dxvk {
 
     using SetKillCamModeFn = void (__thiscall*)(uintptr_t player, int32_t mode);
 
+    using SetFirstPersonFn = void (__thiscall*)(uintptr_t player, uint8_t first);
+
+    // Actor::IsDead, __thiscall with a bool, returns a bool in AL
+    using IsDeadFn = uint32_t (__thiscall*)(uintptr_t actor, uint32_t notEssential);
+
   }
 
 
@@ -21,6 +26,9 @@ namespace dxvk {
         VrGame::KillCamModeStore, sizeof(VrGame::KillCamModeStore))
       && VrGameMemory::matches(VrGame::SetKillCamModeCallback,
         VrGame::SetKillCamModeCallbackPrologue, sizeof(VrGame::SetKillCamModeCallbackPrologue))
+      && VrGameMemory::matches(VrGame::SetFirstPerson,
+        VrGame::SetFirstPersonPrologue, sizeof(VrGame::SetFirstPersonPrologue))
+      && VrGameMemory::readable(VrGame::VatsCameraState, sizeof(uint32_t))
       && VrGameMemory::readable(VrGame::DisableAutoVanitySetting + VrGame::SettingValue, sizeof(uint8_t))
       && VrGameMemory::readable(VrGame::Player, sizeof(uintptr_t));
 
@@ -34,11 +42,14 @@ namespace dxvk {
   }
 
 
-  void VrComfortSettings::update() {
+  void VrComfortSettings::update(bool inGame) {
     uintptr_t player = *reinterpret_cast<const uintptr_t*>(VrGame::Player);
 
     if (!player)
       return;
+
+    if (inGame)
+      keepFirstPerson(player);
 
     int32_t mode = *reinterpret_cast<const int32_t*>(player + VrGame::PlayerKillCamMode);
 
@@ -51,6 +62,31 @@ namespace dxvk {
       Logger::info(str::format("VR: The kill camera is set from mode ", mode,
         " to the first-person slow motion"));
       m_loggedKillCam = true;
+    }
+  }
+
+
+
+  void VrComfortSettings::keepFirstPerson(uintptr_t player) {
+    if (!*reinterpret_cast<const uint8_t*>(player + VrGame::PlayerWantsThirdPerson))
+      return;
+
+    // V.A.T.S. plays some of its shots in third person, and the game shows
+    // the dead player in third person
+    if (*reinterpret_cast<const uint32_t*>(VrGame::VatsCameraState))
+      return;
+
+    auto vtable = *reinterpret_cast<const uintptr_t*>(player);
+    auto isDead = *reinterpret_cast<const IsDeadFn*>(vtable + VrGame::ActorIsDeadSlot);
+
+    if (isDead(player, 0) & 0xFF)
+      return;
+
+    reinterpret_cast<SetFirstPersonFn>(VrGame::SetFirstPerson)(player, 1);
+
+    if (!m_loggedView) {
+      Logger::info("VR: The game asked for the third-person view, the first person is put back");
+      m_loggedView = true;
     }
   }
 

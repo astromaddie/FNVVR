@@ -22,6 +22,8 @@ namespace dxvk {
     float smoothTurnSpeed = DefaultSmoothTurnSpeed;
     /// Size of the Pip-Boy while it is open, as a factor of the game's size
     float pipBoyScale     = 1.0f;
+    /// Reload the weapons with the hands, see findings/reload.md
+    bool  manualReload    = true;
   };
 
   /// Slowest smooth turning speed of the options page, in degrees per second

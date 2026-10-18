@@ -275,3 +275,70 @@ TEST_CASE(game_point_comes_back_into_the_reference) {
   checkVector(eye.position, 0.5f, -0.2f, -2.0f);
   checkVector(vrComputeEyeCameraPose(base, eye, 100.0f).position, 210.0f, -30.0f, 10.0f);
 }
+
+
+TEST_CASE(menu_scene_camera_sees_the_target_at_the_anchor) {
+  // The anchor 1 m ahead of the origin along -Z, facing back
+  VrPose anchor;
+  anchor.position = { 0.0f, 1.5f, -1.0f };
+
+  VrPose eye;
+  eye.position = { 0.0f, 1.5f, 0.0f };
+
+  VrVector3 target = { 20.0f, 0.5f, 0.0f };
+
+  // Straight in front: the camera looks along +X, 10 units before the target
+  VrGameCameraPose pose = vrComputeMenuSceneCameraPose(anchor, eye, target, 10.0f);
+  checkVector(pose.position, 10.0f, 0.5f, 0.0f);
+  checkVector(pose.forward, 1.0f, 0.0f, 0.0f);
+  checkVector(pose.up,      0.0f, 1.0f, 0.0f);
+  checkVector(pose.right,   0.0f, 0.0f, 1.0f);
+
+  // An eye to the right and above is to the camera's right (+Z) and up (+Y)
+  eye.position = { 0.1f, 1.7f, 0.0f };
+  pose = vrComputeMenuSceneCameraPose(anchor, eye, target, 10.0f);
+  checkVector(pose.position, 10.0f, 2.5f, 1.0f);
+
+  // Turning the head left turns the camera towards -Z
+  eye.orientation = vrQuaternionFromAxisAngle({ 0.0f, 1.0f, 0.0f }, 0.5f * Pi);
+  pose = vrComputeMenuSceneCameraPose(anchor, eye, target, 10.0f);
+  checkVector(pose.forward, 0.0f, 0.0f, -1.0f);
+  checkVector(pose.right,   1.0f, 0.0f,  0.0f);
+}
+
+
+TEST_CASE(menu_scene_camera_follows_a_turned_anchor) {
+  // The anchor to the viewer's right (+X), turned to face the origin
+  VrPose anchor;
+  anchor.orientation = vrQuaternionFromAxisAngle({ 0.0f, 1.0f, 0.0f }, -0.5f * Pi);
+  anchor.position    = { 2.0f, 0.0f, 0.0f };
+
+  VrPose eye;
+  eye.orientation = anchor.orientation;
+
+  VrGameCameraPose pose = vrComputeMenuSceneCameraPose(anchor, eye, { 20.0f, 0.0f, 0.0f }, 5.0f);
+  checkVector(pose.position, 10.0f, 0.0f, 0.0f);
+  checkVector(pose.forward, 1.0f, 0.0f, 0.0f);
+}
+
+
+TEST_CASE(menu_scene_points_map_back_to_the_room) {
+  VrPose anchor;
+  anchor.orientation = vrQuaternionFromAxisAngle({ 0.0f, 1.0f, 0.0f }, 0.3f * Pi);
+  anchor.position    = { 0.5f, 1.4f, -0.8f };
+
+  VrVector3 target = { 20.0f, 0.38f, 0.0f };
+
+  // The eye's camera in the menu's space is where the eye is in the room
+  VrPose eye;
+  eye.orientation = vrQuaternionFromAxisAngle({ 1.0f, 0.0f, 0.0f }, -0.2f);
+  eye.position    = { 0.1f, 1.7f, 0.2f };
+
+  VrGameCameraPose camera = vrComputeMenuSceneCameraPose(anchor, eye, target, 9.6f);
+  checkVector(vrComputeMenuScenePointInRoom(anchor, target, 9.6f, camera.position),
+    eye.position.x, eye.position.y, eye.position.z);
+
+  // And its forward direction is the eye's
+  VrVector3 forward = vrRotate(eye.orientation, { 0.0f, 0.0f, -1.0f });
+  checkVector(vrComputeMenuSceneDirectionInRoom(anchor, camera.forward), forward.x, forward.y, forward.z);
+}

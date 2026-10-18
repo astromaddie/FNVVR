@@ -7,6 +7,7 @@
 
 #include "vr_d3d9_bridge.h"
 #include "vr_game_addresses.h"
+#include "vr_game_console.h"
 #include "vr_game_memory.h"
 #include "vr_game_nodes.h"
 #include "vr_head_hud.h"
@@ -79,6 +80,15 @@ namespace dxvk {
     constexpr int64_t ChargedHapticDuration = 15'000'000;
 
     constexpr uint32_t MaxLoggedPowerHits = 200;
+
+    // Pulses of the manual reload: on the left controller when it takes a
+    // magazine, on both when the magazine goes in, and a faint one when no
+    // rounds are left behind the back or the magazine enters or leaves its
+    // well
+    constexpr float   MagazineTakenHaptic    = 0.4f;
+    constexpr float   MagazineInsertedHaptic = 0.7f;
+    constexpr float   MagazineFaintHaptic    = 0.15f;
+    constexpr int64_t MagazineHapticDuration = 25'000'000;
 
     /**
      * \brief Checks whether a state has no 3D scene and is shown on the panel
@@ -232,6 +242,9 @@ namespace dxvk {
 
     renderer->m_chargeRing = std::make_unique<VrChargeRing>(device, backend);
 
+    if (VrGameConsole::install())
+      renderer->m_terminal = std::make_unique<VrConsoleTerminal>(device, backend);
+
     renderer->m_handPick = VrHandActivatePick::install();
 
     if (!renderer->m_handPick)
@@ -274,6 +287,11 @@ namespace dxvk {
 
     if (!renderer->m_npcGaze)
       Logger::info("VR: The player's look-at location was not found, actors look at the game's camera");
+
+    renderer->m_manualReload = VrManualReload::install();
+
+    if (!renderer->m_manualReload)
+      Logger::info("VR: The player's reload was not found, the weapons are reloaded as in the game");
 
     if (developer.enabled) {
       renderer->m_developerMode = VrDeveloperMode::install(developer.weaponTypes);
@@ -422,10 +440,13 @@ namespace dxvk {
     VrGameStateKind state = readGameState();
 
     if (m_comfortSettings)
-      m_comfortSettings->update();
+      m_comfortSettings->update(state == VrGameStateKind::InGame);
 
     if (m_developerMode)
       m_developerMode->update(state);
+
+    if (m_manualReload)
+      m_manualReload->update();
 
     if (showsPanel(state)) {
       m_layer = InterfaceLayer::None;
@@ -504,7 +525,7 @@ namespace dxvk {
 
     float dt = float(timing.predictedPeriod) * 1e-9f;
 
-    m_controls.update(input, state, m_hasReference ? &m_reference : nullptr, menuPanel(), dt);
+    updateControls(input, state, true, dt);
 
     if (m_controls.switchesPipBoyLight() && !m_loggedPipBoyLight) {
       Logger::info("VR: The right grip at the Pip-Boy holds the Pip-Boy control to switch the light");
@@ -527,6 +548,7 @@ namespace dxvk {
     m_controls.adjustCamera(m_gameCameraPose);
     updateNpcGaze();
     updateWeaponHand(input, state, modelCamera, dt);
+    updateManualReload(input, state, dt);
     updateMeleeSwing(input, state, dt);
     updateHandPick(input, state);
     updatePipBoyGaze(input, state, dt);
@@ -573,8 +595,12 @@ namespace dxvk {
     else
       hideHandHud();
 
-    // A menu keeps its last image for a frame where it was not drawn
-    if (m_menuRendered)
+    // A menu keeps its last image for a frame where it was not drawn. The
+    // console's terminal stands in front of the menu it is opened from,
+    // and the runtime would draw the menu over it.
+    if (m_terminal && m_terminal->showsScreen())
+      hidePanel();
+    else if (m_menuRendered)
       submitMenu();
     else if (m_overPipBoy)
       hidePanel();
@@ -596,8 +622,7 @@ namespace dxvk {
     VrInputState input = m_backend.pollInput(timing.predictedDisplayTime);
     trackHead(input);
 
-    m_controls.update(input, state, m_hasReference ? &m_reference : nullptr,
-      menuPanel(), float(timing.predictedPeriod) * 1e-9f);
+    updateControls(input, state, false, float(timing.predictedPeriod) * 1e-9f);
 
     // Nothing in the world can be pointed at without the stereo view
     if (m_handPick)
@@ -609,6 +634,23 @@ namespace dxvk {
     VrD3D9Bridge::submitEmptyFrame(m_device, m_backend, timing.predictedDisplayTime);
 
     g_originalSwap(main, nullptr);
+  }
+
+
+  void VrStereoRenderer::updateControls(const VrInputState& input, VrGameStateKind state, bool stereo, float dt) {
+    m_controls.setTerminalPanel(m_terminal ? m_terminal->placement() : nullptr);
+    m_controls.update(input, state, m_hasReference ? &m_reference : nullptr, menuPanel(), dt);
+
+    if (!m_terminal)
+      return;
+
+    VrPose head;
+    head.position.y = DefaultHeadHeight;
+
+    if (m_hasHeadPose)
+      head = m_headPose;
+
+    m_terminal->update(head, stereo, m_controls.terminalPointer(), m_controls.terminalBack(), dt);
   }
 
 
@@ -820,6 +862,134 @@ namespace dxvk {
 
     m_weaponHand->beginFrame(gameCamera, &hand, left.isActive ? &otherHand : nullptr,
       input.hasActions && input.actions.isPressed(VrAction::TwoHandGrip), VrFirstPersonMode::Hands, dt);
+  }
+
+
+  void VrStereoRenderer::updateManualReload(
+    const VrInputState&         input,
+          VrGameStateKind       state,
+          float                 dt) {
+    if (!m_manualReload)
+      return;
+
+    const VrControllerState& right = input.controllers[uint32_t(VrHand::Right)];
+    const VrControllerState& left  = input.controllers[uint32_t(VrHand::Left)];
+
+    VrManualReloadInput hands;
+    VrGameCameraPose head, rightHand, leftHand;
+    hands.frameTime = dt;
+
+    bool tracked = state == VrGameStateKind::InGame && m_hasReference && m_hasHeadPose
+      && right.isActive && left.isActive && input.hasActions;
+
+    if (tracked) {
+      head      = vrComputeEyeCameraPose(m_gameCameraPose,
+        vrComputeEyeInReference(m_reference, m_headPose), VrGameUnitsPerMetre);
+      rightHand = handInGame(right);
+      leftHand  = handInGame(left);
+
+      hands.head         = &head;
+      hands.rightHand    = &rightHand;
+      hands.leftHand     = &leftHand;
+      hands.leftOnWeapon = input.actions.isPressed(VrAction::TwoHandGrip);
+      hands.grip         = input.actions.isPressed(VrAction::Magazine);
+    }
+
+    // The magazine and the rack part were measured when the model was
+    // last drawn
+    if (m_weaponHand) {
+      hands.well       = m_weaponHand->magazineWell();
+      hands.axis       = m_weaponHand->magazineAxis();
+      hands.held       = m_weaponHand->magazineHeld();
+      hands.animation  = m_weaponHand->reloadAnimation();
+      hands.rack       = m_weaponHand->rackPart();
+      hands.rackAxis   = m_weaponHand->rackAxis();
+      hands.rackTravel = m_weaponHand->rackTravel();
+      hands.barrel     = m_weaponHand->actionBarrel();
+      hands.roll       = m_weaponHand->actionRoll();
+      hands.port       = m_weaponHand->roundPort();
+    }
+
+    VrReloadEvents events = m_manualReload->updateHands(hands);
+
+    switch (events.magazine) {
+      case VrMagazineEvent::Ejected:
+      case VrMagazineEvent::Taken:
+        m_backend.applyHaptic(VrHand::Left, MagazineTakenHaptic, MagazineHapticDuration);
+        break;
+
+      case VrMagazineEvent::Inserted:
+        m_backend.applyHaptic(VrHand::Left, MagazineInsertedHaptic, MagazineHapticDuration);
+        m_backend.applyHaptic(VrHand::Right, MagazineInsertedHaptic, MagazineHapticDuration);
+        break;
+
+      case VrMagazineEvent::NoRounds:
+      case VrMagazineEvent::Cleared:
+      case VrMagazineEvent::Engaged:
+        m_backend.applyHaptic(VrHand::Left, MagazineFaintHaptic, MagazineHapticDuration);
+        break;
+
+      case VrMagazineEvent::Dropped:
+      case VrMagazineEvent::None:
+        break;
+    }
+
+    switch (events.round) {
+      case VrRoundEvent::Taken:
+        m_backend.applyHaptic(VrHand::Left, MagazineTakenHaptic, MagazineHapticDuration);
+        break;
+
+      case VrRoundEvent::Placed:
+        m_backend.applyHaptic(VrHand::Left, MagazineInsertedHaptic, MagazineHapticDuration);
+        break;
+
+      case VrRoundEvent::NoRounds:
+      case VrRoundEvent::Started:
+      case VrRoundEvent::Full:
+        m_backend.applyHaptic(VrHand::Left, MagazineFaintHaptic, MagazineHapticDuration);
+        break;
+
+      case VrRoundEvent::Stopped:
+      case VrRoundEvent::Dropped:
+      case VrRoundEvent::None:
+        break;
+    }
+
+    switch (events.rack) {
+      case VrRackEvent::Grabbed:
+        m_backend.applyHaptic(VrHand::Left, MagazineFaintHaptic, MagazineHapticDuration);
+        break;
+
+      case VrRackEvent::Racked:
+        m_backend.applyHaptic(VrHand::Left, MagazineInsertedHaptic, MagazineHapticDuration);
+        m_backend.applyHaptic(VrHand::Right, MagazineInsertedHaptic, MagazineHapticDuration);
+        break;
+
+      case VrRackEvent::Released:
+      case VrRackEvent::None:
+        break;
+    }
+
+    switch (events.action) {
+      case VrBreakEvent::Opened:
+      case VrBreakEvent::Closed:
+        m_backend.applyHaptic(VrHand::Left, MagazineInsertedHaptic, MagazineHapticDuration);
+        m_backend.applyHaptic(VrHand::Right, MagazineInsertedHaptic, MagazineHapticDuration);
+        break;
+
+      case VrBreakEvent::None:
+        break;
+    }
+
+    if (events.jammed)
+      m_backend.applyHaptic(VrHand::Right, MagazineInsertedHaptic, MagazineHapticDuration);
+
+    if (m_weaponHand) {
+      m_weaponHand->setMagazine(m_manualReload->magazineState(), m_manualReload->magazineSeat());
+      m_weaponHand->setRack(m_manualReload->rackHeld(), m_manualReload->rackPull(), m_manualReload->rackRest());
+      m_weaponHand->setActionOpen(m_manualReload->actionOpen());
+      m_weaponHand->setRoundLoop(m_manualReload->roundState(), m_manualReload->roundTime());
+    }
   }
 
 
@@ -1072,6 +1242,10 @@ namespace dxvk {
   void VrStereoRenderer::captureEye() {
     if (m_eye == NoEye || m_eyeCopied[m_eye])
       return;
+
+    // The console's terminal belongs to the 3D image, drawn with the eye
+    if (m_terminal)
+      m_terminal->drawEye(*m_eyeView);
 
     logEyeCapture();
 

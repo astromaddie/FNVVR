@@ -4,8 +4,10 @@
 #include <memory>
 #include <vector>
 
+#include "vr_magazine.h"
 #include "vr_melee.h"
 #include "vr_pipboy_size.h"
+#include "vr_reload_animation.h"
 #include "vr_weapon_aim.h"
 
 namespace dxvk {
@@ -57,6 +59,20 @@ namespace dxvk {
    *   Pip-Boy screen, so the forearm is moved again after that update.
    * - While a menu is pointed at with the lasers, the whole model is
    *   hidden.
+   * - The weapon's magazine, a part of its model, is drawn in the left
+   *   hand while the left hand holds it, sliding along its well while it
+   *   is in it, and hidden while it is neither in the hand nor in the
+   *   weapon, see VrMagazineHand. The game's reload animation of the
+   *   weapon tells how the hand holds it and along which direction it
+   *   comes out, see vrReadReloadAnimation. A weapon loaded round by
+   *   round, or a break action, has the round its reload animation
+   *   carries in in the place of the magazine: it is drawn between the
+   *   thumb and the index finger of the left hand, shown even if the game
+   *   hides it, and goes into the place the animation puts it.
+   * - The weapon's rack part (slide, charging handle, bolt) is drawn back
+   *   while the left hand pulls it, see VrRackHand, and locked back while
+   *   nothing is chambered, along the way the reload animation pulls it,
+   *   the left hand holding it as the animation does.
    *
    * Only used on the game's main thread.
    */
@@ -169,7 +185,187 @@ namespace dxvk {
       return m_hasBlade && m_bladeAutomatic;
     }
 
+    /**
+     * \brief Sets where the magazine of the weapon in the hand is drawn
+     *
+     * Applied when the model is next drawn. In the left hand, the magazine
+     * is held as the game's reload animation holds it, with the fingers
+     * closed on it. Between the hand and the well it moves smoothly.
+     *
+     * \param [in] state Where the magazine is
+     * \param [in] seat How far out of its place it is along its well, in
+     *    metres, while it is in the well
+     */
+    void setMagazine(VrMagazineState state, float seat);
+
+    /**
+     * \brief Sets how the left hand loads a weapon loaded round by round
+     *
+     * Applied when the model is next drawn. A hand holding a handful holds
+     * its round between the thumb and the index finger, at its controller.
+     * While it loads, a round goes from there into the loading port in
+     * each loop of the game's loading animation, and comes to its place
+     * when the loop's round does; the next one is in the fingers when the
+     * loop starts again.
+     *
+     * \param [in] state Where the handful is
+     * \param [in] time Time in the loading loop, while it loads
+     */
+    void setRoundLoop(VrRoundState state, float time);
+
+    /**
+     * \brief Where a round enters the loading port
+     *
+     * Its place, out along the way it goes in by a few centimetres, in
+     * the right hand's frame (see vrPointFromHand), measured each time the
+     * model is drawn.
+     *
+     * \returns The point, or \c nullptr if the weapon in the hand is not
+     *    loaded round by round with a loading loop
+     */
+    const VrVector3* roundPort() const {
+      return m_hasRoundPort ? &m_roundPort : nullptr;
+    }
+
+    /**
+     * \brief Where the magazine sits in the weapon in the right hand
+     *
+     * The centre of the magazine's meshes where the game draws it, measured
+     * each time the model is drawn, given in the right hand's frame (see
+     * vrPointFromHand) so that it can be placed on the hand pose of a
+     * later frame.
+     *
+     * \returns The point, or \c nullptr if the weapon in the hand has no
+     *    magazine
+     */
+    const VrVector3* magazineWell() const {
+      return m_hasMagazine ? &m_magazineWell : nullptr;
+    }
+
+    /**
+     * \brief Direction the magazine comes out of the weapon along
+     *
+     * A unit vector in the right hand's frame (forward, up and right),
+     * valid with magazineWell.
+     */
+    const VrVector3& magazineAxis() const {
+      return m_magazineAxis;
+    }
+
+    /**
+     * \brief Where the centre of a magazine held by the left hand is
+     *
+     * In the left controller's frame (see vrPointFromHand), valid with
+     * magazineWell. A round is held between the thumb and the index
+     * finger.
+     */
+    const VrVector3& magazineHeld() const {
+      return m_magazineHeld;
+    }
+
+    /**
+     * \brief Sets where the rack part of the weapon in the hand is drawn
+     *
+     * Applied when the model is next drawn.
+     *
+     * \param [in] held The left hand holds it
+     * \param [in] pull How far back the hand holds it, in metres
+     * \param [in] rest How far back it rests while the hand does not hold
+     *    it, in metres: all the way back while nothing is chambered, part
+     *    of the way while the weapon is jammed
+     */
+    void setRack(bool held, float pull, float rest);
+
+    /**
+     * \brief Where the rack part's centre is when it is home
+     *
+     * In the right hand's frame (see vrPointFromHand), measured each time
+     * the model is drawn.
+     *
+     * \returns The point, or \c nullptr if the weapon in the hand is not
+     *    reloaded by hand or has no rack part
+     */
+    const VrVector3* rackPart() const {
+      return m_hasRack ? &m_rackCentre : nullptr;
+    }
+
+    /**
+     * \brief Direction the rack part is pulled back along
+     *
+     * A unit vector in the right hand's frame, valid with rackPart.
+     */
+    const VrVector3& rackAxis() const {
+      return m_rackAxis;
+    }
+
+    /**
+     * \brief How far the rack part is pulled back, in metres
+     */
+    float rackTravel() const {
+      return m_rackTravel;
+    }
+
+    /**
+     * \brief Opens or closes the action of the weapon in the hand
+     *
+     * From the next frame on, the barrel of a break action swings down
+     * about the hinge, the stock staying in the hand, and a revolver's
+     * cylinder or loading gate swings out, as far as the game's reload
+     * animation opens them.
+     */
+    void setActionOpen(bool open) {
+      m_actionOpen = open;
+    }
+
+    /**
+     * \brief Direction the barrel of a break action points along from its
+     *    breech
+     *
+     * A unit vector in the right hand's frame, measured each time the
+     * model is drawn, as it is drawn (open or closed). The breech is
+     * magazineWell.
+     *
+     * \returns The direction, or \c nullptr if the weapon in the hand is
+     *    not a break action reloaded by hand
+     */
+    const VrVector3* actionBarrel() const {
+      return m_hasMagazine && m_hasHinge && !m_swingAction ? &m_actionBarrel : nullptr;
+    }
+
+    /**
+     * \brief Axis a revolver in the hand turns about when it is flicked
+     *    open
+     *
+     * Along its barrel, the way its cylinder or loading gate swings out: a
+     * unit vector in the right hand's frame, measured each time the model
+     * is drawn.
+     *
+     * \returns The axis, or \c nullptr if the weapon in the hand is not a
+     *    revolver reloaded by hand
+     */
+    const VrVector3* actionRoll() const {
+      return m_hasMagazine && m_hasHinge && m_swingAction ? &m_actionRoll : nullptr;
+    }
+
+    /**
+     * \brief The game's reload animation of the weapon in the hand
+     *
+     * \returns The animation, or \c nullptr if it was not read
+     */
+    const VrReloadAnimation* reloadAnimation() const {
+      return m_hasMagazine && m_hasReloadAnimation ? &m_reloadAnimation : nullptr;
+    }
+
   private:
+
+    /**
+     * \brief How the action of the weapon opens to be loaded
+     */
+    enum class ActionKind {
+      None,           ///< It does not open: a magazine, or a loading port
+      Break,          ///< A break action: the barrel turns down about the breech
+      Swing,          ///< A revolver: its cylinder or loading gate swings out
+    };
 
     enum class GripKind {
       None,           ///< The other hand does not hold the weapon
@@ -261,6 +457,98 @@ namespace dxvk {
     bool             m_hasBlade = false;
     bool             m_bladeAutomatic = false;
 
+    // Magazine of the weapon in the hand: where it is drawn, where it sits
+    // in the weapon in the right hand's frame, the centre of its meshes in
+    // its own frame, its rotation relative to the left controller while
+    // held (for the weapon form it was taken from, compared but not
+    // dereferenced) and the magazine the VR layer culled, compared but only
+    // touched once found in the weapon again
+    VrMagazineState  m_magazineState = VrMagazineState::InWeapon;
+    float            m_magazineSeat = 0.0f;
+    VrVector3        m_magazineWell;
+    VrVector3        m_magazineAxis;
+    VrVector3        m_magazineHeld;
+    bool             m_hasMagazine = false;
+    VrVector3        m_magazineCentre;
+    bool             m_hasMagazineCentre = false;
+    const uint8_t*   m_magazineForm = nullptr;
+    VrGameRotation   m_magazineGrip;
+    bool             m_hasMagazineGrip = false;
+    uint8_t*         m_hiddenMagazine = nullptr;
+    // A round the game hides, shown by the VR layer while it is held
+    uint8_t*         m_shownRound = nullptr;
+    bool             m_loggedMagazine = false;
+
+    // Where the magazine was last drawn out of the weapon, in the game
+    // world, and the blend from there when it moves between the hand and
+    // the well (1 when done)
+    VrGameTransform  m_magazineDrawn;
+    bool             m_hasMagazineDrawn = false;
+    VrGameTransform  m_magazineFrom;
+    float            m_magazineBlend = 1.0f;
+
+    // The left hand loading a weapon round by round: where its handful
+    // is, the time in the loading loop, and where a round enters the port
+    VrRoundState     m_roundState = VrRoundState::Empty;
+    float            m_roundTime  = 0.0f;
+    VrVector3        m_roundPort;
+    bool             m_hasRoundPort = false;
+
+    // The magazine is a round, held between the thumb and the index
+    // finger: the round in the left hand bone's frame then, in units of
+    // the hand's scale
+    bool             m_pinched = false;
+    VrGameTransform  m_pinchInHand;
+    bool             m_hasPinch = false;
+
+    // Rack part of the weapon in the hand: how the hand holds it, where it
+    // is home in the right hand's frame, the way back and its length, and
+    // its rack part the name was logged for, compared but not dereferenced
+    bool             m_rackHeld = false;
+    float            m_rackPull = 0.0f;
+    float            m_rackRest = 0.0f;
+    VrVector3        m_rackCentre;
+    VrVector3        m_rackAxis;
+    float            m_rackTravel = 0.0f;
+    bool             m_hasRack = false;
+    const uint8_t*   m_loggedRack = nullptr;
+
+    // Action that opens in the hand: whether it is to be open, how far it
+    // is open (0 closed, 1 open), whether the weapon has one, whether it
+    // is a revolver's, the direction of a break action's barrel and the
+    // axis a revolver is flicked open about, in the right hand's frame,
+    // and the turn of the hinge part in the weapon node's frame as drawn
+    bool             m_actionOpen = false;
+    float            m_actionSwing = 0.0f;
+    bool             m_hasHinge = false;
+    bool             m_swingAction = false;
+    VrVector3        m_actionBarrel;
+    VrGameRotation   m_actionTurn;
+    VrVector3        m_actionRoll;
+
+    // The shells of a break action besides the one found as its round: the
+    // caravan shotgun has one part per shell. Each one's pose relative to
+    // that round, for the weapon form they were measured on (compared but
+    // not dereferenced), and those the VR layer culled, compared but only
+    // touched once found in the weapon again.
+    struct OtherShell {
+      uint8_t*        part;
+      VrGameTransform fromRound;
+    };
+
+    std::vector<OtherShell> m_otherShells;
+    const uint8_t*   m_otherShellsForm = nullptr;
+    std::vector<uint8_t*> m_hiddenShells;
+
+    // The game's reload animation of the weapon form it was read for,
+    // compared but not dereferenced, how many times it was tried for it and
+    // how many draws to wait before the next try
+    VrReloadAnimation m_reloadAnimation;
+    bool             m_hasReloadAnimation = false;
+    const uint8_t*   m_reloadForm = nullptr;
+    uint32_t         m_reloadTries = 0;
+    uint32_t         m_reloadWait = 0;
+
     // Set while the game creates a projectile aimed with the hand, so that
     // its auto-aim leaves it alone
     bool             m_handAimedShot = false;
@@ -268,6 +556,11 @@ namespace dxvk {
     // Weapon node whose barrel angle was last logged, compared but not
     // dereferenced
     const uint8_t*   m_loggedBarrelWeapon = nullptr;
+
+    // Weapon whose parts were last logged, compared but not dereferenced,
+    // and the number of objects of its model then
+    const uint8_t*   m_loggedPartsForm    = nullptr;
+    uint32_t         m_loggedPartsObjects = 0;
 
     bool             m_loggedActive = false;
     bool             m_loggedFrame  = false;
@@ -339,11 +632,166 @@ namespace dxvk {
 
     void measureBlade(const uint8_t* weapon, const VrGameCameraPose& hand);
 
+    /**
+     * \brief A part of the weapon the left hand holds as the reload
+     *    animation does
+     */
+    struct HeldPart {
+      /// Where the part is drawn
+      VrGameTransform                pose;
+      /// The part in the hand bone's frame, in units of the hand's scale
+      const VrGameTransform*         inHand;
+      /// Rotations of the bones below the hand
+      const std::vector<VrBonePose>* fingers;
+    };
+
+    /**
+     * \brief Puts the free left hand around its controller
+     *
+     * \param [in] held The part the hand holds where it is drawn, or
+     *    \c nullptr
+     */
     void placeOtherHand(
             uint8_t*              root,
             uint8_t*              otherHand,
       const VrVector3&            shift,
+            void*                 updateData,
+      const HeldPart*             held);
+
+    /**
+     * \brief Finds how the action of the weapon opens
+     *
+     * A break action is not loaded round by round, has no magazine part
+     * and has a hinge part. A revolver (a one-handed pistol) has a speed
+     * loader, or is loaded round by round through a loading gate.
+     *
+     * \param [out] kind How it opens
+     * \returns The hinge part or the loading gate, or \c nullptr if there
+     *    is none or the reload animation tells which part swings out
+     */
+    static uint8_t* findAction(uint8_t* weapon, const uint8_t* form, ActionKind& kind);
+
+    /**
+     * \brief Draws the action as far open as it is
+     *
+     * The hinge part turns in the weapon as the reload animation turns
+     * it, and the weapon stays in the hand: a break action's hinge part,
+     * named as a stock, carries the barrel, the shells and the muzzle,
+     * and a revolver's swings its cylinder out or is its loading gate.
+     *
+     * \param [in] hinge The part found by findAction
+     */
+    void openAction(
+            uint8_t*              weapon,
+            uint8_t*              hinge,
+            ActionKind            kind,
+      const uint8_t*              form,
             void*                 updateData);
+
+    /**
+     * \brief Finds where the left hand holds a round between its thumb
+     *    and its index finger
+     *
+     * The middle of their last joints, with the fingers posed as they are
+     * on a held part, in the hand bone's frame: the round keeps the
+     * rotation in the hand the reload animation gives it, its centre goes
+     * there. Sets m_pinchInHand.
+     *
+     * \param [in] centre The centre of the round's meshes in its frame
+     * \param [in] scale The round's scale over the hand's
+     */
+    void pinchRound(uint8_t* otherHand, const VrVector3& centre, float scale);
+
+    /**
+     * \brief The magazine, or round, in the left hand bone's frame while
+     *    the hand holds it
+     */
+    const VrGameTransform& magazineInHand() const {
+      return m_pinched && m_hasPinch ? m_pinchInHand : m_reloadAnimation.magazineInHand;
+    }
+
+    /**
+     * \brief Where the magazine held by the left hand is drawn, the hand
+     *    taking its free pose around its controller
+     *
+     * \param [in] handScale The left hand bone's scale
+     * \param [in] shift Offset from the world to the model's drawing space
+     */
+    VrGameTransform magazineAtController(float handScale, const VrVector3& shift) const;
+
+    /**
+     * \brief Culls the cartridges in a revolver's cylinder while it is
+     *    emptied
+     *
+     * Its live rounds and spent cases, not those of its speed loader, from
+     * the time it is swung open until a speed loader is pushed home.
+     */
+    void hideCylinder(uint8_t* weapon);
+
+    /**
+     * \brief Draws the other shells of a break action with its round
+     *
+     * In the weapon they are where the game draws them, culled while the
+     * action is emptied, and in the hand they keep their place next to the
+     * round.
+     *
+     * \param [in] round The round part
+     * \param [in] pose Where the round is drawn, or \c nullptr if the game
+     *    draws it in the weapon or it is not drawn
+     */
+    void placeOtherShells(
+            uint8_t*              weapon,
+            uint8_t*              round,
+      const uint8_t*              form,
+      const VrGameTransform*      pose,
+            void*                 updateData);
+
+    /**
+     * \brief Finds the weapon's magazine and where it is drawn
+     *
+     * The magazine of a break action (with a hinge) is its shells, that of
+     * a revolver its speed loader, or its round with a loading gate.
+     * \param [out] pose Where the magazine is drawn, in the model's
+     *    drawing space
+     * \returns The magazine to draw at the pose, or \c nullptr if the
+     *    game draws it in the weapon or it is not drawn
+     */
+    uint8_t* placeMagazine(
+            uint8_t*              root,
+            uint8_t*              weapon,
+            ActionKind            action,
+            uint8_t*              hinge,
+            uint8_t*              leftHand,
+            bool                  handPlaced,
+      const VrGameCameraPose&     hand,
+      const uint8_t*              form,
+      const VrVector3&            shift,
+            VrGameTransform&      pose);
+
+    /**
+     * \brief Finds the weapon's rack part and where it is drawn
+     *
+     * \param [out] pose Where the rack part is drawn, in the model's
+     *    drawing space
+     * \returns The rack part to draw at the pose, or \c nullptr if the
+     *    game draws it
+     */
+    uint8_t* placeRack(
+            uint8_t*              weapon,
+      const VrGameCameraPose&     hand,
+            VrGameTransform&      pose);
+
+    /**
+     * \brief Draws a part of the weapon at a pose for this update only
+     */
+    void drawPart(
+            uint8_t*              part,
+      const VrGameTransform&      pose,
+            void*                 updateData);
+
+    bool holdsMagazine() const;
+
+    bool holdsRack() const;
 
     void hideArms(uint8_t* root, bool rightHand);
 

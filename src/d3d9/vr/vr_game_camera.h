@@ -14,11 +14,12 @@ namespace dxvk {
   };
 
   /**
-   * \brief Access to the game's world camera (NiCamera)
+   * \brief Access to one of the game's cameras (NiCamera)
    *
    * Reads and writes the camera through its known memory layout and asks the
    * game to refresh the matrices it derives from it. Nothing here knows about
-   * VR: callers pass poses and frustums in the game's own frame.
+   * VR: callers pass poses and frustums in the game's own frame. The camera
+   * is the world camera, or another one such as a rendered menu's.
    */
   class VrGameCamera {
 
@@ -29,6 +30,15 @@ namespace dxvk {
      * \returns \c false while the game has no scene graph
      */
     bool acquire();
+
+    /**
+     * \brief Uses another camera than the world camera
+     *
+     * \param [in] camera A NiCamera of the game
+     */
+    void attach(void* camera) {
+      m_camera = static_cast<uint8_t*>(camera);
+    }
 
     /**
      * \brief Checks whether a pointer is the camera found by acquire()
@@ -55,6 +65,14 @@ namespace dxvk {
      * refreshed so that the next render uses the new values.
      */
     void apply(const VrGameCameraPose& pose, const VrGameFrustum& frustum);
+
+    /**
+     * \brief Sets the near and far planes
+     *
+     * \param [in] nearPlane Distance of the near plane, in the camera's units
+     * \param [in] farPlane Distance of the far plane
+     */
+    void setDepthRange(float nearPlane, float farPlane);
 
   private:
 
