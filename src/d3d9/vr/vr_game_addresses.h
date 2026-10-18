@@ -281,6 +281,14 @@ namespace dxvk {
     constexpr uintptr_t ObjectWorldTranslation = 0x8C;
     constexpr uintptr_t ObjectWorldScale      = 0x98;
 
+    /**
+     * Size of the world transform above (rotation, translation and scale,
+     * from ObjectWorldRotation to the end of ObjectWorldScale) and of the
+     * world bound ObjectWorldBound points to (centre and radius).
+     */
+    constexpr size_t    ObjectWorldTransformSize = 0x34;
+    constexpr size_t    BoundSize             = 0x10;
+
     /** State of the VATS camera, 0 when VATS is not running */
     constexpr uintptr_t VatsCameraState = 0x011F2258;
 

@@ -169,8 +169,10 @@ namespace dxvk {
 
 
   void VrPartHighlight::drawMask(void* renderer, void* manager, void* mask, uint8_t* root) {
-    // The first-person camera, which PlaceCamera has just placed for this
-    // eye: the model's world transforms are still around its draw origin
+    // The first-person camera, which PlaceCamera placed for this eye near
+    // the model's draw origin. Once the model is drawn, the game updates it
+    // again where it animates it (DrawWorld_MTRender1stPerson), so the
+    // transforms it was drawn with are put back for the mask.
     auto main     = global<uint8_t*>(VrGame::MainSingleton);
     void* camera  = main ? field<void*>(main, VrGame::MainFirstPersonCamera) : nullptr;
     auto graph    = global<uint8_t*>(VrGame::WorldSceneGraph);
@@ -204,6 +206,9 @@ namespace dxvk {
     // One mask at a time is measured, until its counts are read back
     bool measure = m_modelQuery && !m_queryPending;
 
+    // The model is drawn where it was drawn in the eye, around the camera
+    m_drawn.swap();
+
     // As DrawWorld_VATS: the whole model fills the depth only, then the
     // parts are drawn in colour where nothing of the model hides them
     game<ColorWriteFn>(VrGame::SetColorWriteEnable)(0, 1);
@@ -227,6 +232,8 @@ namespace dxvk {
       m_partQuery->Issue(D3DISSUE_END);
       m_queryPending = true;
     }
+
+    m_drawn.swap();
 
     Com<IDirect3DSurface9> target;
 
@@ -406,7 +413,7 @@ namespace dxvk {
 
     // V.A.T.S. draws its own highlight with the same effect
     if (!self || !renderer || global<void*>(VrGame::VatsMaskTexture)
-     || !self->m_take(root, self->m_parts) || !root || self->m_parts.empty()) {
+     || !self->m_take(root, self->m_parts, self->m_drawn) || !root || self->m_parts.empty()) {
       original(renderer, target, destination);
       return;
     }

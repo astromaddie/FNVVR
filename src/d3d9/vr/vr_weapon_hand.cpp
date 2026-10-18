@@ -712,6 +712,7 @@ namespace dxvk {
     // Found again by each placement, for the eye about to be drawn
     m_highlightRoot = nullptr;
     m_highlightParts.clear();
+    m_highlightDrawn.clear();
 
     uint8_t* object = player();
 
@@ -956,15 +957,17 @@ namespace dxvk {
   }
 
 
-  bool VrWeaponHand::takeHighlight(uint8_t*& root, std::vector<uint8_t*>& parts) {
+  bool VrWeaponHand::takeHighlight(uint8_t*& root, std::vector<uint8_t*>& parts, VrGameWorldTransforms& drawn) {
     if (!m_highlightRoot)
       return false;
 
     root = m_highlightRoot;
     parts.swap(m_highlightParts);
+    std::swap(drawn, m_highlightDrawn);
 
     m_highlightRoot = nullptr;
     m_highlightParts.clear();
+    m_highlightDrawn.clear();
     return true;
   }
 
@@ -992,8 +995,12 @@ namespace dxvk {
     if (m_highlight.port)
       add(swing ? hinge : vrFindWeaponPart(weapon, VrWeaponPartKind::Gate));
 
-    if (!m_highlightParts.empty())
+    // Every part is placed by now: the game draws the model as it is, then
+    // updates it again where it animates it, long before the highlight
+    if (!m_highlightParts.empty()) {
       m_highlightRoot = root;
+      m_highlightDrawn.capture(reinterpret_cast<uintptr_t>(root));
+    }
   }
 
 

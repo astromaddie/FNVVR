@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 
+#include "vr_game_nodes.h"
 #include "vr_magazine.h"
 #include "vr_melee.h"
 #include "vr_pipboy_size.h"
@@ -335,9 +336,11 @@ namespace dxvk {
      *
      * \param [out] root The first-person model's root
      * \param [out] parts The parts that glow
+     * \param [out] drawn The model's world transforms as it was drawn:
+     *    once it is drawn, the game updates it again where it animates it
      * \returns \c false if nothing glows in this eye
      */
-    bool takeHighlight(uint8_t*& root, std::vector<uint8_t*>& parts);
+    bool takeHighlight(uint8_t*& root, std::vector<uint8_t*>& parts, VrGameWorldTransforms& drawn);
 
     /**
      * \brief Direction the barrel of a break action points along from its
@@ -510,10 +513,11 @@ namespace dxvk {
     float            m_magazineBlend = 1.0f;
 
     // Parts of the weapon to glow, and those found at the last placement
-    // of the model, in the model below its root
+    // of the model, in the model below its root, with the model as placed
     VrReloadParts         m_highlight;
     uint8_t*              m_highlightRoot = nullptr;
     std::vector<uint8_t*> m_highlightParts;
+    VrGameWorldTransforms m_highlightDrawn;
 
     // The left hand loading a weapon round by round: where its handful
     // is, the time in the loading loop, and where a round enters the port

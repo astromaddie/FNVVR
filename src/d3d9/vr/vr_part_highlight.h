@@ -10,6 +10,8 @@
 
 #include "../../util/com/com_pointer.h"
 
+#include "vr_game_nodes.h"
+
 namespace dxvk {
 
   /**
@@ -39,10 +41,12 @@ namespace dxvk {
      * \brief Gives the first-person root and the parts to glow
      *
      * Called once per eye, as the game applies its image space effects.
+     * The model's world transforms as it was drawn are given too: the game
+     * has updated it again since, where it animates it.
      *
      * \returns \c false if nothing is to glow in this eye
      */
-    using TakeFn = std::function<bool (uint8_t*& root, std::vector<uint8_t*>& parts)>;
+    using TakeFn = std::function<bool (uint8_t*& root, std::vector<uint8_t*>& parts, VrGameWorldTransforms& drawn)>;
 
     ~VrPartHighlight();
 
@@ -97,6 +101,7 @@ namespace dxvk {
     IDirect3DDevice9*     m_device;
     TakeFn                m_take;
     std::vector<uint8_t*> m_parts;
+    VrGameWorldTransforms m_drawn;
 
     Com<IDirect3DQuery9>  m_modelQuery;
     Com<IDirect3DQuery9>  m_partQuery;

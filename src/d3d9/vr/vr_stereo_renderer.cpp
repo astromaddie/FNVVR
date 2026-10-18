@@ -295,7 +295,9 @@ namespace dxvk {
 
     if (renderer->m_manualReload && renderer->m_weaponHand) {
       renderer->m_partHighlight = VrPartHighlight::install(device,
-        [self] (uint8_t*& root, std::vector<uint8_t*>& parts) { return self->m_weaponHand->takeHighlight(root, parts); });
+        [self] (uint8_t*& root, std::vector<uint8_t*>& parts, VrGameWorldTransforms& drawn) {
+          return self->m_weaponHand->takeHighlight(root, parts, drawn);
+        });
 
       if (!renderer->m_partHighlight)
         Logger::info("VR: The game's V.A.T.S. highlight was not found, the weapon's parts to work do not glow");
