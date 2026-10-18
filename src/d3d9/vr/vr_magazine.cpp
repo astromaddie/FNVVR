@@ -283,7 +283,7 @@ namespace dxvk {
     bool pressed = input.grip && !m_gripDown;
     m_gripDown = input.grip;
 
-    float toPort = vrLength(input.hand - input.port) / VrGameUnitsPerMetre;
+    float toPort = vrLength(input.round - input.port) / VrGameUnitsPerMetre;
 
     switch (m_state) {
       case VrRoundState::Empty:
@@ -363,7 +363,7 @@ namespace dxvk {
 
   void VrRoundLoader::stop(const VrRoundInput& input) {
     m_state    = VrRoundState::Holding;
-    m_canStart = vrLength(input.hand - input.port) / VrGameUnitsPerMetre > m_reach.capture + m_reach.rearm;
+    m_canStart = vrLength(input.round - input.port) / VrGameUnitsPerMetre > m_reach.capture + m_reach.rearm;
   }
 
 

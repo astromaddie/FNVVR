@@ -79,19 +79,6 @@ namespace dxvk {
   };
 
   /**
-   * \brief The left hand and its round at a time of a loading loop
-   */
-  struct VrRoundLoopPose {
-    /// The left hand bone in the weapon node's frame, in units of the
-    /// weapon node's scale
-    VrGameTransform         hand;
-    /// The round part in the weapon node's frame, likewise
-    VrGameTransform         round;
-    /// Rotations of the bones below the left hand in their parents
-    std::vector<VrBonePose> fingers;
-  };
-
-  /**
    * \brief A sound of a loading loop
    */
   struct VrRoundLoopSound {
@@ -106,35 +93,16 @@ namespace dxvk {
    * The animation of a weapon loaded round by round is played once per
    * round from its start up to its "Hit" key, where the game starts it
    * again while rounds are left to load; the rest of it (working the
-   * lever, shutting the gate) only follows the last round. The loop is
-   * replayed on the left hand, in the weapon's frame, see
-   * findings/reload.md §8.10.
+   * lever, shutting the gate) only follows the last round. The game's
+   * left hand barely moves in it (the right hand turns the weapon to the
+   * round), so only its rhythm and its sounds are kept: the rounds go in
+   * from the left hand held at the port, see findings/reload.md §8.11.
    */
   struct VrRoundLoop {
     VrRoundLoopTiming             timing;
-    /// The poses from the start of the loop to its end, sampled at
-    /// VrRoundLoopRate
-    std::vector<VrRoundLoopPose>  poses;
     /// The loop's sounds, in time order
     std::vector<VrRoundLoopSound> sounds;
   };
-
-  /// How many times per second of the animation a loading loop is sampled
-  constexpr float VrRoundLoopRate = 60.0f;
-
-  /**
-   * \brief The pose of a loading loop at a time
-   *
-   * Between two samples the poses are blended.
-   *
-   * \param [in] loop The loop, with at least one pose
-   * \param [in] time Time from the start of the loop, in seconds
-   * \param [out] pose The left hand and its round then
-   */
-  void vrSampleRoundLoop(
-    const VrRoundLoop&          loop,
-          float                 time,
-          VrRoundLoopPose&      pose);
 
   /**
    * \brief What the game's reload animation does with a weapon's magazine

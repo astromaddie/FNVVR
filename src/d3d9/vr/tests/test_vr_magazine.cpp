@@ -907,7 +907,7 @@ TEST_CASE(flick_needs_two_fast_frames) {
 
 namespace {
 
-  // The animation's hand reaches the loading port in front of the body
+  // A round enters the loading port in front of the body
   const VrVector3 Port = { 0.1f * M, 0.4f * M, 1.3f * M };
 
   // One round per loop: it comes to its place at 0.3 s, the loop starts
@@ -919,6 +919,7 @@ namespace {
     in.active     = true;
     in.grip       = grip;
     in.hand       = hand;
+    in.round      = hand;
     in.port       = Port;
     in.head       = northHead();
     in.roundsHeld = true;

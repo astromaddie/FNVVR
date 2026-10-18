@@ -316,17 +316,17 @@ namespace dxvk {
     Taken,
     /// The hand reached behind the back, but no rounds are left
     NoRounds,
-    /// The hand reached the loading port: the loading animation starts
+    /// The held round reached the loading port: loading starts
     Started,
-    /// A round of the animation came to its place in this frame
+    /// A round came to its place in this frame
     Placed,
-    /// The hand left the loading port, or it closed: the handful stays
-    /// in the hand
+    /// The held round left the loading port, or it closed: the handful
+    /// stays in the hand
     Stopped,
     /// The handful was let go of
     Dropped,
-    /// The weapon took no more rounds: the animation stops, set by the
-    /// caller after refuse()
+    /// The weapon took no more rounds: loading stops, set by the caller
+    /// after refuse()
     Full,
   };
 
@@ -338,7 +338,8 @@ namespace dxvk {
     Empty,
     /// The hand holds a handful of rounds, at its controller
     Holding,
-    /// The game's loading animation loads them, one per loop
+    /// They go into the loading port, one per loop of the game's loading
+    /// animation
     Loading,
   };
 
@@ -359,7 +360,9 @@ namespace dxvk {
     bool             roundsHeld = false;
     /// Left hand: the middle of the grip
     VrVector3        hand;
-    /// Where the animation's left hand is when its round comes to its place
+    /// Left hand: where the round it holds between its fingers is
+    VrVector3        round;
+    /// Where a round enters the loading port
     VrVector3        port;
     /// Head pose
     VrGameCameraPose head;
@@ -383,9 +386,10 @@ namespace dxvk {
    * \brief Distances of the round loading gesture, in metres
    */
   struct VrRoundReach {
-    /// How close the hand must come to the loading port to start loading
+    /// How close the held round must come to the loading port to start
+    /// loading
     float capture = 0.08f;
-    /// How far the hand may move from it while the animation loads
+    /// How far it may move from it while loading
     float leave   = 0.15f;
     /// How far past the capture a hand that stopped loading must move
     /// before it can start again
@@ -398,13 +402,14 @@ namespace dxvk {
    * \brief Follows the left hand loading a weapon round by round
    *
    * The left trigger pressed behind the back takes a handful of rounds if
-   * the inventory holds any beyond the clip. Brought to the loading port,
-   * the game's own loading animation takes the hand over and plays loop
-   * after loop, a round coming to its place in each, until the weapon is
-   * full (refuse), the hand moves away from the port, the port closes or
-   * the trigger is let go of. Moved away or with the port closed, the hand
-   * keeps the handful; let go of, the handful is gone: no round was taken
-   * from the inventory. See findings/reload.md §8.10.
+   * the inventory holds any beyond the clip. Its round brought to the
+   * entrance of the loading port and held there, the rounds go in at the
+   * rhythm of the game's own loading animation, one coming to its place
+   * in each of its loops, until the weapon is full (refuse), the hand
+   * moves away from the port, the port closes or the trigger is let go
+   * of. Moved away or with the port closed, the hand keeps the handful;
+   * let go of, the handful is gone: no round was taken from the
+   * inventory. See findings/reload.md §8.11.
    */
   class VrRoundLoader {
 

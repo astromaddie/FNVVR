@@ -627,6 +627,7 @@ namespace dxvk {
 
     if (rounds.active) {
       rounds.hand       = input.leftHand->position;
+      rounds.round      = vrPointFromHand(*input.leftHand, input.held);
       rounds.port       = vrPointFromHand(*input.rightHand, *input.port);
       rounds.head       = *input.head;
       rounds.roundsHeld = holdsRounds(player, true);
@@ -649,8 +650,8 @@ namespace dxvk {
         break;
 
       case VrRoundEvent::Started:
-        Logger::info(str::format("VR: The left hand reaches the loading port of '", weaponName(weapon),
-          "', the game's loading loop plays, clip ", clipCount(player)));
+        Logger::info(str::format("VR: The rounds reach the loading port of '", weaponName(weapon),
+          "', they go in one per loop of the game's loading animation, clip ", clipCount(player)));
         break;
 
       case VrRoundEvent::Placed:

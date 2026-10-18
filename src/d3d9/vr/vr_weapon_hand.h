@@ -65,10 +65,10 @@ namespace dxvk {
    *   weapon, see VrMagazineHand. The game's reload animation of the
    *   weapon tells how the hand holds it and along which direction it
    *   comes out, see vrReadReloadAnimation. A weapon loaded round by
-   *   round (a tube or lever-action weapon, not a revolver) has the round
-   *   its reload animation carries in in the place of the magazine: it is
-   *   drawn in the left hand, shown even if the game hides it, and slides
-   *   into the place the animation puts it.
+   *   round, or a break action, has the round its reload animation
+   *   carries in in the place of the magazine: it is drawn between the
+   *   thumb and the index finger of the left hand, shown even if the game
+   *   hides it, and goes into the place the animation puts it.
    * - The weapon's rack part (slide, charging handle, bolt) is drawn back
    *   while the left hand pulls it, see VrRackHand, and locked back while
    *   nothing is chambered, along the way the reload animation pulls it,
@@ -201,11 +201,12 @@ namespace dxvk {
     /**
      * \brief Sets how the left hand loads a weapon loaded round by round
      *
-     * Applied when the model is next drawn. While the hand loads, it is
-     * drawn as the game's loading loop has it at that time, in the
-     * weapon's frame, with the loop's round; it blends from and back to
-     * its controller. A hand holding a handful holds its round between
-     * the thumb and the index finger.
+     * Applied when the model is next drawn. A hand holding a handful holds
+     * its round between the thumb and the index finger, at its controller.
+     * While it loads, a round goes from there into the loading port in
+     * each loop of the game's loading animation, and comes to its place
+     * when the loop's round does; the next one is in the fingers when the
+     * loop starts again.
      *
      * \param [in] state Where the handful is
      * \param [in] time Time in the loading loop, while it loads
@@ -213,11 +214,11 @@ namespace dxvk {
     void setRoundLoop(VrRoundState state, float time);
 
     /**
-     * \brief Where the left controller is when the loading loop puts its
-     *    round in its place
+     * \brief Where a round enters the loading port
      *
-     * In the right hand's frame (see vrPointFromHand), measured each time
-     * the model is drawn.
+     * Its place, out along the way it goes in by a few centimetres, in
+     * the right hand's frame (see vrPointFromHand), measured each time the
+     * model is drawn.
      *
      * \returns The point, or \c nullptr if the weapon in the hand is not
      *    loaded round by round with a loading loop
@@ -255,7 +256,8 @@ namespace dxvk {
      * \brief Where the centre of a magazine held by the left hand is
      *
      * In the left controller's frame (see vrPointFromHand), valid with
-     * magazineWell.
+     * magazineWell. A round is held between the thumb and the index
+     * finger.
      */
     const VrVector3& magazineHeld() const {
       return m_magazineHeld;
@@ -486,17 +488,18 @@ namespace dxvk {
     float            m_magazineBlend = 1.0f;
 
     // The left hand loading a weapon round by round: where its handful
-    // is, the time in the loading loop, how far the hand is on the loop
-    // rather than at its controller, the loop's hand and fingers drawn
-    // last, and where the controller puts the round in its place
+    // is, the time in the loading loop, and where a round enters the port
     VrRoundState     m_roundState = VrRoundState::Empty;
     float            m_roundTime  = 0.0f;
-    float            m_loopBlend  = 0.0f;
-    VrRoundLoopPose  m_loopPose;
-    VrGameTransform  m_loopHand;
-    bool             m_hasLoopHand = false;
     VrVector3        m_roundPort;
     bool             m_hasRoundPort = false;
+
+    // The magazine is a round, held between the thumb and the index
+    // finger: the round in the left hand bone's frame then, in units of
+    // the hand's scale
+    bool             m_pinched = false;
+    VrGameTransform  m_pinchInHand;
+    bool             m_hasPinch = false;
 
     // Rack part of the weapon in the hand: how the hand holds it, where it
     // is home in the right hand's frame, the way back and its length, and
@@ -640,9 +643,6 @@ namespace dxvk {
       const VrGameTransform*         inHand;
       /// Rotations of the bones below the hand
       const std::vector<VrBonePose>* fingers;
-      /// How far the hand is on the part rather than at its controller,
-      /// from 0 to 1
-      float                          weight = 1.0f;
     };
 
     /**
@@ -689,15 +689,35 @@ namespace dxvk {
             void*                 updateData);
 
     /**
-     * \brief Puts a round held in the left hand between its thumb and its
-     *    index finger
+     * \brief Finds where the left hand holds a round between its thumb
+     *    and its index finger
      *
-     * Called once the hand is placed: the round keeps its rotation in the
-     * hand, its centre goes to the middle of their last joints.
+     * The middle of their last joints, with the fingers posed as they are
+     * on a held part, in the hand bone's frame: the round keeps the
+     * rotation in the hand the reload animation gives it, its centre goes
+     * there. Sets m_pinchInHand.
      *
-     * \param [in,out] pose Where the round is drawn
+     * \param [in] centre The centre of the round's meshes in its frame
+     * \param [in] scale The round's scale over the hand's
      */
-    void pinchRound(uint8_t* otherHand, uint8_t* round, VrGameTransform& pose) const;
+    void pinchRound(uint8_t* otherHand, const VrVector3& centre, float scale);
+
+    /**
+     * \brief The magazine, or round, in the left hand bone's frame while
+     *    the hand holds it
+     */
+    const VrGameTransform& magazineInHand() const {
+      return m_pinched && m_hasPinch ? m_pinchInHand : m_reloadAnimation.magazineInHand;
+    }
+
+    /**
+     * \brief Where the magazine held by the left hand is drawn, the hand
+     *    taking its free pose around its controller
+     *
+     * \param [in] handScale The left hand bone's scale
+     * \param [in] shift Offset from the world to the model's drawing space
+     */
+    VrGameTransform magazineAtController(float handScale, const VrVector3& shift) const;
 
     /**
      * \brief Culls the cartridges in a revolver's cylinder while it is

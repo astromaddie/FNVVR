@@ -577,18 +577,12 @@ namespace dxvk {
     /**
      * \brief Reads the loop of the sequence that loads one round
      *
-     * From the start of the sequence to its "Hit" key, the left hand and
-     * the round in the weapon node's frame, and the fingers.
+     * From the start of the sequence to its "Hit" key.
      *
      * \param [in] placed When the round is in its place
      */
-    bool readLoop(
-      const SequenceTracks&       tracks,
+    void readLoop(
       const uint8_t*              sequence,
-            uint8_t*              root,
-            uint8_t*              weapon,
-            uint8_t*              round,
-            uint8_t*              leftHand,
             float                 begin,
             float                 end,
             float                 placed,
@@ -599,41 +593,10 @@ namespace dxvk {
       loop.timing.length = hit > placed
         ? hit - begin
         : std::min(end - begin, loop.timing.placed + LoopAfterPlace);
-      loop.poses.clear();
-
-      for (uint32_t i = 0; float(i) / VrRoundLoopRate <= loop.timing.length; i++) {
-        float t = begin + float(i) / VrRoundLoopRate;
-        Pose frame, hand, part;
-
-        if (!tracks.toAncestor(weapon, root, t, frame) || !tracks.toAncestor(leftHand, root, t, hand)
-         || !tracks.toAncestor(round, weapon, t, part) || frame.scale <= 0.0f)
-          return false;
-
-        VrGameRotation toWeapon = vrTranspose(frame.rotate);
-
-        VrRoundLoopPose pose;
-        pose.hand.rotate     = toWeapon * hand.rotate;
-        pose.hand.translate  = toWeapon * (hand.translate - frame.translate) * (1.0f / frame.scale);
-        pose.round.rotate    = part.rotate;
-        pose.round.translate = part.translate;
-        pose.fingers         = readFingers(tracks, leftHand, t);
-        loop.poses.push_back(std::move(pose));
-      }
-
-      if (loop.poses.empty())
-        return false;
-
-      // How far the hand is from the round as it puts it in its place, to
-      // tell from the log whether the animation's hand holds it
-      const VrRoundLoopPose& place = loop.poses[std::min(size_t(loop.timing.placed * VrRoundLoopRate), loop.poses.size() - 1)];
-      VrVector3 centre = place.round.translate + place.round.rotate * meshCentre(round);
 
       Logger::info(str::format("VR: Reload animation loads one round per loop of ", loop.timing.length, " s",
         hit > placed ? " (to its Hit key)" : " (it has no Hit key after the round's place)",
-        ", the round in its place at ", loop.timing.placed, " s, ",
-        vrLength(centre - place.hand.translate) / VrGameUnitsPerMetre * 100.0f,
-        " cm from the left hand bone then"));
-      return true;
+        ", the round in its place at ", loop.timing.placed, " s"));
     }
 
 
@@ -882,11 +845,10 @@ namespace dxvk {
         hinge ? partName(hinge) : "any part holding the round", "'"));
     }
 
-    animation.hasLoop = round && looping
-      && readLoop(tracks, sequence, root, weapon, magazine, leftHand, begin, end, timing.in, animation.loop);
+    animation.hasLoop = round && looping;
 
-    if (round && looping && !animation.hasLoop)
-      Logger::info("VR: The reload animation's loop was not read, the weapon keeps the game's reload");
+    if (animation.hasLoop)
+      readLoop(sequence, begin, end, timing.in, animation.loop);
 
     readSounds(sequence, timing, rackFrom, rackTo, hingeFrom, hingeTo, begin, animation);
 
@@ -897,41 +859,6 @@ namespace dxvk {
       ", ", animation.magazineInHand.translate.x, ", ", animation.magazineInHand.translate.y, ", ",
       animation.magazineInHand.translate.z, " units from the hand bone, with ", animation.fingers.size(), " finger bone(s)"));
     return true;
-  }
-
-
-  void vrSampleRoundLoop(
-    const VrRoundLoop&          loop,
-          float                 time,
-          VrRoundLoopPose&      pose) {
-    float at    = std::max(time, 0.0f) * VrRoundLoopRate;
-    size_t last = loop.poses.size() - 1;
-    size_t from = std::min(size_t(at), last);
-    size_t to   = std::min(from + 1, last);
-    float t     = std::clamp(at - float(from), 0.0f, 1.0f);
-
-    const VrRoundLoopPose& a = loop.poses[from];
-    const VrRoundLoopPose& b = loop.poses[to];
-
-    auto blend = [t] (const VrGameTransform& x, const VrGameTransform& y) {
-      VrGameTransform result;
-      result.translate = x.translate + (y.translate - x.translate) * t;
-      result.rotate    = vrGameRotationFromQuaternion(vrSlerp(
-        vrQuaternionFromGameRotation(x.rotate), vrQuaternionFromGameRotation(y.rotate), t));
-      return result;
-    };
-
-    pose.hand    = blend(a.hand, b.hand);
-    pose.round   = blend(a.round, b.round);
-    pose.fingers = a.fingers;
-
-    // Every sample rotates the same bones, in the same order
-    for (size_t i = 0; i < pose.fingers.size() && i < b.fingers.size(); i++) {
-      if (pose.fingers[i].name == b.fingers[i].name) {
-        pose.fingers[i].rotate = vrGameRotationFromQuaternion(vrSlerp(
-          vrQuaternionFromGameRotation(a.fingers[i].rotate), vrQuaternionFromGameRotation(b.fingers[i].rotate), t));
-      }
-    }
   }
 
 
