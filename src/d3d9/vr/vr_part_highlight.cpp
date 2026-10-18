@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 
 #include "../../util/log/log.h"
@@ -36,6 +37,11 @@ namespace dxvk {
     using RenderSceneFn      = void  (__cdecl*)(void* camera, void* accumulator, uint32_t a);
     using PrepareFn          = void  (__thiscall*)(void* manager, uint32_t a, void* mask, uint32_t b, uint32_t clear);
     using ShutdownFn         = void  (__cdecl*)();
+    using PointerFn          = void* (__cdecl*)();
+    using GetEffectFn        = void* (__fastcall*)(void* manager, void* unused, uint32_t id);
+
+    /** Seconds between two lines of the log while parts glow */
+    constexpr float MeasureSeconds = 3.0f;
 
     VrPartHighlight* g_highlight = nullptr;
 
@@ -89,6 +95,7 @@ namespace dxvk {
       return VrGameMemory::readable(VrGame::MainSingleton, sizeof(uintptr_t))
           && VrGameMemory::readable(VrGame::WorldSceneGraph, sizeof(uintptr_t))
           && VrGameMemory::readable(VrGame::VatsMaskTexture, sizeof(uintptr_t))
+          && VrGameMemory::readable(VrGame::ShaderManagerCamera, sizeof(uintptr_t))
           && VrGameMemory::readable(VrGame::Lighting30AlwaysWriteAlpha, 1)
           && VrGameMemory::readable(VrGame::ShadowLightAlwaysWriteAlpha, 1)
           && VrGameMemory::readable(VrGame::SettingTargetPulseRateVats + VrGame::SettingValue, sizeof(float));
@@ -130,8 +137,15 @@ namespace dxvk {
   }
 
 
-  VrPartHighlight::VrPartHighlight(TakeFn take)
-  : m_take(std::move(take)), m_start(std::chrono::steady_clock::now()) { }
+  VrPartHighlight::VrPartHighlight(IDirect3DDevice9* device, TakeFn take)
+  : m_take(std::move(take)), m_start(std::chrono::steady_clock::now()), m_measureStart(m_start) {
+    if (FAILED(device->CreateQuery(D3DQUERYTYPE_OCCLUSION, &m_modelQuery))
+     || FAILED(device->CreateQuery(D3DQUERYTYPE_OCCLUSION, &m_partQuery))) {
+      m_modelQuery = nullptr;
+      m_partQuery  = nullptr;
+      Logger::warn("VR: No occlusion query for the highlight of the weapon's parts, its masks are not measured");
+    }
+  }
 
 
   VrPartHighlight::~VrPartHighlight() {
@@ -140,15 +154,15 @@ namespace dxvk {
   }
 
 
-  std::unique_ptr<VrPartHighlight> VrPartHighlight::install(TakeFn take) {
-    if (g_highlight || !supported())
+  std::unique_ptr<VrPartHighlight> VrPartHighlight::install(IDirect3DDevice9* device, TakeFn take) {
+    if (g_highlight || !device || !supported())
       return nullptr;
 
     if (!VrGameMemory::redirectCall(VrGame::ImageSpaceEffectsCallSite, VrGame::RenderImageSpaceEffects,
         reinterpret_cast<const void*>(&VrPartHighlight::imageSpaceEffectsHook)))
       return nullptr;
 
-    std::unique_ptr<VrPartHighlight> highlight(new VrPartHighlight(std::move(take)));
+    std::unique_ptr<VrPartHighlight> highlight(new VrPartHighlight(device, std::move(take)));
     g_highlight = highlight.get();
     return highlight;
   }
@@ -172,18 +186,43 @@ namespace dxvk {
     method<BackgroundFn>(renderer, VrGame::RendererGetBackgroundSlot)(renderer, &background);
     method<BackgroundFn>(renderer, VrGame::RendererSetBackgroundSlot)(renderer, &clear);
 
+    // RenderScene leaves its camera to the image space effects, which the
+    // game gives the world camera
+    void* shaderCamera = global<void*>(VrGame::ShaderManagerCamera);
+
     void* group = game<GetGroupFn>(VrGame::RenderedTextureGetGroup)(mask);
     game<StartOffscreenFn>(VrGame::StartOffscreen)(VrGame::ClearAll, group);
+
+    // One mask at a time is measured, until its counts are read back
+    bool measure = m_modelQuery && !m_queryPending;
 
     // As DrawWorld_VATS: the whole model fills the depth only, then the
     // parts are drawn in colour where nothing of the model hides them
     game<ColorWriteFn>(VrGame::SetColorWriteEnable)(0, 1);
+
+    if (measure)
+      m_modelQuery->Issue(D3DISSUE_BEGIN);
+
     drawNodes(camera, culler, accumulator, &root, 1);
+
+    if (measure)
+      m_modelQuery->Issue(D3DISSUE_END);
+
     game<RestoreColorFn>(VrGame::RestoreColorWriteEnable)(1);
+
+    if (measure)
+      m_partQuery->Issue(D3DISSUE_BEGIN);
 
     drawNodes(camera, culler, accumulator, m_parts.data(), m_parts.size());
 
+    if (measure) {
+      m_partQuery->Issue(D3DISSUE_END);
+      m_queryPending = true;
+    }
+
     game<StopOffscreenFn>(VrGame::StopOffscreen)();
+
+    global<void*>(VrGame::ShaderManagerCamera) = shaderCamera;
 
     method<BackgroundFn>(renderer, VrGame::RendererSetBackgroundSlot)(renderer, &background);
   }
@@ -206,6 +245,65 @@ namespace dxvk {
   }
 
 
+  void VrPartHighlight::readQueries() {
+    if (!m_queryPending)
+      return;
+
+    DWORD model = 0;
+    DWORD parts = 0;
+
+    if (m_modelQuery->GetData(&model, sizeof(model), 0) != S_OK
+     || m_partQuery->GetData(&parts, sizeof(parts), 0) != S_OK)
+      return;
+
+    m_queryPending = false;
+    m_measure.samples      += 1;
+    m_measure.modelSamples += model;
+    m_measure.partSamples  += parts;
+    m_measure.emptyParts   += parts ? 0 : 1;
+  }
+
+
+  void VrPartHighlight::measureEffect() {
+    void* imageSpace = game<PointerFn>(VrGame::ImageSpaceManagerSingleton)();
+    void* effect = imageSpace
+      ? game<GetEffectFn>(VrGame::ImageSpaceGetEffect)(imageSpace, nullptr, VrGame::ImageSpaceInterface)
+      : nullptr;
+
+    if (!effect)
+      return;
+
+    bool active = field<uint8_t>(effect, VrGame::ImageSpaceEffectActive) != 0;
+    auto last   = field<int32_t>(imageSpace, VrGame::ImageSpaceLastEffect);
+
+    m_measure.effectActive   += active ? 1 : 0;
+    m_measure.effectRendered += active && last >= int32_t(VrGame::ImageSpaceInterface) ? 1 : 0;
+    m_measure.activeEffects  += uint32_t(field<int32_t>(imageSpace, VrGame::ImageSpaceActiveEffects));
+  }
+
+
+  void VrPartHighlight::logMeasure() {
+    auto now = std::chrono::steady_clock::now();
+
+    if (std::chrono::duration<float>(now - m_measureStart).count() < MeasureSeconds)
+      return;
+
+    if (m_measure.masks) {
+      const Measure& m = m_measure;
+      uint32_t read = std::max(m.samples, 1u);
+
+      Logger::info(str::format("VR: Weapon part highlight over ", m.masks, " mask(s): ", m.samples,
+        " measured, the model's depth pass covered ", m.modelSamples / read, " samples and the parts ",
+        m.partSamples / read, " on average (none in ", m.emptyParts, "); interface effect active in ",
+        m.effectActive, ", within the image space effects run in ", m.effectRendered, ", ",
+        float(m.activeEffects) / float(m.masks), " effects active on average"));
+    }
+
+    m_measure      = Measure();
+    m_measureStart = now;
+  }
+
+
   void __cdecl VrPartHighlight::imageSpaceEffectsHook(
           void*                 renderer,
           void*                 target,
@@ -213,6 +311,11 @@ namespace dxvk {
     auto original = game<EffectsFn>(VrGame::RenderImageSpaceEffects);
     VrPartHighlight* self = g_highlight;
     uint8_t* root = nullptr;
+
+    if (self) {
+      self->readQueries();
+      self->logMeasure();
+    }
 
     // V.A.T.S. draws its own highlight with the same effect
     if (!self || !renderer || global<void*>(VrGame::VatsMaskTexture)
@@ -250,6 +353,9 @@ namespace dxvk {
     }
 
     original(renderer, target, destination);
+
+    self->m_measure.masks += 1;
+    self->measureEffect();
 
     game<ShutdownFn>(VrGame::VatsShutdownEffect)();
     game<ReturnFn>(VrGame::ReturnRenderedTexture)(textures, mask);

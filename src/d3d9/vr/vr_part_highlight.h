@@ -6,6 +6,10 @@
 #include <memory>
 #include <vector>
 
+#include "../d3d9_include.h"
+
+#include "../../util/com/com_pointer.h"
+
 namespace dxvk {
 
   /**
@@ -45,17 +49,44 @@ namespace dxvk {
     /**
      * \brief Checks the game's code and redirects its image space effects
      *
+     * \param [in] device The game's device, for the occlusion queries
+     *    that measure the mask
      * \param [in] take Gives the parts to glow
      * \returns \c nullptr if the executable is not the supported version
      */
-    static std::unique_ptr<VrPartHighlight> install(TakeFn take);
+    static std::unique_ptr<VrPartHighlight> install(IDirect3DDevice9* device, TakeFn take);
 
   private:
 
-    explicit VrPartHighlight(TakeFn take);
+    /**
+     * \brief What the masks of a few seconds held, for the log
+     *
+     * The samples are counted by occlusion queries around the depth pass
+     * of the model and the colour pass of the parts, read back without
+     * waiting; the effect's state is read once the game has applied it.
+     */
+    struct Measure {
+      uint32_t masks          = 0;
+      uint32_t samples        = 0;
+      uint64_t modelSamples   = 0;
+      uint64_t partSamples    = 0;
+      uint32_t emptyParts     = 0;
+      uint32_t effectActive   = 0;
+      uint32_t effectRendered = 0;
+      uint32_t activeEffects  = 0;
+    };
+
+    VrPartHighlight(IDirect3DDevice9* device, TakeFn take);
 
     TakeFn                m_take;
     std::vector<uint8_t*> m_parts;
+
+    Com<IDirect3DQuery9>  m_modelQuery;
+    Com<IDirect3DQuery9>  m_partQuery;
+    bool                  m_queryPending = false;
+
+    Measure               m_measure;
+    std::chrono::steady_clock::time_point m_measureStart;
 
     std::chrono::steady_clock::time_point m_start;
 
@@ -65,6 +96,12 @@ namespace dxvk {
     void drawMask(void* renderer, void* manager, void* mask, uint8_t* root);
 
     void prepareEffect(void* manager, void* mask);
+
+    void readQueries();
+
+    void measureEffect();
+
+    void logMeasure();
 
     static void __cdecl imageSpaceEffectsHook(
             void*                 renderer,
