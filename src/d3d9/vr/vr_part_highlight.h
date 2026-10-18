@@ -6,10 +6,6 @@
 #include <memory>
 #include <vector>
 
-#include "../d3d9_include.h"
-
-#include "../../util/com/com_pointer.h"
-
 #include "vr_game_nodes.h"
 
 namespace dxvk {
@@ -53,64 +49,20 @@ namespace dxvk {
     /**
      * \brief Checks the game's code and redirects its image space effects
      *
-     * \param [in] device The game's device, for the occlusion queries
-     *    and the readback that measure the mask; it outlives the highlight
      * \param [in] take Gives the parts to glow
      * \returns \c nullptr if the executable is not the supported version
      */
-    static std::unique_ptr<VrPartHighlight> install(IDirect3DDevice9* device, TakeFn take);
+    static std::unique_ptr<VrPartHighlight> install(TakeFn take);
 
   private:
 
-    /**
-     * \brief What the masks of a few seconds held, for the log
-     *
-     * The samples are counted by occlusion queries around the depth pass
-     * of the model and the colour pass of the parts, read back without
-     * waiting; the effect's state is read once the game has applied it.
-     * The first mask of each line is also read back from the GPU.
-     */
-    struct MaskReadback {
-      bool      read          = false;
-      HRESULT   result        = S_OK;
-      UINT      width         = 0;
-      UINT      height        = 0;
-      D3DFORMAT format        = D3DFMT_UNKNOWN;
-      bool      multisampled  = false;
-      bool      bound         = false;
-      bool      depth         = false;
-      uint32_t  alphaPixels   = 0;
-      uint32_t  colorPixels   = 0;
-    };
+    explicit VrPartHighlight(TakeFn take);
 
-    struct Measure {
-      uint32_t masks          = 0;
-      uint32_t samples        = 0;
-      uint64_t modelSamples   = 0;
-      uint64_t partSamples    = 0;
-      uint32_t emptyParts     = 0;
-      uint32_t effectActive   = 0;
-      uint32_t effectRendered = 0;
-      uint32_t activeEffects  = 0;
-      int32_t  lastEffect     = -1;
-      MaskReadback mask;
-    };
-
-    VrPartHighlight(IDirect3DDevice9* device, TakeFn take);
-
-    IDirect3DDevice9*     m_device;
     TakeFn                m_take;
     std::vector<uint8_t*> m_parts;
     VrGameWorldTransforms m_drawn;
 
-    Com<IDirect3DQuery9>  m_modelQuery;
-    Com<IDirect3DQuery9>  m_partQuery;
-    bool                  m_queryPending = false;
-
     std::chrono::steady_clock::time_point m_start;
-
-    Measure               m_measure;
-    std::chrono::steady_clock::time_point m_measureStart;
 
     bool m_loggedGlow    = false;
     bool m_loggedNoMask  = false;
@@ -118,14 +70,6 @@ namespace dxvk {
     void drawMask(void* renderer, void* manager, void* mask, uint8_t* root);
 
     void prepareEffect(void* manager, void* mask);
-
-    void readMask(IDirect3DSurface9* surface, bool bound);
-
-    void readQueries();
-
-    void measureEffect();
-
-    void logMeasure();
 
     static void __cdecl imageSpaceEffectsHook(
             void*                 renderer,

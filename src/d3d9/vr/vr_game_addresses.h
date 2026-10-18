@@ -1860,25 +1860,11 @@ namespace dxvk {
     constexpr uintptr_t SettingTargetPulseRateVats = 0x011DB78C;
 
     /**
-     * What the log reads of the interface effect once the game has applied
-     * its image space effects: the image space manager's count of active
-     * effects and the last one it ran (both set by its PrepareEffectRange
-     * 0x00B8B3F0, which runs only the first 13), and the active byte of the
-     * interface effect (ImageSpaceEffect::bIsActive), effect 10, found
-     * through the manager singleton and GetEffect above. GOG database,
-     * 2026-10-18.
-     */
-    constexpr uintptr_t ImageSpaceActiveEffects    = 0x1E8;
-
-    /**
      * BSShaderManager::pCamera, which DrawWorld_ImageSpace sets to the world
      * camera just before the redirected call (mov [0x011F917C], eax at
      * 0x00876125, Ghidra) and RenderScene to the camera it draws with.
      */
     constexpr uintptr_t ShaderManagerCamera        = 0x011F917C;
-    constexpr uintptr_t ImageSpaceLastEffect       = 0x1EC;
-    constexpr uint32_t  ImageSpaceInterface        = 10;
-    constexpr uintptr_t ImageSpaceEffectActive     = 0x4;
 
     /**
      * First bytes of the functions above, compared between the GOG database

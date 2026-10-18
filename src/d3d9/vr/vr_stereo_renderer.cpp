@@ -294,7 +294,7 @@ namespace dxvk {
       Logger::info("VR: The player's reload was not found, the weapons are reloaded as in the game");
 
     if (renderer->m_manualReload && renderer->m_weaponHand) {
-      renderer->m_partHighlight = VrPartHighlight::install(device,
+      renderer->m_partHighlight = VrPartHighlight::install(
         [self] (uint8_t*& root, std::vector<uint8_t*>& parts, VrGameWorldTransforms& drawn) {
           return self->m_weaponHand->takeHighlight(root, parts, drawn);
         });
