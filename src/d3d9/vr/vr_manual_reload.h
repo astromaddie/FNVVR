@@ -41,6 +41,10 @@ namespace dxvk {
     /// how far in metres, valid with the rack part
     VrVector3               rackAxis;
     float                   rackTravel = 0.0f;
+    /// Direction the barrel of a break action points along from its breech
+    /// (the well), in the right hand's frame (VrWeaponHand::actionBarrel),
+    /// or \c nullptr if the weapon is not a break action
+    const VrVector3*        barrel = nullptr;
     /// The game's reload animation of the weapon, for its sounds, or
     /// \c nullptr
     const VrReloadAnimation* animation = nullptr;
@@ -52,6 +56,7 @@ namespace dxvk {
   struct VrReloadEvents {
     VrMagazineEvent magazine = VrMagazineEvent::None;
     VrRackEvent     rack     = VrRackEvent::None;
+    VrBreakEvent    action   = VrBreakEvent::None;
     /// The weapon jammed since the last frame
     bool            jammed   = false;
   };
@@ -99,6 +104,13 @@ namespace dxvk {
    * nothing is chambered: it does not fire until rounds are loaded and its
    * action is worked. Its jams are held as above; one with nothing to rack
    * keeps the game's jam.
+   *
+   * Phase 5b (findings/reload.md §8.8): a break action is opened and closed
+   * with the left trigger near its barrel, see VrBreakHand. Opening it
+   * throws its shells out (the clip is emptied, which loses no round, and
+   * clears a jam); while it is open it does not fire. Its shells are taken
+   * behind the back and pushed into the open breech as a magazine is,
+   * where the game's own reload with no animation fills the clip.
    *
    * The reloads may be started from the game's other threads, so the clip
    * left to watch is shared under a lock, and the weapon reloaded by hand
@@ -171,6 +183,14 @@ namespace dxvk {
     }
 
     /**
+     * \brief Whether the break action in the hand is open, see
+     *    VrWeaponHand::setActionOpen
+     */
+    bool actionOpen() const {
+      return m_action.open();
+    }
+
+    /**
      * \brief How far back the rack part rests, see VrWeaponHand::setRack
      */
     float rackRest() const {
@@ -201,6 +221,7 @@ namespace dxvk {
 
     VrMagazineHand  m_magazine;
     VrRackHand      m_rack;
+    VrBreakHand     m_action;
 
     // A magazine went in with nothing chambered: racking fills the clip.
     // The clip count at the last frame, to tell when the game fills it, and
@@ -225,6 +246,9 @@ namespace dxvk {
     // was not worked since: it does not fire, as if jammed
     std::atomic<bool> m_unchambered = { false };
 
+    // The break action in the hand is open: it does not fire
+    std::atomic<bool> m_actionOpen  = { false };
+
     // How far back the rack part rests, in metres
     float           m_rackRest = 0.0f;
 
@@ -243,6 +267,8 @@ namespace dxvk {
     bool loadRound(uint8_t* player, uint8_t* weapon, const VrReloadSound* sound, const VrVector3& port);
 
     void cycleAction(uint8_t* player, uint8_t* weapon, const VrReloadSound* sound, const VrVector3& rack);
+
+    void openAction(uint8_t* player, const uint8_t* weapon, const VrReloadSound* sound, const VrVector3& breech);
 
     bool fillClip(uint8_t* player, uint8_t* weapon);
 

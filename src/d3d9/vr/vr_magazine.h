@@ -24,8 +24,12 @@ namespace dxvk {
     /// bolt or cocking lever
     Rack,
     /// A round loaded by itself: a cartridge or shell that the reload
-    /// animation of a weapon loaded round by round carries in
+    /// animation of a weapon loaded round by round carries in, or the
+    /// shells of a break action
     Round,
+    /// What a break action opens about: its stock, which the reload
+    /// animation turns away from the barrel
+    Hinge,
   };
 
   /**
@@ -38,8 +42,9 @@ namespace dxvk {
    * contains "slide", "bolt", "charginghandle", "lever" or "bar", unless it
    * also names a barrel, a lock, a pin, a release or a trigger. A round is
    * one whose name contains "shell", "bullet" or "round", unless it is a
-   * spent case ("empty", "casing"). A table of exceptions comes first. The ":n" suffix of a part's geometry is
-   * ignored.
+   * spent case ("empty", "casing"). A hinge is one whose name contains
+   * "stock". A table of exceptions comes first. The ":n" suffix of a
+   * part's geometry is ignored.
    *
    * \param [in] name Name of the object, with its "##" prefix
    */
@@ -159,6 +164,9 @@ namespace dxvk {
     /// and with no round in the hand (VrMagazineState::InWeapon) a press
     /// behind the back takes a new one
     bool             rounds = false;
+    /// The weapon is closed (a break action): what the hand holds cannot
+    /// enter it
+    bool             closed = false;
   };
 
   /**
@@ -245,6 +253,14 @@ namespace dxvk {
      * away from the way in before it can enter again.
      */
     void refuse();
+
+    /**
+     * \brief Empties the weapon
+     *
+     * When a break action is opened: its shells are thrown out, nothing is
+     * left in it.
+     */
+    void empty();
 
     /**
      * \brief How far the hand is from where a press of the trigger takes the
@@ -401,6 +417,93 @@ namespace dxvk {
     float       m_alongStart = 0.0f;
     float       m_pullStart  = 0.0f;
     VrVector3   m_acrossStart;
+
+  };
+
+  /**
+   * \brief What the left hand did with the action of a break action in a frame
+   */
+  enum class VrBreakEvent {
+    None,
+    /// The action was broken open
+    Opened,
+    /// The action was closed
+    Closed,
+  };
+
+  /**
+   * \brief What the break action logic sees in a frame
+   *
+   * Positions in the game world, in game units.
+   */
+  struct VrBreakInput {
+    /// The weapon in the right hand is a break action, and the left hand is
+    /// tracked and free (not on the weapon)
+    bool      active = false;
+    /// The magazine action (the left trigger) is held
+    bool      grip = false;
+    /// A press of the trigger does not work the action: the hand holds
+    /// shells
+    bool      blocked = false;
+    /// Left hand: the middle of the grip
+    VrVector3 hand;
+    /// Where the shells sit in the breech
+    VrVector3 breech;
+    /// Direction the barrel points along from the breech, unit
+    VrVector3 barrel;
+  };
+
+  /**
+   * \brief Distances of the break action gesture, in metres
+   */
+  struct VrBreakReach {
+    /// How close the hand must be to the barrel to work the action
+    float reach  = 0.10f;
+    /// How far the barrel goes from the breech
+    float length = 0.35f;
+  };
+
+  /**
+   * \brief Follows the action of a break action in the right hand
+   *
+   * The left trigger pressed near the barrel, from the breech forward,
+   * breaks the action open, and pressed there again closes it. Only a
+   * press works it: holding the trigger while the hand moves does nothing.
+   */
+  class VrBreakHand {
+
+  public:
+
+    explicit VrBreakHand(const VrBreakReach& reach = VrBreakReach())
+    : m_reach(reach) { }
+
+    /**
+     * \brief Takes the frame's input
+     * \returns What happened in this frame
+     */
+    VrBreakEvent update(const VrBreakInput& input);
+
+    /**
+     * \brief Closes the action, when the weapon changes or the game
+     *    reloads it
+     */
+    void reset();
+
+    /**
+     * \brief How far the hand is from where a press of the trigger works
+     *    the action, in metres
+     */
+    float workDistance(const VrBreakInput& input) const;
+
+    bool open() const {
+      return m_open;
+    }
+
+  private:
+
+    VrBreakReach m_reach;
+    bool         m_gripDown = false;
+    bool         m_open     = false;
 
   };
 

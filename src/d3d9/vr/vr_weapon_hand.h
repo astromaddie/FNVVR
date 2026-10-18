@@ -276,6 +276,32 @@ namespace dxvk {
     }
 
     /**
+     * \brief Opens or closes the action of a break action in the hand
+     *
+     * The barrel swings down about the hinge from the next frame on, as
+     * far as the game's reload animation opens it; the stock stays in the
+     * hand.
+     */
+    void setActionOpen(bool open) {
+      m_actionOpen = open;
+    }
+
+    /**
+     * \brief Direction the barrel of a break action points along from its
+     *    breech
+     *
+     * A unit vector in the right hand's frame, measured each time the
+     * model is drawn, as it is drawn (open or closed). The breech is
+     * magazineWell.
+     *
+     * \returns The direction, or \c nullptr if the weapon in the hand is
+     *    not a break action reloaded by hand
+     */
+    const VrVector3* actionBarrel() const {
+      return m_hasMagazine && m_hasHinge ? &m_actionBarrel : nullptr;
+    }
+
+    /**
      * \brief The game's reload animation of the weapon in the hand
      *
      * \returns The animation, or \c nullptr if it was not read
@@ -418,6 +444,28 @@ namespace dxvk {
     bool             m_hasRack = false;
     const uint8_t*   m_loggedRack = nullptr;
 
+    // Break action in the hand: whether it is to be open, how far it is
+    // open (0 closed, 1 open), whether the weapon has a hinge it opens
+    // about and the direction of its barrel in the right hand's frame
+    bool             m_actionOpen = false;
+    float            m_actionSwing = 0.0f;
+    bool             m_hasHinge = false;
+    VrVector3        m_actionBarrel;
+
+    // The shells of a break action besides the one found as its round: the
+    // caravan shotgun has one part per shell. Each one's pose relative to
+    // that round, for the weapon form they were measured on (compared but
+    // not dereferenced), and those the VR layer culled, compared but only
+    // touched once found in the weapon again.
+    struct OtherShell {
+      uint8_t*        part;
+      VrGameTransform fromRound;
+    };
+
+    std::vector<OtherShell> m_otherShells;
+    const uint8_t*   m_otherShellsForm = nullptr;
+    std::vector<uint8_t*> m_hiddenShells;
+
     // The game's reload animation of the weapon form it was read for,
     // compared but not dereferenced, how many times it was tried for it and
     // how many draws to wait before the next try
@@ -537,8 +585,51 @@ namespace dxvk {
       const HeldPart*             held);
 
     /**
+     * \brief Finds the hinge of a break action
+     *
+     * A weapon that is not loaded round by round, with no magazine part,
+     * whose model has a hinge part.
+     *
+     * \returns The hinge part, or \c nullptr if the weapon is not a break
+     *    action
+     */
+    static uint8_t* findHinge(uint8_t* weapon, const uint8_t* form);
+
+    /**
+     * \brief Draws a break action as far open as it is
+     *
+     * The weapon node is turned about the hinge so that the hinge part (the
+     * stock, which the hand holds) stays where the game draws it while the
+     * barrel turns away from it as the reload animation opens it.
+     */
+    void openAction(
+            uint8_t*              weapon,
+            uint8_t*              hinge,
+      const uint8_t*              form,
+            void*                 updateData);
+
+    /**
+     * \brief Draws the other shells of a break action with its round
+     *
+     * In the weapon they are where the game draws them, culled while the
+     * action is emptied, and in the hand they keep their place next to the
+     * round.
+     *
+     * \param [in] round The round part
+     * \param [in] pose Where the round is drawn, or \c nullptr if the game
+     *    draws it in the weapon or it is not drawn
+     */
+    void placeOtherShells(
+            uint8_t*              weapon,
+            uint8_t*              round,
+      const uint8_t*              form,
+      const VrGameTransform*      pose,
+            void*                 updateData);
+
+    /**
      * \brief Finds the weapon's magazine and where it is drawn
      *
+     * The magazine of a break action (with a hinge) is its shells.
      * \param [out] pose Where the magazine is drawn, in the model's
      *    drawing space
      * \returns The magazine to draw at the pose, or \c nullptr if the
@@ -547,6 +638,7 @@ namespace dxvk {
     uint8_t* placeMagazine(
             uint8_t*              root,
             uint8_t*              weapon,
+            uint8_t*              hinge,
             uint8_t*              leftHand,
             bool                  handPlaced,
       const VrGameCameraPose&     hand,

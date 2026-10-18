@@ -65,6 +65,14 @@ namespace dxvk {
     // animation's hand to hold it, in metres
     constexpr float RackHeldReach = 0.15f;
 
+    // How far a break action's hinge part must turn for the animation to
+    // open it, in radians (10 degrees)
+    constexpr float MinHingeAngle = 0.1745f;
+
+    // Part of its turn by which the hinge part has started opening, or is
+    // closed again
+    constexpr float HingeMoved = 0.1f;
+
     template<typename T>
     T readField(const uint8_t* base, uintptr_t offset) {
       return *reinterpret_cast<const T*>(base + offset);
@@ -392,7 +400,85 @@ namespace dxvk {
     }
 
 
-    void readSounds(const uint8_t* sequence, const VrMagazineTiming& timing, float rackFrom, float rackTo, VrReloadAnimation& animation) {
+    /**
+     * \brief Reads how the sequence breaks the action open about its hinge
+     *
+     * \param [in] placed When the shells are in their place
+     * \param [out] from When the hinge part starts turning
+     * \param [out] to When it is closed again, or a negative time if it
+     *    stays open
+     */
+    bool readHinge(
+      const SequenceTracks&       tracks,
+            uint8_t*              weapon,
+            uint8_t*              hinge,
+            float                 begin,
+            float                 end,
+            float                 placed,
+            VrHingeAnimation&     animation,
+            float&                from,
+            float&                to) {
+      std::vector<float> times;
+      std::vector<Pose> poses;
+
+      for (uint32_t i = 0; begin + float(i) / SamplesPerSecond <= end; i++) {
+        float t = begin + float(i) / SamplesPerSecond;
+        Pose pose;
+
+        if (!tracks.toAncestor(hinge, weapon, t, pose))
+          return false;
+
+        times.push_back(t);
+        poses.push_back(pose);
+      }
+
+      std::vector<float> angles;
+      float widest = 0.0f;
+
+      for (const Pose& pose : poses) {
+        angles.push_back(vrRotationAngle(poses.front().rotate, pose.rotate));
+        widest = std::max(widest, angles.back());
+      }
+
+      if (widest < MinHingeAngle)
+        return false;
+
+      // Open as it is when the shells are in their place, or as wide as it
+      // goes if it is not open then
+      size_t widestAt = 0;
+      size_t placedAt = 0;
+      from = -1.0f;
+      to   = -1.0f;
+
+      for (size_t i = 0; i < poses.size(); i++) {
+        if (from < 0.0f && angles[i] > HingeMoved * widest)
+          from = times[i];
+
+        if (angles[i] > angles[widestAt])
+          widestAt = i;
+
+        if (times[i] <= placed)
+          placedAt = i;
+
+        if (to < 0.0f && times[i] > placed && from >= 0.0f && angles[i] <= HingeMoved * widest)
+          to = times[i];
+      }
+
+      size_t open = angles[placedAt] >= 0.5f * widest ? placedAt : widestAt;
+
+      animation.open.rotate    = poses[open].rotate;
+      animation.open.translate = poses[open].translate;
+      animation.angle          = angles[open];
+
+      Logger::info(str::format("VR: Reload animation breaks the action open about '", partName(hinge), "' by ",
+        angles[open] * 57.2957795f, " degrees (", widest * 57.2957795f, " at most), from ", from, " s",
+        to >= 0.0f ? str::format(", closed again at ", to, " s") : std::string(", open to the end")));
+      return true;
+    }
+
+
+    void readSounds(const uint8_t* sequence, const VrMagazineTiming& timing, float rackFrom, float rackTo,
+        float hingeFrom, float hingeTo, VrReloadAnimation& animation) {
       auto group = readField<const uint8_t*>(sequence, VrGame::AnimSequenceGroup);
 
       if (!group)
@@ -443,18 +529,33 @@ namespace dxvk {
         ? vrFindSoundDuring(others.data(), others.size(), rackFrom, rackTo, SoundWindow, -1)
         : -1;
 
+      // The action opening and closing are neither, nor each other
+      int32_t opening = animation.hasHinge
+        ? vrFindNearestSound(others.data(), others.size(), hingeFrom, SoundWindow, -1)
+        : -1;
+      int32_t closing = animation.hasHinge && hingeTo >= 0.0f
+        ? vrFindNearestSound(others.data(), others.size(), hingeTo, SoundWindow, opening)
+        : -1;
+
       animation.out = toSound(out);
       animation.in  = toSound(in);
 
       if (animation.hasRack)
         animation.rack.sound = toSound(rack);
 
+      if (animation.hasHinge) {
+        animation.hinge.openSound  = toSound(opening);
+        animation.hinge.closeSound = toSound(closing);
+      }
+
       for (size_t i = 0; i < entries.size(); i++) {
         Logger::info(str::format("VR: Reload animation sound at ", times[i], " s: '",
           vrGameSoundFile(readField<const uint8_t*>(entries[i], VrGame::AnimGroupSoundForm)), "'",
           int32_t(i) == out  ? ", the magazine going out" : "",
           int32_t(i) == in   ? (animation.round ? ", the round going in" : ", the magazine going in") : "",
-          int32_t(i) == rack ? ", the weapon chambering" : ""));
+          int32_t(i) == rack ? ", the weapon chambering" : "",
+          int32_t(i) == opening ? ", the action opening" : "",
+          int32_t(i) == closing ? ", the action closing" : ""));
       }
     }
 
@@ -468,6 +569,7 @@ namespace dxvk {
           uint8_t*              magazine,
           bool                  round,
           uint8_t*              rack,
+          uint8_t*              hinge,
           uint8_t*              leftHand,
           VrReloadAnimation&    animation) {
     const uint8_t* sequence = findReloadSequence(player);
@@ -581,7 +683,14 @@ namespace dxvk {
     if (rack && !animation.hasRack)
       Logger::info(str::format("VR: The reload animation does not rack '", partName(rack), "'"));
 
-    readSounds(sequence, timing, rackFrom, rackTo, animation);
+    float hingeFrom = 0.0f;
+    float hingeTo   = -1.0f;
+    animation.hasHinge = hinge && readHinge(tracks, weapon, hinge, begin, end, timing.in, animation.hinge, hingeFrom, hingeTo);
+
+    if (hinge && !animation.hasHinge)
+      Logger::info(str::format("VR: The reload animation does not break the action open about '", partName(hinge), "'"));
+
+    readSounds(sequence, timing, rackFrom, rackTo, hingeFrom, hingeTo, animation);
 
     Logger::info(str::format("VR: Reload animation '", sequenceName ? sequenceName : "", "' from ", begin, " to ", end,
       round ? " s: the round is carried in from " : " s: the magazine goes out at ", timing.out, " s and in at ", timing.in, " s, along ",

@@ -72,6 +72,9 @@ namespace dxvk {
     // How long the magazine takes to move between the hand and its well
     constexpr float MagazineBlendTime = 0.12f;
 
+    // How long a break action takes to swing open or closed
+    constexpr float ActionSwingTime = 0.15f;
+
     // Without a reload animation that racks it, the rack part is pulled
     // straight back along the barrel (the weapon node's -x), this far in
     // metres
@@ -457,6 +460,9 @@ namespace dxvk {
     m_frameTime         = dt;
     m_heldSettleUpdated = false;
     m_magazineBlend     = std::min(m_magazineBlend + dt / MagazineBlendTime, 1.0f);
+    m_actionSwing       = m_actionOpen
+      ? std::min(m_actionSwing + dt / ActionSwingTime, 1.0f)
+      : std::max(m_actionSwing - dt / ActionSwingTime, 0.0f);
 
     m_gameCamera   = gameCamera;
     m_hasHand      = hand != nullptr;
@@ -683,6 +689,7 @@ namespace dxvk {
 
     m_hasMagazine = false;
     m_hasRack     = false;
+    m_hasHinge    = false;
 
     if (m_mode == VrFirstPersonMode::Hidden) {
       m_hasAim    = false;
@@ -791,10 +798,15 @@ namespace dxvk {
 
     bool handPlaced = forearm && m_hasOtherHand && !m_twoHanded && !m_braced;
 
+    // A break action is drawn open first: its shells and the hand holding
+    // them follow the barrel
+    uint8_t* hinge = findHinge(weapon, form);
+    openAction(weapon, hinge, form, updateData);
+
     // The magazine out of the weapon and the rack part are placed first: a
     // hand holding the magazine in its well, or the rack part, follows it
     VrGameTransform magazinePose;
-    uint8_t* magazine = placeMagazine(root, weapon, otherHand, handPlaced, hand, form, shift, magazinePose);
+    uint8_t* magazine = placeMagazine(root, weapon, hinge, otherHand, handPlaced, hand, form, shift, magazinePose);
 
     VrGameTransform rackPose;
     uint8_t* rack = placeRack(weapon, hand, rackPose);
@@ -821,6 +833,9 @@ namespace dxvk {
 
     if (magazine)
       drawPart(magazine, magazinePose, updateData);
+
+    if (m_hasHinge)
+      placeOtherShells(weapon, magazine, form, magazine ? &magazinePose : nullptr, updateData);
 
     if (rack)
       drawPart(rack, rackPose, updateData);
@@ -1223,9 +1238,175 @@ namespace dxvk {
   }
 
 
+  uint8_t* VrWeaponHand::findHinge(uint8_t* weapon, const uint8_t* form) {
+    if (!form || readField<uint8_t>(form, VrGame::WeaponLoopingReload))
+      return nullptr;
+
+    // By name: a magazine taken out is culled, and has no bound then
+    bool magazine = false;
+
+    vrVisitGameObjects(reinterpret_cast<uintptr_t>(weapon), MaxModelDepth,
+      [&magazine] (uintptr_t object, uint32_t) {
+        auto name = field<const char*>(reinterpret_cast<uint8_t*>(object), VrGame::ObjectName);
+        magazine |= vrClassifyWeaponPart(name) == VrWeaponPartKind::Magazine;
+      });
+
+    return magazine ? nullptr : vrFindWeaponPart(weapon, VrWeaponPartKind::Hinge);
+  }
+
+
+  void VrWeaponHand::openAction(
+          uint8_t*              weapon,
+          uint8_t*              hinge,
+    const uint8_t*              form,
+          void*                 updateData) {
+    if (!hinge || m_actionSwing <= 0.0f || form != m_reloadForm
+     || !m_hasReloadAnimation || !m_reloadAnimation.hasHinge)
+      return;
+
+    VrGameRotation weaponRotation = readRotation(weapon, VrGame::ObjectWorldRotation);
+    VrVector3 weaponPosition      = readVector(weapon, VrGame::ObjectWorldTranslation);
+    float weaponScale             = field<float>(weapon, VrGame::ObjectWorldScale);
+
+    if (weaponScale <= 0.0f)
+      return;
+
+    // The hinge part where the game draws it, closed, in the world and in
+    // the weapon node's frame
+    VrGameTransform hingeWorld;
+    hingeWorld.rotate    = readRotation(hinge, VrGame::ObjectWorldRotation);
+    hingeWorld.translate = readVector(hinge, VrGame::ObjectWorldTranslation);
+
+    VrGameTransform closed;
+    closed.rotate    = vrTranspose(weaponRotation) * hingeWorld.rotate;
+    closed.translate = vrTranspose(weaponRotation) * (hingeWorld.translate - weaponPosition) * (1.0f / weaponScale);
+
+    // As far open as the swing is
+    const VrGameTransform& open = m_reloadAnimation.hinge.open;
+    float t = m_actionSwing * m_actionSwing * (3.0f - 2.0f * m_actionSwing);
+
+    VrGameTransform opened;
+    opened.rotate    = vrGameRotationFromQuaternion(vrSlerp(
+      vrQuaternionFromGameRotation(closed.rotate), vrQuaternionFromGameRotation(open.rotate), t));
+    opened.translate = closed.translate + (open.translate - closed.translate) * t;
+
+    // The weapon node turned so that the hinge part, opened in it, stays
+    // where it was drawn closed
+    VrGameRotation turn = closed.rotate * vrTranspose(opened.rotate);
+
+    VrGameTransform weaponPose;
+    weaponPose.rotate    = weaponRotation * turn;
+    weaponPose.translate = weaponPosition + weaponRotation * (closed.translate - turn * opened.translate) * weaponScale;
+
+    drawPart(weapon, weaponPose, updateData);
+    drawPart(hinge, hingeWorld, updateData);
+  }
+
+
+  void VrWeaponHand::placeOtherShells(
+          uint8_t*              weapon,
+          uint8_t*              round,
+    const uint8_t*              form,
+    const VrGameTransform*      pose,
+          void*                 updateData) {
+    if (form != m_otherShellsForm) {
+      m_otherShells.clear();
+      m_otherShellsForm = form;
+    }
+
+    // The round the game draws in the weapon, to measure the others from
+    bool inWeapon = m_magazineState == VrMagazineState::InWeapon;
+
+    if (!round && inWeapon)
+      round = vrFindWeaponPart(weapon, VrWeaponPartKind::Round);
+
+    // Every other round part, not counting the meshes below one
+    std::vector<uint8_t*> shells;
+
+    auto isRound = [] (uint8_t* part) {
+      return vrClassifyWeaponPart(field<const char*>(part, VrGame::ObjectName)) == VrWeaponPartKind::Round;
+    };
+
+    vrVisitGameObjects(reinterpret_cast<uintptr_t>(weapon), MaxModelDepth,
+      [&shells, &isRound, round, weapon] (uintptr_t object, uint32_t) {
+        auto part = reinterpret_cast<uint8_t*>(object);
+
+        if (part == round || !isRound(part))
+          return;
+
+        for (uint8_t* parent = field<uint8_t*>(part, VrGame::ObjectParent); parent && parent != weapon;
+            parent = field<uint8_t*>(parent, VrGame::ObjectParent)) {
+          if (isRound(parent))
+            return;
+        }
+
+        shells.push_back(part);
+      });
+
+    // The shells are culled while the weapon is emptied
+    bool emptied = m_magazineState == VrMagazineState::Out;
+
+    for (auto i = m_hiddenShells.begin(); i != m_hiddenShells.end(); ) {
+      bool found = std::find(shells.begin(), shells.end(), *i) != shells.end();
+
+      if (found && emptied) {
+        ++i;
+        continue;
+      }
+
+      if (found)
+        field<uint32_t>(*i, VrGame::ObjectFlags) &= ~VrGame::ObjectFlagAppCulled;
+
+      i = m_hiddenShells.erase(i);
+    }
+
+    for (uint8_t* shell : shells) {
+      uint32_t& flags = field<uint32_t>(shell, VrGame::ObjectFlags);
+
+      if (emptied) {
+        if (!(flags & VrGame::ObjectFlagAppCulled)) {
+          flags |= VrGame::ObjectFlagAppCulled;
+          m_hiddenShells.push_back(shell);
+        }
+        continue;
+      }
+
+      auto known = std::find_if(m_otherShells.begin(), m_otherShells.end(),
+        [shell] (const OtherShell& other) { return other.part == shell; });
+
+      float roundScale = round ? field<float>(round, VrGame::ObjectWorldScale) : 0.0f;
+
+      // Measured next to the round while both are in the weapon
+      if (inWeapon && round && roundScale > 0.0f && !(flags & VrGame::ObjectFlagAppCulled)) {
+        VrGameRotation toRound = vrTranspose(readRotation(round, VrGame::ObjectWorldRotation));
+
+        OtherShell other;
+        other.part                = shell;
+        other.fromRound.rotate    = toRound * readRotation(shell, VrGame::ObjectWorldRotation);
+        other.fromRound.translate = toRound * (readVector(shell, VrGame::ObjectWorldTranslation)
+          - readVector(round, VrGame::ObjectWorldTranslation)) * (1.0f / roundScale);
+
+        if (known != m_otherShells.end())
+          *known = other;
+        else
+          m_otherShells.push_back(other);
+        continue;
+      }
+
+      if (pose && round && roundScale > 0.0f && known != m_otherShells.end()) {
+        VrGameTransform shellPose;
+        shellPose.rotate    = pose->rotate * known->fromRound.rotate;
+        shellPose.translate = pose->translate + pose->rotate * known->fromRound.translate * roundScale;
+        drawPart(shell, shellPose, updateData);
+      }
+    }
+  }
+
+
   uint8_t* VrWeaponHand::placeMagazine(
           uint8_t*              root,
           uint8_t*              weapon,
+          uint8_t*              hinge,
           uint8_t*              leftHand,
           bool                  handPlaced,
     const VrGameCameraPose&     hand,
@@ -1246,9 +1427,10 @@ namespace dxvk {
     }
 
     // Weapons loaded round by round are loaded with the round their reload
-    // animation carries in; revolvers come later
-    bool round = form && readField<uint8_t>(form, VrGame::WeaponLoopingReload)
-      && readField<int8_t>(form, VrGame::WeaponAnimationType) != WeaponTypePistol;
+    // animation carries in, revolvers come later, and break actions with
+    // their shells
+    bool round = hinge || (form && readField<uint8_t>(form, VrGame::WeaponLoopingReload)
+      && readField<int8_t>(form, VrGame::WeaponAnimationType) != WeaponTypePistol);
 
     uint8_t* magazine = hiddenFound ? m_hiddenMagazine
       : vrFindWeaponPart(weapon, round ? VrWeaponPartKind::Round : VrWeaponPartKind::Magazine);
@@ -1277,6 +1459,7 @@ namespace dxvk {
       m_magazineForm      = form;
       m_hasMagazineCentre = false;
       m_hasMagazineGrip   = false;
+      m_loggedMagazine    = false;
     }
 
     // The game's reload animation, once the weapon's model is in the hand
@@ -1294,9 +1477,14 @@ namespace dxvk {
         m_reloadTries += 1;
         m_reloadWait   = ReloadAnimationRetryDraws;
         m_hasReloadAnimation = vrReadReloadAnimation(player(), root, weapon, magazine, round,
-          vrFindWeaponPart(weapon, VrWeaponPartKind::Rack), leftHand, m_reloadAnimation);
+          vrFindWeaponPart(weapon, VrWeaponPartKind::Rack), hinge, leftHand, m_reloadAnimation);
       }
     }
+
+    // A break action is reloaded by hand only once its reload animation
+    // tells how it opens
+    if (hinge && !(m_hasReloadAnimation && m_reloadAnimation.round && m_reloadAnimation.hasHinge))
+      return nullptr;
 
     // Where the game draws the magazine in the weapon. Its bound is only
     // read while the game draws it there. A round is put where the reload
@@ -1327,6 +1515,14 @@ namespace dxvk {
 
     m_magazineWell = vrPointToHand(hand, well);
     m_hasMagazine  = true;
+    m_hasHinge     = hinge != nullptr;
+
+    // The barrel runs along the weapon node's x axis, as it is drawn
+    if (hinge) {
+      VrGameRotation weaponRotation = readRotation(weapon, VrGame::ObjectWorldRotation);
+      VrVector3 barrel = { weaponRotation.m[0][0], weaponRotation.m[1][0], weaponRotation.m[2][0] };
+      m_actionBarrel = { vrDot(barrel, hand.forward), vrDot(barrel, hand.up), vrDot(barrel, hand.right) };
+    }
 
     // The direction it comes out along: the animation's, or away from the
     // middle of the weapon
@@ -1357,8 +1553,13 @@ namespace dxvk {
 
     if (!m_loggedMagazine) {
       auto name = field<const char*>(magazine, VrGame::ObjectName);
-      Logger::info(str::format(round ? "VR: The weapon is loaded round by round with '" : "VR: The weapon's magazine is '",
-        name ? name : "", "'"));
+      auto hingeName = hinge ? field<const char*>(hinge, VrGame::ObjectName) : nullptr;
+
+      Logger::info(hinge
+        ? str::format("VR: The weapon is a break action loaded with '", name ? name : "", "', opening about '",
+            hingeName ? hingeName : "", "'")
+        : str::format(round ? "VR: The weapon is loaded round by round with '" : "VR: The weapon's magazine is '",
+            name ? name : "", "'"));
       m_loggedMagazine = true;
     }
 

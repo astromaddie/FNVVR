@@ -192,7 +192,7 @@ namespace dxvk {
   void VrManualReload::setEnabled(bool enabled) {
     if (enabled != m_enabled) {
       Logger::info(enabled
-        ? "VR: Weapons with a detachable magazine and those loaded round by round are reloaded with the hands"
+        ? "VR: Weapons with a detachable magazine, those loaded round by round and break actions are reloaded with the hands"
         : "VR: The weapons are reloaded as in the game");
     }
 
@@ -209,6 +209,7 @@ namespace dxvk {
     if (weapon != m_lastWeapon) {
       m_magazine.reset();
       m_rack.reset();
+      m_action.reset();
       m_pendingFill = false;
       m_fillFrames  = 0;
       m_jammed      = false;
@@ -225,6 +226,7 @@ namespace dxvk {
 
     bool handled = m_enabled && weapon && weapon == m_wellWeapon;
     bool looping = handled && readField<uint8_t>(weapon, VrGame::WeaponLoopingReload);
+    bool hinged  = handled && !looping && input.barrel;
 
     m_handWeapon = handled ? weapon : nullptr;
 
@@ -235,6 +237,8 @@ namespace dxvk {
     if (!handled) {
       m_magazine.reset();
       m_rack.reset();
+      m_action.reset();
+      m_actionOpen  = false;
       m_pendingFill = false;
       m_lockedBack  = false;
       m_jammed      = false;
@@ -253,6 +257,7 @@ namespace dxvk {
       Logger::info(str::format("VR: The game filled the clip of '", weaponName(weapon),
         "', its magazine is back in the weapon"));
       m_magazine.reset();
+      m_action.reset();
       m_pendingFill = false;
       clearJam(weapon, "the game reloaded it");
     }
@@ -261,6 +266,7 @@ namespace dxvk {
     magazine.active = input.head && input.rightHand && input.leftHand && input.well && !input.leftOnWeapon;
     magazine.grip   = input.grip;
     magazine.rounds = looping;
+    magazine.closed = hinged && !m_action.open();
 
     // The rack part is taken by a hand that holds no magazine
     VrRackInput rack;
@@ -295,8 +301,22 @@ namespace dxvk {
       ? m_magazine.ejectDistance(magazine) : FLT_MAX;
     float toRack  = rack.active ? m_rack.grabDistance(rack) : FLT_MAX;
 
-    magazine.blocked = toRack < toEject;
+    // Nothing is taken out of a break action: opening it empties it
+    magazine.blocked = hinged || toRack < toEject;
     rack.blocked     = !magazine.blocked;
+
+    VrBreakInput action;
+    action.active  = magazine.active && hinged;
+    action.grip    = input.grip;
+    action.blocked = m_magazine.state() == VrMagazineState::InHand || m_magazine.state() == VrMagazineState::Seating;
+
+    if (action.active) {
+      const VrGameCameraPose& right = *input.rightHand;
+
+      action.hand   = input.leftHand->position;
+      action.breech = magazine.well;
+      action.barrel = right.forward * input.barrel->x + right.up * input.barrel->y + right.right * input.barrel->z;
+    }
 
     VrReloadEvents events;
     events.jammed = m_jamStarted.exchange(false);
@@ -308,13 +328,35 @@ namespace dxvk {
       vrPlayReloadSound(click, rack.active ? rack.rack : input.rightHand->position);
     }
 
-    events.rack = m_rack.update(rack);
+    events.rack   = m_rack.update(rack);
+    events.action = m_action.update(action);
+
+    switch (events.action) {
+      case VrBreakEvent::Opened:
+        openAction(character, weapon, input.animation ? &input.animation->hinge.openSound : nullptr, action.breech);
+        break;
+
+      case VrBreakEvent::Closed:
+        if (input.animation)
+          vrPlayReloadSound(input.animation->hinge.closeSound, action.breech);
+
+        Logger::info(str::format("VR: The action of '", weaponName(weapon), "' is closed, clip ", clipCount(character)));
+        break;
+
+      case VrBreakEvent::None:
+        break;
+    }
+
+    m_actionOpen = m_action.open();
 
     // The hand on the rack part does nothing with magazines
     if (m_rack.held() || events.rack != VrRackEvent::None)
       magazine.active = false;
 
     events.magazine = m_magazine.update(magazine);
+
+    // What the hand loads the weapon with
+    const char* load = looping ? "round" : (hinged ? "shells" : "magazine");
 
     switch (events.magazine) {
       case VrMagazineEvent::Ejected:
@@ -343,27 +385,28 @@ namespace dxvk {
         break;
 
       case VrMagazineEvent::Cleared:
-        Logger::info(str::format("VR: The ", looping ? "round" : "magazine", " of '", weaponName(weapon),
-          looping ? "' is out of its loading port" : "' is out of its well"));
+        Logger::info(str::format("VR: The ", load, " of '", weaponName(weapon),
+          looping ? "' is out of its loading port" : (hinged ? "' are out of the breech" : "' is out of its well")));
         break;
 
       case VrMagazineEvent::Engaged:
-        Logger::info(str::format(looping ? "VR: A round enters the loading port of '" : "VR: A magazine enters the well of '",
+        Logger::info(str::format(looping ? "VR: A round enters the loading port of '"
+          : (hinged ? "VR: Shells enter the breech of '" : "VR: A magazine enters the well of '"),
           weaponName(weapon), "'"));
         break;
 
       case VrMagazineEvent::Taken:
-        Logger::info(str::format("VR: A new ", looping ? "round" : "magazine", " for '", weaponName(weapon),
-          "' is taken behind the back"));
+        Logger::info(str::format(hinged ? "VR: New shells for '" : str::format("VR: A new ", load, " for '"),
+          weaponName(weapon), hinged ? "' are taken behind the back" : "' is taken behind the back"));
         break;
 
       case VrMagazineEvent::NoRounds:
         Logger::info(str::format("VR: No rounds left for '", weaponName(weapon), "'",
-          looping ? " beyond those loaded, no round is taken" : ", no magazine is taken"));
+          looping ? " beyond those loaded, no round is taken" : (hinged ? ", no shells are taken" : ", no magazine is taken")));
         break;
 
       case VrMagazineEvent::Dropped:
-        Logger::info(str::format("VR: The ", looping ? "round" : "magazine", " of '", weaponName(weapon), "' is let go of"));
+        Logger::info(str::format("VR: The ", load, " of '", weaponName(weapon), hinged ? "' are let go of" : "' is let go of"));
         break;
 
       case VrMagazineEvent::None:
@@ -445,6 +488,28 @@ namespace dxvk {
 
     Logger::info(str::format("VR: The magazine of '", weaponName(weapon), "' is taken out with ",
       rounds, " round(s), they stay in the inventory", chamber ? "; one stays chambered" : ""));
+  }
+
+
+  void VrManualReload::openAction(uint8_t* player, const uint8_t* weapon, const VrReloadSound* sound,
+      const VrVector3& breech) {
+    // The shells are thrown out, spent or not: the rounds of the clip are
+    // still counted in the inventory, so none is lost (findings/reload.md §1)
+    uint8_t* clip = currentAmmo(player);
+    int32_t  rounds = clip ? readField<int32_t>(clip, VrGame::InventoryEntryCount) : NoClip;
+
+    if (clip)
+      *reinterpret_cast<int32_t*>(clip + VrGame::InventoryEntryCount) = 0;
+
+    m_magazine.empty();
+
+    if (sound)
+      vrPlayReloadSound(*sound, breech);
+
+    Logger::info(str::format("VR: The action of '", weaponName(weapon), "' is broken open, its shells are thrown out, clip ",
+      rounds, " before: the rounds stay in the inventory"));
+
+    clearJam(weapon, "its action was opened");
   }
 
 
@@ -602,9 +667,10 @@ namespace dxvk {
   int32_t __fastcall VrManualReload::clipCountHook(
           uint8_t*              entry,
           void*                 unused) {
-    // A jammed weapon does not fire: the attack sees an empty clip and
-    // clicks. The game's own jam goes on in V.A.T.S.
-    if (g_manualReload && (g_manualReload->m_jammed.load() || g_manualReload->m_unchambered.load())
+    // A jammed weapon, or an open break action, does not fire: the attack
+    // sees an empty clip and clicks. The game's own jam goes on in V.A.T.S.
+    if (g_manualReload && (g_manualReload->m_jammed.load() || g_manualReload->m_unchambered.load()
+        || g_manualReload->m_actionOpen.load())
      && !inVats() && entry == currentAmmo(player()))
       return 0;
 

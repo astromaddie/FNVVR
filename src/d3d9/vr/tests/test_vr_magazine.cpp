@@ -759,3 +759,109 @@ TEST_CASE(round_timing_needs_the_round_to_move_in_and_stop) {
   CHECK(!vrFindRoundTiming(still.data(), still.size(), timing, place));
   CHECK(!vrFindRoundTiming(moving.data(), moving.size(), timing, place));
 }
+
+
+TEST_CASE(hinges_are_found_by_keyword) {
+  CHECK(vrClassifyWeaponPart("##DBStock") == VrWeaponPartKind::Hinge);
+  CHECK(vrClassifyWeaponPart("##CVSHStock") == VrWeaponPartKind::Hinge);
+  CHECK(vrClassifyWeaponPart("##sosgStock") == VrWeaponPartKind::Hinge);
+  CHECK(vrClassifyWeaponPart("##DBShells") == VrWeaponPartKind::Round);
+  CHECK(vrClassifyWeaponPart("##CVSHShell1") == VrWeaponPartKind::Round);
+  CHECK(vrClassifyWeaponPart("##DBLatch") == VrWeaponPartKind::None);
+  CHECK(vrClassifyWeaponPart("##CVSHSwitch") == VrWeaponPartKind::None);
+}
+
+
+namespace {
+
+  // The barrel points north from the breech, which is at the well
+  const VrVector3 North = { 0.0f, 1.0f, 0.0f };
+
+  VrBreakInput breakInput(bool grip, const VrVector3& hand) {
+    VrBreakInput in;
+    in.active = true;
+    in.grip   = grip;
+    in.hand   = hand;
+    in.breech = Well;
+    in.barrel = North;
+    return in;
+  }
+
+  // A point along the barrel, and beside it
+  VrVector3 alongBarrel(float metres, float beside) {
+    return { Well.x + beside * M, Well.y + metres * M, Well.z };
+  }
+
+}
+
+
+TEST_CASE(break_action_opens_and_closes_with_presses_near_the_barrel) {
+  VrBreakHand action;
+
+  CHECK(action.update(breakInput(true, alongBarrel(0.2f, 0.05f))) == VrBreakEvent::Opened);
+  CHECK(action.open());
+
+  // Holding the trigger does nothing more
+  CHECK(action.update(breakInput(true, alongBarrel(0.1f, 0.0f))) == VrBreakEvent::None);
+  CHECK(action.update(breakInput(false, alongBarrel(0.1f, 0.0f))) == VrBreakEvent::None);
+
+  CHECK(action.update(breakInput(true, alongBarrel(0.0f, 0.08f))) == VrBreakEvent::Closed);
+  CHECK(!action.open());
+}
+
+
+TEST_CASE(break_action_is_not_worked_away_from_the_barrel) {
+  VrBreakHand action;
+
+  // Beside the barrel, beyond its muzzle, behind the breech
+  CHECK(action.update(breakInput(true, alongBarrel(0.2f, 0.15f))) == VrBreakEvent::None);
+  CHECK(action.update(breakInput(false, alongBarrel(0.2f, 0.15f))) == VrBreakEvent::None);
+  CHECK(action.update(breakInput(true, alongBarrel(0.5f, 0.0f))) == VrBreakEvent::None);
+  CHECK(action.update(breakInput(false, alongBarrel(0.5f, 0.0f))) == VrBreakEvent::None);
+  CHECK(action.update(breakInput(true, alongBarrel(-0.15f, 0.0f))) == VrBreakEvent::None);
+  CHECK(!action.open());
+
+  // A hand holding shells does not work it
+  VrBreakInput blocked = breakInput(false, alongBarrel(0.1f, 0.0f));
+  action.update(blocked);
+  blocked.grip    = true;
+  blocked.blocked = true;
+  CHECK(action.update(blocked) == VrBreakEvent::None);
+
+  action.update(breakInput(false, alongBarrel(0.1f, 0.0f)));
+  CHECK(action.update(breakInput(true, alongBarrel(0.1f, 0.0f))) == VrBreakEvent::Opened);
+
+  action.reset();
+  CHECK(!action.open());
+}
+
+
+TEST_CASE(shells_do_not_enter_a_closed_weapon) {
+  VrMagazineHand shells;
+  emptyWeapon(shells);
+  CHECK(shells.state() == VrMagazineState::Out);
+
+  VrMagazineInput in = input(true, Pouch);
+  in.closed = true;
+  CHECK(shells.update(in) == VrMagazineEvent::Taken);
+
+  in.held = in.hand = belowWell(0.06f);
+  CHECK(shells.update(in) == VrMagazineEvent::None);
+  CHECK(shells.state() == VrMagazineState::InHand);
+
+  // Open, they enter
+  in.closed = false;
+  CHECK(shells.update(in) == VrMagazineEvent::Engaged);
+}
+
+
+TEST_CASE(opening_a_break_action_empties_it) {
+  VrMagazineHand shells;
+  shells.empty();
+  CHECK(shells.state() == VrMagazineState::Out);
+
+  // Nothing to take out: new shells are taken behind the back
+  CHECK(shells.update(input(true, Pouch)) == VrMagazineEvent::Taken);
+  CHECK(shells.update(input(false, Pouch)) == VrMagazineEvent::Dropped);
+  CHECK(shells.state() == VrMagazineState::Out);
+}

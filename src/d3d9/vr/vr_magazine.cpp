@@ -40,6 +40,8 @@ namespace dxvk {
     // Spent cases
     const char* const NotRoundWords[] = { "empty", "casing" };
 
+    const char* const HingeWords[] = { "stock" };
+
     template<size_t N>
     bool containsAny(const std::string& name, const char* const (&words)[N]) {
       for (const char* word : words) {
@@ -75,6 +77,9 @@ namespace dxvk {
 
     if (containsAny(part, RoundWords) && !containsAny(part, NotRoundWords))
       return VrWeaponPartKind::Round;
+
+    if (containsAny(part, HingeWords))
+      return VrWeaponPartKind::Hinge;
 
     return VrWeaponPartKind::None;
   }
@@ -178,7 +183,7 @@ namespace dxvk {
           m_canEnter = true;
 
         // A magazine coming from beyond the mouth starts at the mouth
-        if (m_canEnter && toWay <= m_reach.capture) {
+        if (m_canEnter && !input.closed && toWay <= m_reach.capture) {
           seat(input, std::max(along - m_reach.depth, 0.0f));
           m_canInsert = true;
           return VrMagazineEvent::Engaged;
@@ -240,6 +245,12 @@ namespace dxvk {
   }
 
 
+  void VrMagazineHand::empty() {
+    reset();
+    m_state = VrMagazineState::Out;
+  }
+
+
   float VrMagazineHand::ejectDistance(const VrMagazineInput& input) const {
     constexpr float M = VrGameUnitsPerMetre;
     return vrDistanceToSegment(input.hand, input.well, input.axis, m_reach.below * M) / M;
@@ -293,6 +304,29 @@ namespace dxvk {
   float VrRackHand::grabDistance(const VrRackInput& input) const {
     constexpr float M = VrGameUnitsPerMetre;
     return vrDistanceToSegment(input.hand, input.rack, input.axis, input.travel * M) / M;
+  }
+
+
+  VrBreakEvent VrBreakHand::update(const VrBreakInput& input) {
+    bool pressed = input.grip && !m_gripDown;
+    m_gripDown = input.grip;
+
+    if (!input.active || !pressed || input.blocked || workDistance(input) > m_reach.reach)
+      return VrBreakEvent::None;
+
+    m_open = !m_open;
+    return m_open ? VrBreakEvent::Opened : VrBreakEvent::Closed;
+  }
+
+
+  void VrBreakHand::reset() {
+    m_open = false;
+  }
+
+
+  float VrBreakHand::workDistance(const VrBreakInput& input) const {
+    constexpr float M = VrGameUnitsPerMetre;
+    return vrDistanceToSegment(input.hand, input.breech, input.barrel, m_reach.length * M) / M;
   }
 
 

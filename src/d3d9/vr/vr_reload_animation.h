@@ -58,6 +58,19 @@ namespace dxvk {
   };
 
   /**
+   * \brief How the game's reload animation breaks a break action open
+   */
+  struct VrHingeAnimation {
+    /// The hinge part in the weapon node's frame while the action is open
+    VrGameTransform open;
+    /// How far it turns, in radians
+    float           angle = 0.0f;
+    /// The action opening and closing
+    VrReloadSound   openSound;
+    VrReloadSound   closeSound;
+  };
+
+  /**
    * \brief What the game's reload animation does with a weapon's magazine
    *
    * Read from the first-person reload animation the game would play for
@@ -88,6 +101,9 @@ namespace dxvk {
     /// How the animation racks the weapon, valid if \c hasRack
     VrRackAnimation         rack;
     bool                    hasRack = false;
+    /// How the animation breaks the action open, valid if \c hasHinge
+    VrHingeAnimation        hinge;
+    bool                    hasHinge = false;
   };
 
   /**
@@ -105,7 +121,10 @@ namespace dxvk {
    * For a weapon loaded round by round, the animation is the one that
    * loads one round, and the part is the round it carries in: where it
    * comes to rest is its place, the direction it comes from the way in,
-   * and it has no sound going out.
+   * and it has no sound going out. A break action's shells are read the
+   * same way, and its hinge part's track tells how far the action opens
+   * while they go in, and the sounds nearest the times it starts opening
+   * and is closed again are the action's.
    *
    * Only called on the game's main thread, while the animation is not
    * played. Evaluating a track keeps nothing but its last time.
@@ -117,6 +136,8 @@ namespace dxvk {
    *    round part
    * \param [in] round The part is a round
    * \param [in] rack The rack part below the weapon node, or \c nullptr
+   * \param [in] hinge The hinge part of a break action below the weapon
+   *    node, or \c nullptr
    * \param [in] leftHand The left hand bone
    * \param [out] animation What the animation does
    * \returns \c false if the weapon has no first-person reload animation
@@ -130,6 +151,7 @@ namespace dxvk {
           uint8_t*              magazine,
           bool                  round,
           uint8_t*              rack,
+          uint8_t*              hinge,
           uint8_t*              leftHand,
           VrReloadAnimation&    animation);
 
