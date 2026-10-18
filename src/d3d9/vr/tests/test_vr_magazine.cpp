@@ -633,68 +633,6 @@ TEST_CASE(rounds_are_found_by_keyword) {
 }
 
 
-namespace {
-
-  VrMagazineInput roundInput(bool grip, const VrVector3& hand) {
-    VrMagazineInput in = input(grip, hand);
-    in.rounds = true;
-    return in;
-  }
-
-}
-
-
-TEST_CASE(rounds_are_taken_one_by_one) {
-  VrMagazineHand rounds;
-
-  // Nothing comes out of the weapon
-  CHECK(rounds.update(roundInput(true, nearWell(0.0f))) == VrMagazineEvent::None);
-  CHECK(rounds.state() == VrMagazineState::InWeapon);
-  rounds.update(roundInput(false, nearWell(0.0f)));
-
-  for (int i = 0; i < 2; i++) {
-    CHECK(rounds.update(roundInput(true, Pouch)) == VrMagazineEvent::Taken);
-    CHECK(rounds.state() == VrMagazineState::InHand);
-    CHECK(rounds.update(roundInput(true, belowWell(0.2f))) == VrMagazineEvent::None);
-    CHECK(rounds.update(roundInput(true, belowWell(0.06f))) == VrMagazineEvent::Engaged);
-    CHECK(rounds.update(roundInput(true, belowWell(0.03f))) == VrMagazineEvent::Inserted);
-    CHECK(rounds.state() == VrMagazineState::InWeapon);
-
-    // Still held: the next round needs another press behind the back
-    CHECK(rounds.update(roundInput(true, Pouch)) == VrMagazineEvent::None);
-    rounds.update(roundInput(false, Pouch));
-  }
-}
-
-
-TEST_CASE(round_let_go_of_leaves_the_hand_empty) {
-  VrMagazineHand rounds;
-
-  rounds.update(roundInput(true, Pouch));
-  CHECK(rounds.update(roundInput(false, Pouch)) == VrMagazineEvent::Dropped);
-  CHECK(rounds.state() == VrMagazineState::InWeapon);
-  CHECK(rounds.update(roundInput(true, Pouch)) == VrMagazineEvent::Taken);
-}
-
-
-TEST_CASE(round_refused_stays_in_the_hand) {
-  VrMagazineHand rounds;
-
-  rounds.update(roundInput(true, Pouch));
-  rounds.update(roundInput(true, belowWell(0.2f)));
-  rounds.update(roundInput(true, belowWell(0.06f)));
-  CHECK(rounds.update(roundInput(true, belowWell(0.03f))) == VrMagazineEvent::Inserted);
-
-  rounds.refuse();
-  CHECK(rounds.state() == VrMagazineState::InHand);
-
-  // It must leave the way in before it can enter again
-  CHECK(rounds.update(roundInput(true, belowWell(0.05f))) == VrMagazineEvent::None);
-  CHECK(rounds.update(roundInput(true, belowWell(0.25f))) == VrMagazineEvent::None);
-  CHECK(rounds.update(roundInput(true, belowWell(0.06f))) == VrMagazineEvent::Engaged);
-}
-
-
 TEST_CASE(round_timing_finds_its_place) {
   // As the lever-action shotgun: carried in from 8 cm out along +z over
   // 0.3 s, still for 0.7 s, then moved away again (hidden by the game)
@@ -965,4 +903,129 @@ TEST_CASE(flick_needs_two_fast_frames) {
 
   cylinder.reset();
   CHECK(!cylinder.open());
+}
+
+namespace {
+
+  // The animation's hand reaches the loading port in front of the body
+  const VrVector3 Port = { 0.1f * M, 0.4f * M, 1.3f * M };
+
+  // One round per loop: it comes to its place at 0.3 s, the loop starts
+  // again at 0.5 s
+  const VrRoundLoopTiming Loop = { 0.5f, 0.3f };
+
+  VrRoundInput handfulInput(bool grip, const VrVector3& hand, float dt = 0.1f) {
+    VrRoundInput in;
+    in.active     = true;
+    in.grip       = grip;
+    in.hand       = hand;
+    in.port       = Port;
+    in.head       = northHead();
+    in.roundsHeld = true;
+    in.dt         = dt;
+    return in;
+  }
+
+  VrVector3 nearPort(float metres) {
+    return { Port.x + metres * M, Port.y, Port.z };
+  }
+
+  // Takes a handful behind the back and brings it to the port
+  void startLoading(VrRoundLoader& loader) {
+    loader.update(handfulInput(false, Pouch), Loop);
+    CHECK(loader.update(handfulInput(true, Pouch), Loop) == VrRoundEvent::Taken);
+    CHECK(loader.update(handfulInput(true, nearPort(0.03f)), Loop) == VrRoundEvent::Started);
+    CHECK(loader.state() == VrRoundState::Loading);
+  }
+
+}
+
+TEST_CASE(handful_is_taken_behind_the_back) {
+  VrRoundLoader loader;
+
+  CHECK(loader.update(handfulInput(true, nearPort(0.5f)), Loop) == VrRoundEvent::None);
+  loader.update(handfulInput(false, Pouch), Loop);
+  CHECK(loader.update(handfulInput(true, Pouch), Loop) == VrRoundEvent::Taken);
+  CHECK(loader.state() == VrRoundState::Holding);
+
+  // Holding the trigger while the hand moves takes nothing more
+  CHECK(loader.update(handfulInput(true, nearPort(0.5f)), Loop) == VrRoundEvent::None);
+}
+
+TEST_CASE(no_handful_without_rounds) {
+  VrRoundLoader loader;
+  VrRoundInput in = handfulInput(true, Pouch);
+  in.roundsHeld = false;
+
+  CHECK(loader.update(in, Loop) == VrRoundEvent::NoRounds);
+  CHECK(loader.state() == VrRoundState::Empty);
+}
+
+TEST_CASE(loading_places_one_round_per_loop) {
+  VrRoundLoader loader;
+  startLoading(loader);
+
+  uint32_t placed = 0;
+
+  // 2.05 s of animation at 0.1 s per frame: loops at 0, 0.5, 1, 1.5 and 2 s
+  for (uint32_t i = 0; i < 20; i++) {
+    if (loader.update(handfulInput(true, nearPort(0.03f)), Loop) == VrRoundEvent::Placed)
+      placed += 1;
+  }
+
+  CHECK(placed == 4);
+  CHECK(loader.state() == VrRoundState::Loading);
+  CHECK(loader.time() < Loop.length);
+}
+
+TEST_CASE(loading_stops_when_the_hand_leaves_the_port) {
+  VrRoundLoader loader;
+  startLoading(loader);
+
+  CHECK(loader.update(handfulInput(true, nearPort(0.10f)), Loop) == VrRoundEvent::None);
+  CHECK(loader.update(handfulInput(true, nearPort(0.20f)), Loop) == VrRoundEvent::Stopped);
+  CHECK(loader.state() == VrRoundState::Holding);
+
+  // Back at the port, it loads again from the start of the loop
+  CHECK(loader.update(handfulInput(true, nearPort(0.02f)), Loop) == VrRoundEvent::Started);
+  CHECK(loader.time() == 0.0f);
+}
+
+TEST_CASE(loading_stops_when_the_port_closes) {
+  VrRoundLoader loader;
+  startLoading(loader);
+
+  VrRoundInput in = handfulInput(true, nearPort(0.03f));
+  in.closed = true;
+
+  CHECK(loader.update(in, Loop) == VrRoundEvent::Stopped);
+  CHECK(loader.update(in, Loop) == VrRoundEvent::None);
+  CHECK(loader.state() == VrRoundState::Holding);
+}
+
+TEST_CASE(handful_let_go_of_is_gone) {
+  VrRoundLoader loader;
+  startLoading(loader);
+
+  CHECK(loader.update(handfulInput(false, nearPort(0.03f)), Loop) == VrRoundEvent::Dropped);
+  CHECK(loader.state() == VrRoundState::Empty);
+}
+
+TEST_CASE(full_weapon_keeps_the_handful_until_the_hand_moves_away) {
+  VrRoundLoader loader;
+  startLoading(loader);
+
+  VrRoundEvent event = VrRoundEvent::None;
+
+  for (uint32_t i = 0; i < 5 && event != VrRoundEvent::Placed; i++)
+    event = loader.update(handfulInput(true, nearPort(0.03f)), Loop);
+
+  CHECK(event == VrRoundEvent::Placed);
+  loader.refuse();
+  CHECK(loader.state() == VrRoundState::Holding);
+
+  // It does not start again at once
+  CHECK(loader.update(handfulInput(true, nearPort(0.03f)), Loop) == VrRoundEvent::None);
+  CHECK(loader.update(handfulInput(true, nearPort(0.2f)), Loop) == VrRoundEvent::None);
+  CHECK(loader.update(handfulInput(true, nearPort(0.03f)), Loop) == VrRoundEvent::Started);
 }

@@ -7,6 +7,7 @@
 #include "vr_game_memory.h"
 #include "vr_manual_reload.h"
 #include "vr_melee.h"
+#include "vr_sound_keys.h"
 
 namespace dxvk {
 
@@ -125,6 +126,15 @@ namespace dxvk {
       }
     }
 
+    /**
+     * \brief How fast the player's reload animations play
+     */
+    float reloadSpeed(uint8_t* actor) {
+      auto animation = actor ? readField<const uint8_t*>(actor, VrGame::PlayerFirstPersonAnimData) : nullptr;
+      return animation ? readField<float>(animation, VrGame::AnimDataReloadSpeed) : 1.0f;
+    }
+
+
     bool inVats() {
       return *reinterpret_cast<const uint32_t*>(VrGame::VatsCameraState) != 0;
     }
@@ -208,6 +218,7 @@ namespace dxvk {
 
     if (weapon != m_lastWeapon) {
       m_magazine.reset();
+      m_rounds.reset();
       m_rack.reset();
       m_action.reset();
       m_flick.reset();
@@ -245,8 +256,11 @@ namespace dxvk {
     if (input.rightHand)
       m_lastRight = *input.rightHand;
 
+    m_loadsRounds = looping;
+
     if (!handled) {
       m_magazine.reset();
+      m_rounds.reset();
       m_rack.reset();
       m_action.reset();
       m_flick.reset();
@@ -278,13 +292,14 @@ namespace dxvk {
     VrMagazineInput magazine;
     magazine.active = input.head && input.rightHand && input.leftHand && input.well && !input.leftOnWeapon;
     magazine.grip   = input.grip;
-    magazine.rounds = looping;
     magazine.closed = opening && !actionOpen();
 
-    // The rack part is taken by a hand that holds no magazine
+    // The rack part is taken by a hand that holds no magazine nor rounds
+    bool handEmpty = looping ? m_rounds.state() == VrRoundState::Empty
+      : (m_magazine.state() == VrMagazineState::InWeapon || m_magazine.state() == VrMagazineState::Out);
+
     VrRackInput rack;
-    rack.active = magazine.active && input.rack
-      && (m_magazine.state() == VrMagazineState::InWeapon || m_magazine.state() == VrMagazineState::Out);
+    rack.active = magazine.active && input.rack && handEmpty;
     rack.grip       = input.grip;
     rack.rest       = m_rackRest;
 
@@ -296,8 +311,7 @@ namespace dxvk {
       magazine.well       = vrPointFromHand(right, *input.well);
       magazine.axis       = right.forward * input.axis.x + right.up * input.axis.y + right.right * input.axis.z;
       magazine.head       = *input.head;
-      magazine.roundsHeld = looping ? holdsRounds(character, true)
-        : (m_magazine.state() != VrMagazineState::Out || holdsRounds(character, false));
+      magazine.roundsHeld = m_magazine.state() != VrMagazineState::Out || holdsRounds(character, false);
     }
 
     if (rack.active) {
@@ -345,7 +359,7 @@ namespace dxvk {
     // A revolver is flicked open about its barrel
     VrFlickInput flick;
     flick.active  = magazine.active && swung;
-    flick.blocked = m_magazine.state() == VrMagazineState::Seating;
+    flick.blocked = m_magazine.state() == VrMagazineState::Seating || m_rounds.state() == VrRoundState::Loading;
     flick.dt      = input.frameTime;
 
     if (flick.active && hasLastRight) {
@@ -397,10 +411,15 @@ namespace dxvk {
     if (m_rack.held() || events.rack != VrRackEvent::None)
       magazine.active = false;
 
-    events.magazine = m_magazine.update(magazine);
+    // A weapon loaded round by round takes nothing out: its rounds go in
+    // from a handful
+    if (looping)
+      events.round = updateRounds(input, character, weapon, magazine.active, magazine.closed);
+    else
+      events.magazine = m_magazine.update(magazine);
 
     // What the hand loads the weapon with
-    const char* load = looping ? "round" : (hinged ? "shells" : (swung ? "speed loader" : "magazine"));
+    const char* load = hinged ? "shells" : (swung ? "speed loader" : "magazine");
 
     switch (events.magazine) {
       case VrMagazineEvent::Ejected:
@@ -413,31 +432,18 @@ namespace dxvk {
         break;
 
       case VrMagazineEvent::Inserted:
-        if (looping) {
-          if (!loadRound(character, weapon, input.animation ? &input.animation->in : nullptr, magazine.well)) {
-            m_magazine.refuse();
-            events.magazine = VrMagazineEvent::Full;
-          }
-          break;
-        }
-
         insertMagazine(character, weapon, input.animation ? &input.animation->in : nullptr, magazine.well,
           !input.rack || clipCount(character) > 0);
         break;
 
-      case VrMagazineEvent::Full:
-        break;
-
       case VrMagazineEvent::Cleared:
         Logger::info(str::format("VR: The ", load, " of '", weaponName(weapon),
-          looping ? "' is out of its loading port" : (hinged ? "' are out of the breech"
-            : (swung ? "' is out of the cylinder" : "' is out of its well"))));
+          hinged ? "' are out of the breech" : (swung ? "' is out of the cylinder" : "' is out of its well")));
         break;
 
       case VrMagazineEvent::Engaged:
-        Logger::info(str::format(looping ? "VR: A round enters the loading port of '"
-          : (hinged ? "VR: Shells enter the breech of '"
-            : (swung ? "VR: A speed loader enters the cylinder of '" : "VR: A magazine enters the well of '")),
+        Logger::info(str::format(hinged ? "VR: Shells enter the breech of '"
+          : (swung ? "VR: A speed loader enters the cylinder of '" : "VR: A magazine enters the well of '"),
           weaponName(weapon), "'"));
         break;
 
@@ -448,8 +454,7 @@ namespace dxvk {
 
       case VrMagazineEvent::NoRounds:
         Logger::info(str::format("VR: No rounds left for '", weaponName(weapon), "'",
-          looping ? " beyond those loaded, no round is taken"
-            : (hinged ? ", no shells are taken" : str::format(", no ", load, " is taken"))));
+          hinged ? ", no shells are taken" : str::format(", no ", load, " is taken")));
         break;
 
       case VrMagazineEvent::Dropped:
@@ -611,18 +616,85 @@ namespace dxvk {
   }
 
 
-  bool VrManualReload::loadRound(uint8_t* player, uint8_t* weapon, const VrReloadSound* sound, const VrVector3& port) {
+  VrRoundEvent VrManualReload::updateRounds(const VrManualReloadInput& input, uint8_t* player, uint8_t* weapon,
+      bool active, bool closed) {
+    const VrRoundLoop* loop = input.animation && input.animation->hasLoop ? &input.animation->loop : nullptr;
+
+    VrRoundInput rounds;
+    rounds.active = active && loop && input.port;
+    rounds.grip   = input.grip;
+    rounds.closed = closed;
+
+    if (rounds.active) {
+      rounds.hand       = input.leftHand->position;
+      rounds.port       = vrPointFromHand(*input.rightHand, *input.port);
+      rounds.head       = *input.head;
+      rounds.roundsHeld = holdsRounds(player, true);
+      rounds.dt         = input.frameTime * reloadSpeed(player);
+    }
+
+    VrRoundEvent event = m_rounds.update(rounds, loop ? loop->timing : VrRoundLoopTiming());
+
+    // The loop's sounds, as the game plays them while it loops
+    if (loop && m_rounds.state() == VrRoundState::Loading)
+      playLoopSounds(*loop, rounds.port);
+
+    switch (event) {
+      case VrRoundEvent::Taken:
+        Logger::info(str::format("VR: A handful of rounds for '", weaponName(weapon), "' is taken behind the back"));
+        break;
+
+      case VrRoundEvent::NoRounds:
+        Logger::info(str::format("VR: No rounds left for '", weaponName(weapon), "' beyond those loaded, none are taken"));
+        break;
+
+      case VrRoundEvent::Started:
+        Logger::info(str::format("VR: The left hand reaches the loading port of '", weaponName(weapon),
+          "', the game's loading loop plays, clip ", clipCount(player)));
+        break;
+
+      case VrRoundEvent::Placed:
+        if (!loadRound(player, weapon)) {
+          m_rounds.refuse();
+          event = VrRoundEvent::Full;
+        }
+        break;
+
+      case VrRoundEvent::Stopped:
+        Logger::info(str::format("VR: The left hand leaves the loading port of '", weaponName(weapon),
+          closed ? "', which closed" : "'", ", it keeps its rounds, clip ", clipCount(player)));
+        break;
+
+      case VrRoundEvent::Dropped:
+        Logger::info(str::format("VR: The rounds of '", weaponName(weapon), "' are let go of, clip ", clipCount(player)));
+        break;
+
+      case VrRoundEvent::Full:
+      case VrRoundEvent::None:
+        break;
+    }
+
+    return event;
+  }
+
+
+  void VrManualReload::playLoopSounds(const VrRoundLoop& loop, const VrVector3& port) const {
+    for (const VrRoundLoopSound& sound : loop.sounds) {
+      if (vrSoundKeyCrossed(m_rounds.lastTime(), m_rounds.time(), sound.time))
+        vrPlayReloadSound(sound.sound, port);
+    }
+  }
+
+
+  bool VrManualReload::loadRound(uint8_t* player, uint8_t* weapon) {
     int32_t before = clipCount(player);
 
     // The game's own looping reload with no animation adds one round
     if (!fillClip(player, weapon)) {
       Logger::info(str::format("VR: '", weaponName(weapon), "' takes no more rounds, clip ", before,
-        ": the round stays in the hand"));
+        ": the loading loop stops, the hand keeps its rounds"));
       return false;
     }
-
-    if (sound)
-      vrPlayReloadSound(*sound, port);
 
     Logger::info(str::format("VR: A round is loaded into '", weaponName(weapon), "', clip ", before, " before",
       m_unchambered ? ", nothing is chambered" : ""));

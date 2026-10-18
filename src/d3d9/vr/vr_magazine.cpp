@@ -182,10 +182,6 @@ namespace dxvk {
 
     switch (m_state) {
       case VrMagazineState::InWeapon:
-        // With no round in the hand, the next one is taken behind the back
-        if (input.rounds)
-          return take(input, pressed, toWay);
-
         if (input.active && pressed && !input.blocked && ejectDistance(input) <= m_reach.eject) {
           seat(input, along);
           m_canInsert = false;
@@ -195,7 +191,7 @@ namespace dxvk {
 
       case VrMagazineState::Seating: {
         if (!input.grip || !input.active)
-          return drop(input);
+          return drop();
 
         VrVector3 across = fromWell - input.axis * along;
         float slide = along - m_alongStart;
@@ -218,7 +214,7 @@ namespace dxvk {
 
       case VrMagazineState::InHand:
         if (!input.grip || !input.active)
-          return drop(input);
+          return drop();
 
         if (toWay > m_reach.capture + m_reach.rearm)
           m_canEnter = true;
@@ -252,9 +248,8 @@ namespace dxvk {
   }
 
 
-  VrMagazineEvent VrMagazineHand::drop(const VrMagazineInput& input) {
-    // A round let go of is gone: nothing is missing from the weapon
-    m_state = input.rounds ? VrMagazineState::InWeapon : VrMagazineState::Out;
+  VrMagazineEvent VrMagazineHand::drop() {
+    m_state = VrMagazineState::Out;
     return VrMagazineEvent::Dropped;
   }
 
@@ -278,17 +273,97 @@ namespace dxvk {
   }
 
 
-  void VrMagazineHand::refuse() {
-    m_state     = VrMagazineState::InHand;
-    m_canInsert = false;
-    m_canEnter  = false;
-    m_seat      = 0.0f;
-  }
-
-
   void VrMagazineHand::empty() {
     reset();
     m_state = VrMagazineState::Out;
+  }
+
+
+  VrRoundEvent VrRoundLoader::update(const VrRoundInput& input, const VrRoundLoopTiming& loop) {
+    bool pressed = input.grip && !m_gripDown;
+    m_gripDown = input.grip;
+
+    float toPort = vrLength(input.hand - input.port) / VrGameUnitsPerMetre;
+
+    switch (m_state) {
+      case VrRoundState::Empty:
+        if (!input.active || !pressed || !vrIsAtMagazinePouch(input.head, input.hand, m_reach.pouch))
+          return VrRoundEvent::None;
+
+        if (!input.roundsHeld)
+          return VrRoundEvent::NoRounds;
+
+        m_state    = VrRoundState::Holding;
+        m_canStart = toPort > m_reach.capture + m_reach.rearm;
+        return VrRoundEvent::Taken;
+
+      case VrRoundState::Holding:
+        if (!input.grip || !input.active) {
+          m_state = VrRoundState::Empty;
+          return VrRoundEvent::Dropped;
+        }
+
+        if (toPort > m_reach.capture + m_reach.rearm)
+          m_canStart = true;
+
+        if (m_canStart && !input.closed && toPort <= m_reach.capture && loop.length > 0.0f) {
+          m_state    = VrRoundState::Loading;
+          m_placed   = false;
+          m_time     = 0.0f;
+          m_lastTime = 0.0f;
+          return VrRoundEvent::Started;
+        }
+        break;
+
+      case VrRoundState::Loading: {
+        if (!input.grip || !input.active) {
+          m_state = VrRoundState::Empty;
+          return VrRoundEvent::Dropped;
+        }
+
+        if (input.closed || toPort > m_reach.leave) {
+          stop(input);
+          return VrRoundEvent::Stopped;
+        }
+
+        m_lastTime = m_time;
+        m_time    += std::max(input.dt, 0.0f);
+
+        // The next loop brings the next round
+        if (m_time >= loop.length) {
+          m_time   = std::fmod(m_time, loop.length);
+          m_placed = false;
+        }
+
+        if (!m_placed && m_time >= loop.placed) {
+          m_placed = true;
+          return VrRoundEvent::Placed;
+        }
+      } break;
+    }
+
+    return VrRoundEvent::None;
+  }
+
+
+  void VrRoundLoader::refuse() {
+    m_state    = VrRoundState::Holding;
+    m_canStart = false;
+  }
+
+
+  void VrRoundLoader::reset() {
+    m_state    = VrRoundState::Empty;
+    m_canStart = false;
+    m_placed   = false;
+    m_time     = 0.0f;
+    m_lastTime = 0.0f;
+  }
+
+
+  void VrRoundLoader::stop(const VrRoundInput& input) {
+    m_state    = VrRoundState::Holding;
+    m_canStart = vrLength(input.hand - input.port) / VrGameUnitsPerMetre > m_reach.capture + m_reach.rearm;
   }
 
 

@@ -149,8 +149,6 @@ namespace dxvk {
     Dropped,
     /// The magazine was pushed home into the weapon
     Inserted,
-    /// The weapon took no more rounds: the round stays in the hand
-    Full,
   };
 
   /**
@@ -179,10 +177,6 @@ namespace dxvk {
     VrGameCameraPose head;
     /// The inventory holds rounds for the weapon
     bool             roundsHeld = false;
-    /// The weapon is loaded round by round: nothing is taken out of it,
-    /// and with no round in the hand (VrMagazineState::InWeapon) a press
-    /// behind the back takes a new one
-    bool             rounds = false;
     /// The weapon is closed (a break action): what the hand holds cannot
     /// enter it
     bool             closed = false;
@@ -238,10 +232,9 @@ namespace dxvk {
    * The game decides the clip: it is emptied on the way out and filled on
    * the way in by the caller.
    *
-   * A weapon loaded round by round is loaded the same way, one round at a
-   * time, with the round in the place of the magazine: each one is taken
-   * behind the back and pushed into the loading port, and nothing comes
-   * out of the weapon.
+   * Break actions are loaded the same way with their shells, and
+   * revolvers with their speed loader; weapons loaded round by round are
+   * loaded by VrRoundLoader.
    */
   class VrMagazineHand {
 
@@ -263,15 +256,6 @@ namespace dxvk {
      * (equipping, V.A.T.S., an ammunition swap...).
      */
     void reset();
-
-    /**
-     * \brief Gives back a round the weapon did not take
-     *
-     * After VrMagazineEvent::Inserted, when the game refuses the round
-     * (the weapon is full): it is in the hand again, and must be moved
-     * away from the way in before it can enter again.
-     */
-    void refuse();
 
     /**
      * \brief Empties the weapon
@@ -319,7 +303,170 @@ namespace dxvk {
 
     VrMagazineEvent take(const VrMagazineInput& input, bool pressed, float toWay);
 
-    VrMagazineEvent drop(const VrMagazineInput& input);
+    VrMagazineEvent drop();
+
+  };
+
+  /**
+   * \brief What the left hand did with a handful of rounds in a frame
+   */
+  enum class VrRoundEvent {
+    None,
+    /// A handful of rounds was taken behind the back
+    Taken,
+    /// The hand reached behind the back, but no rounds are left
+    NoRounds,
+    /// The hand reached the loading port: the loading animation starts
+    Started,
+    /// A round of the animation came to its place in this frame
+    Placed,
+    /// The hand left the loading port, or it closed: the handful stays
+    /// in the hand
+    Stopped,
+    /// The handful was let go of
+    Dropped,
+    /// The weapon took no more rounds: the animation stops, set by the
+    /// caller after refuse()
+    Full,
+  };
+
+  /**
+   * \brief Where the left hand's handful of rounds is
+   */
+  enum class VrRoundState {
+    /// The hand holds no rounds
+    Empty,
+    /// The hand holds a handful of rounds, at its controller
+    Holding,
+    /// The game's loading animation loads them, one per loop
+    Loading,
+  };
+
+  /**
+   * \brief What the round loading logic sees in a frame
+   *
+   * Positions in the game world, in game units.
+   */
+  struct VrRoundInput {
+    /// The weapon in the right hand is loaded round by round, and the left
+    /// hand is tracked and free (not on the weapon)
+    bool             active = false;
+    /// The magazine action (the left trigger) is held
+    bool             grip = false;
+    /// The loading port is closed (a revolver's gate): no round goes in
+    bool             closed = false;
+    /// The inventory holds rounds beyond those in the clip
+    bool             roundsHeld = false;
+    /// Left hand: the middle of the grip
+    VrVector3        hand;
+    /// Where the animation's left hand is when its round comes to its place
+    VrVector3        port;
+    /// Head pose
+    VrGameCameraPose head;
+    /// Time the animation plays for in this frame, in seconds of it
+    float            dt = 0.0f;
+  };
+
+  /**
+   * \brief One loop of the game's animation that loads one round
+   *
+   * In seconds of the animation, from its start.
+   */
+  struct VrRoundLoopTiming {
+    /// The loop starts again: the animation's "Hit" key
+    float length = 0.0f;
+    /// The round comes to its place
+    float placed = 0.0f;
+  };
+
+  /**
+   * \brief Distances of the round loading gesture, in metres
+   */
+  struct VrRoundReach {
+    /// How close the hand must come to the loading port to start loading
+    float capture = 0.08f;
+    /// How far the hand may move from it while the animation loads
+    float leave   = 0.15f;
+    /// How far past the capture a hand that stopped loading must move
+    /// before it can start again
+    float rearm   = 0.03f;
+    /// Where the rounds are taken
+    VrMagazinePouch pouch;
+  };
+
+  /**
+   * \brief Follows the left hand loading a weapon round by round
+   *
+   * The left trigger pressed behind the back takes a handful of rounds if
+   * the inventory holds any beyond the clip. Brought to the loading port,
+   * the game's own loading animation takes the hand over and plays loop
+   * after loop, a round coming to its place in each, until the weapon is
+   * full (refuse), the hand moves away from the port, the port closes or
+   * the trigger is let go of. Moved away or with the port closed, the hand
+   * keeps the handful; let go of, the handful is gone: no round was taken
+   * from the inventory. See findings/reload.md §8.10.
+   */
+  class VrRoundLoader {
+
+  public:
+
+    explicit VrRoundLoader(const VrRoundReach& reach = VrRoundReach())
+    : m_reach(reach) { }
+
+    /**
+     * \brief Takes the frame's input
+     * \returns What happened in this frame
+     */
+    VrRoundEvent update(const VrRoundInput& input, const VrRoundLoopTiming& loop);
+
+    /**
+     * \brief The weapon took no more rounds
+     *
+     * After VrRoundEvent::Placed, when the game refuses the round (the
+     * weapon is full or no rounds are left): the animation stops and the
+     * hand keeps the handful, away from the port before it can start again.
+     */
+    void refuse();
+
+    /**
+     * \brief Empties the hand, when the weapon changes
+     */
+    void reset();
+
+    VrRoundState state() const {
+      return m_state;
+    }
+
+    /**
+     * \brief Time in the loop of the loading animation, in seconds
+     *
+     * Valid while VrRoundState::Loading.
+     */
+    float time() const {
+      return m_time;
+    }
+
+    /**
+     * \brief Time in the loop at the last frame
+     *
+     * Before time() when the loop went on, after it when it started again;
+     * equal to it in the frame the animation starts.
+     */
+    float lastTime() const {
+      return m_lastTime;
+    }
+
+  private:
+
+    VrRoundReach m_reach;
+    VrRoundState m_state    = VrRoundState::Empty;
+    bool         m_gripDown = false;
+    bool         m_canStart = false;
+    bool         m_placed   = false;
+    float        m_time     = 0.0f;
+    float        m_lastTime = 0.0f;
+
+    void stop(const VrRoundInput& input);
 
   };
 

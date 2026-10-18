@@ -8,6 +8,7 @@ namespace dxvk {
   namespace {
 
     constexpr char SoundPrefix[] = "Sound: ";
+    constexpr char HitKey[]      = "hit";
 
   }
 
@@ -35,6 +36,24 @@ namespace dxvk {
     const char* id  = text + prefixLength;
     size_t      end = std::strcspn(id, " \r");
     return std::string(id, end);
+  }
+
+
+  bool vrIsHitKey(const char* text) {
+    if (!text)
+      return false;
+
+    size_t length = std::strcspn(text, "\r");
+
+    if (length != sizeof(HitKey) - 1)
+      return false;
+
+    for (size_t i = 0; i < length; i++) {
+      if (std::tolower(static_cast<unsigned char>(text[i])) != HitKey[i])
+        return false;
+    }
+
+    return true;
   }
 
 }

@@ -907,6 +907,7 @@ namespace dxvk {
       hands.rackTravel = m_weaponHand->rackTravel();
       hands.barrel     = m_weaponHand->actionBarrel();
       hands.roll       = m_weaponHand->actionRoll();
+      hands.port       = m_weaponHand->roundPort();
     }
 
     VrReloadEvents events = m_manualReload->updateHands(hands);
@@ -923,7 +924,6 @@ namespace dxvk {
         break;
 
       case VrMagazineEvent::NoRounds:
-      case VrMagazineEvent::Full:
       case VrMagazineEvent::Cleared:
       case VrMagazineEvent::Engaged:
         m_backend.applyHaptic(VrHand::Left, MagazineFaintHaptic, MagazineHapticDuration);
@@ -931,6 +931,27 @@ namespace dxvk {
 
       case VrMagazineEvent::Dropped:
       case VrMagazineEvent::None:
+        break;
+    }
+
+    switch (events.round) {
+      case VrRoundEvent::Taken:
+        m_backend.applyHaptic(VrHand::Left, MagazineTakenHaptic, MagazineHapticDuration);
+        break;
+
+      case VrRoundEvent::Placed:
+        m_backend.applyHaptic(VrHand::Left, MagazineInsertedHaptic, MagazineHapticDuration);
+        break;
+
+      case VrRoundEvent::NoRounds:
+      case VrRoundEvent::Started:
+      case VrRoundEvent::Full:
+        m_backend.applyHaptic(VrHand::Left, MagazineFaintHaptic, MagazineHapticDuration);
+        break;
+
+      case VrRoundEvent::Stopped:
+      case VrRoundEvent::Dropped:
+      case VrRoundEvent::None:
         break;
     }
 
@@ -967,6 +988,7 @@ namespace dxvk {
       m_weaponHand->setMagazine(m_manualReload->magazineState(), m_manualReload->magazineSeat());
       m_weaponHand->setRack(m_manualReload->rackHeld(), m_manualReload->rackPull(), m_manualReload->rackRest());
       m_weaponHand->setActionOpen(m_manualReload->actionOpen());
+      m_weaponHand->setRoundLoop(m_manualReload->roundState(), m_manualReload->roundTime());
     }
   }
 

@@ -75,6 +75,18 @@ namespace dxvk {
     // How long a break action takes to swing open or closed
     constexpr float ActionSwingTime = 0.15f;
 
+    // How long the left hand takes to go from its controller to the
+    // loading loop, and back
+    constexpr float LoopBlendTime = 0.15f;
+
+    // The bones a handful of rounds is held between: the last joints of
+    // the thumb and of the index finger
+    constexpr char PinchThumbBone[] = "Bip01 L Thumb12";
+    constexpr char PinchIndexBone[] = "Bip01 L Finger12";
+
+    // The loading loop's hand pose is the hand bone itself
+    const VrGameTransform HandBone = { };
+
     // Without a reload animation that racks it, the rack part is pulled
     // straight back along the barrel (the weapon node's -x), this far in
     // metres
@@ -463,6 +475,9 @@ namespace dxvk {
     m_actionSwing       = m_actionOpen
       ? std::min(m_actionSwing + dt / ActionSwingTime, 1.0f)
       : std::max(m_actionSwing - dt / ActionSwingTime, 0.0f);
+    m_loopBlend         = m_roundState == VrRoundState::Loading
+      ? std::min(m_loopBlend + dt / LoopBlendTime, 1.0f)
+      : std::max(m_loopBlend - dt / LoopBlendTime, 0.0f);
 
     m_gameCamera   = gameCamera;
     m_hasHand      = hand != nullptr;
@@ -687,10 +702,11 @@ namespace dxvk {
     if (uint8_t* camera = field<uint8_t*>(main, VrGame::MainFirstPersonCamera))
       writeVector(camera, VrGame::CameraWorldTranslation, m_eyePosition - shift);
 
-    m_hasMagazine = false;
-    m_hasRack     = false;
-    m_hasHinge    = false;
-    m_swingAction = false;
+    m_hasMagazine  = false;
+    m_hasRack      = false;
+    m_hasHinge     = false;
+    m_swingAction  = false;
+    m_hasRoundPort = false;
 
     if (m_mode == VrFirstPersonMode::Hidden) {
       m_hasAim    = false;
@@ -816,12 +832,19 @@ namespace dxvk {
     if (handPlaced) {
       HeldPart held = { };
 
-      if (magazine && holdsMagazine())
+      if (m_hasLoopHand && m_loopBlend > 0.0f)
+        held = { m_loopHand, &HandBone, &m_loopPose.fingers, m_loopBlend };
+      else if (magazine && holdsMagazine())
         held = { magazinePose, &m_reloadAnimation.magazineInHand, &m_reloadAnimation.fingers };
       else if (rack && holdsRack())
         held = { rackPose, &m_reloadAnimation.rack.partInHand, &m_reloadAnimation.rack.fingers };
 
       placeOtherHand(root, otherHand, shift, updateData, held.inHand ? &held : nullptr);
+
+      // The loading loop's hand does not hold its round, so a handful is
+      // held where the hand pinches
+      if (magazine && m_hasRoundPort && m_roundState == VrRoundState::Holding)
+        pinchRound(otherHand, magazine, magazinePose);
     }
 
     // Held still, the blade does not move in the hand
@@ -1118,8 +1141,17 @@ namespace dxvk {
       const VrGameTransform& inHand = *held->inHand;
       float handScale = field<float>(otherHand, VrGame::ObjectWorldScale);
 
-      target.rotate    = held->pose.rotate * vrTranspose(inHand.rotate);
-      target.translate = held->pose.translate - target.rotate * inHand.translate * handScale;
+      VrGameTransform onPart;
+      onPart.rotate    = held->pose.rotate * vrTranspose(inHand.rotate);
+      onPart.translate = held->pose.translate - onPart.rotate * inHand.translate * handScale;
+
+      // Between its controller and the part
+      float t = std::clamp(held->weight, 0.0f, 1.0f);
+      t = t * t * (3.0f - 2.0f * t);
+
+      target.translate = target.translate + (onPart.translate - target.translate) * t;
+      target.rotate    = vrGameRotationFromQuaternion(vrSlerp(
+        vrQuaternionFromGameRotation(target.rotate), vrQuaternionFromGameRotation(onPart.rotate), t));
     }
 
     // The forearm is placed so that the hand, at its fixed wrist rotation,
@@ -1146,7 +1178,7 @@ namespace dxvk {
       VrGameRotation rotate;
     };
 
-    const std::vector<VrBonePose>* grip = held ? held->fingers : nullptr;
+    const std::vector<VrBonePose>* grip = held && held->weight >= 0.5f ? held->fingers : nullptr;
 
     std::array<SavedBone, MaxPosedBones> saved;
     uint32_t savedCount = 0;
@@ -1201,6 +1233,39 @@ namespace dxvk {
         name ? name : "", "'"));
       m_loggedOtherHand = true;
     }
+  }
+
+
+  void VrWeaponHand::setRoundLoop(VrRoundState state, float time) {
+    // The round moves from where it was drawn last between the hand and
+    // the loop
+    bool moving = (state == VrRoundState::Loading) != (m_roundState == VrRoundState::Loading);
+
+    if (moving && m_hasMagazineDrawn) {
+      m_magazineFrom  = m_magazineDrawn;
+      m_magazineBlend = 0.0f;
+    }
+
+    m_roundState = state;
+    m_roundTime  = time;
+  }
+
+
+  void VrWeaponHand::pinchRound(uint8_t* otherHand, uint8_t* round, VrGameTransform& pose) const {
+    uint8_t* thumb = findObject(otherHand, PinchThumbBone);
+    uint8_t* index = findObject(otherHand, PinchIndexBone);
+    float scale    = field<float>(round, VrGame::ObjectWorldScale);
+
+    if (!thumb || !index)
+      return;
+
+    // The hand was just placed: its bones are where it is drawn. A round
+    // the game hides at rest has no bound to centre it by.
+    VrVector3 pinch = (readVector(thumb, VrGame::ObjectWorldTranslation)
+      + readVector(index, VrGame::ObjectWorldTranslation)) * 0.5f;
+    VrVector3 centre = m_hasMagazineCentre ? m_magazineCentre : VrVector3();
+
+    pose.translate = pinch - pose.rotate * centre * scale;
   }
 
 
@@ -1575,7 +1640,7 @@ namespace dxvk {
         m_reloadWait   = ReloadAnimationRetryDraws;
         // A part that opens is not racked: the hunting revolver's crane is
         // named as a lever
-        m_hasReloadAnimation = vrReadReloadAnimation(player(), root, weapon, magazine, round,
+        m_hasReloadAnimation = vrReadReloadAnimation(player(), root, weapon, magazine, round, looping,
           action == ActionKind::None ? vrFindWeaponPart(weapon, VrWeaponPartKind::Rack) : nullptr,
           hinge, action == ActionKind::Swing, leftHand, m_reloadAnimation);
       }
@@ -1585,6 +1650,11 @@ namespace dxvk {
     // animation tells how it opens
     if (action != ActionKind::None
      && !(m_hasReloadAnimation && m_reloadAnimation.round && m_reloadAnimation.hasHinge))
+      return nullptr;
+
+    // A weapon loaded round by round is reloaded by hand only with the
+    // loop of its reload animation that loads one round
+    if (round && looping && !(m_hasReloadAnimation && m_reloadAnimation.hasLoop))
       return nullptr;
 
     // Where the game draws the magazine in the weapon. Its bound is only
@@ -1680,6 +1750,47 @@ namespace dxvk {
       m_loggedMagazine = true;
     }
 
+    // A weapon loaded round by round with its loading loop: where the
+    // left controller is as the loop puts its round in its place, and the
+    // loop's hand and round now
+    bool loop = round && looping && m_hasReloadAnimation && m_reloadAnimation.hasLoop;
+    m_hasRoundPort = loop && leftHand;
+
+    if (!loop)
+      m_hasLoopHand = false;
+
+    if (m_hasRoundPort) {
+      VrGameRotation weaponRotation = readRotation(weapon, VrGame::ObjectWorldRotation);
+      VrVector3 weaponPosition      = readVector(weapon, VrGame::ObjectWorldTranslation);
+      float weaponScale             = field<float>(weapon, VrGame::ObjectWorldScale);
+
+      auto inWorld = [&] (const VrGameTransform& local) {
+        VrGameTransform result;
+        result.rotate    = weaponRotation * local.rotate;
+        result.translate = weaponPosition + weaponRotation * local.translate * weaponScale;
+        return result;
+      };
+
+      VrRoundLoopPose placed;
+      vrSampleRoundLoop(m_reloadAnimation.loop, m_reloadAnimation.loop.timing.placed, placed);
+
+      VrGameTransform placedHand = inWorld(placed.hand);
+      VrGameRotation controller  = placedHand.rotate * vrTranspose(FreeHandPose.rotate);
+      m_roundPort = vrPointToHand(hand, placedHand.translate - controller * FreeHandPose.translate);
+
+      if (m_roundState == VrRoundState::Loading) {
+        vrSampleRoundLoop(m_reloadAnimation.loop, m_roundTime, m_loopPose);
+        m_hasLoopHand = true;
+      }
+
+      // Back to its controller, the hand leaves the loop where it was
+      if (m_hasLoopHand)
+        m_loopHand = inWorld(m_loopPose.hand);
+
+      if (m_loopBlend <= 0.0f && m_roundState != VrRoundState::Loading)
+        m_hasLoopHand = false;
+    }
+
     if (m_magazineState == VrMagazineState::Out) {
       uint32_t& flags = field<uint32_t>(magazine, VrGame::ObjectFlags);
 
@@ -1694,7 +1805,14 @@ namespace dxvk {
     if (m_magazineState == VrMagazineState::InWeapon)
       return nullptr;
 
-    if (m_magazineState == VrMagazineState::Seating) {
+    if (loop && m_roundState == VrRoundState::Loading) {
+      // Where the loading loop carries it
+      VrGameRotation weaponRotation = readRotation(weapon, VrGame::ObjectWorldRotation);
+
+      pose.rotate    = weaponRotation * m_loopPose.round.rotate;
+      pose.translate = readVector(weapon, VrGame::ObjectWorldTranslation)
+        + weaponRotation * m_loopPose.round.translate * field<float>(weapon, VrGame::ObjectWorldScale);
+    } else if (m_magazineState == VrMagazineState::Seating) {
       // In its well, out of its place by the seat
       pose.rotate    = rotation;
       pose.translate = position + axis * (m_magazineSeat * VrGameUnitsPerMetre);

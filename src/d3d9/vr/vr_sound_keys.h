@@ -30,4 +30,15 @@ namespace dxvk {
    */
   std::string vrSoundKeyEditorId(const char* text);
 
+  /**
+   * \brief Whether a text key is an animation's "Hit" key
+   *
+   * Where an attack hits, and where a looping reload starts its next
+   * round (findings/reload.md §8.10). Compared without case, as the
+   * animations write it "Hit" or "hit".
+   *
+   * \param [in] text Text of the key
+   */
+  bool vrIsHitKey(const char* text);
+
 }

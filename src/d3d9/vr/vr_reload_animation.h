@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "vr_magazine.h"
 #include "vr_weapon_aim.h"
 
 namespace dxvk {
@@ -78,6 +79,64 @@ namespace dxvk {
   };
 
   /**
+   * \brief The left hand and its round at a time of a loading loop
+   */
+  struct VrRoundLoopPose {
+    /// The left hand bone in the weapon node's frame, in units of the
+    /// weapon node's scale
+    VrGameTransform         hand;
+    /// The round part in the weapon node's frame, likewise
+    VrGameTransform         round;
+    /// Rotations of the bones below the left hand in their parents
+    std::vector<VrBonePose> fingers;
+  };
+
+  /**
+   * \brief A sound of a loading loop
+   */
+  struct VrRoundLoopSound {
+    /// When it plays, in seconds from the start of the loop
+    float         time = 0.0f;
+    VrReloadSound sound;
+  };
+
+  /**
+   * \brief The loop of the game's animation that loads one round
+   *
+   * The animation of a weapon loaded round by round is played once per
+   * round from its start up to its "Hit" key, where the game starts it
+   * again while rounds are left to load; the rest of it (working the
+   * lever, shutting the gate) only follows the last round. The loop is
+   * replayed on the left hand, in the weapon's frame, see
+   * findings/reload.md §8.10.
+   */
+  struct VrRoundLoop {
+    VrRoundLoopTiming             timing;
+    /// The poses from the start of the loop to its end, sampled at
+    /// VrRoundLoopRate
+    std::vector<VrRoundLoopPose>  poses;
+    /// The loop's sounds, in time order
+    std::vector<VrRoundLoopSound> sounds;
+  };
+
+  /// How many times per second of the animation a loading loop is sampled
+  constexpr float VrRoundLoopRate = 60.0f;
+
+  /**
+   * \brief The pose of a loading loop at a time
+   *
+   * Between two samples the poses are blended.
+   *
+   * \param [in] loop The loop, with at least one pose
+   * \param [in] time Time from the start of the loop, in seconds
+   * \param [out] pose The left hand and its round then
+   */
+  void vrSampleRoundLoop(
+    const VrRoundLoop&          loop,
+          float                 time,
+          VrRoundLoopPose&      pose);
+
+  /**
    * \brief What the game's reload animation does with a weapon's magazine
    *
    * Read from the first-person reload animation the game would play for
@@ -111,6 +170,9 @@ namespace dxvk {
     /// How the animation opens the action, valid if \c hasHinge
     VrHingeAnimation        hinge;
     bool                    hasHinge = false;
+    /// The loop that loads one round, valid if \c hasLoop
+    VrRoundLoop             loop;
+    bool                    hasLoop = false;
   };
 
   /**
@@ -134,7 +196,8 @@ namespace dxvk {
    * and is closed again are the action's. A revolver's cylinder is read
    * the same way: its speed loader is the round, and the part that swings
    * it out is the one of its ancestors the animation turns furthest; or
-   * its loading gate is the hinge.
+   * its loading gate is the hinge. A weapon loaded round by round with a
+   * looping reload also gets the loop that loads one round.
    *
    * Only called on the game's main thread, while the animation is not
    * played. Evaluating a track keeps nothing but its last time.
@@ -145,6 +208,7 @@ namespace dxvk {
    * \param [in] magazine The magazine part below the weapon node, or the
    *    round part
    * \param [in] round The part is a round
+   * \param [in] looping The weapon's reload loops, one round at a time
    * \param [in] rack The rack part below the weapon node, or \c nullptr
    * \param [in] hinge The hinge part of a break action, or the loading gate
    *    of a revolver, below the weapon node, or \c nullptr
@@ -163,6 +227,7 @@ namespace dxvk {
           uint8_t*              weapon,
           uint8_t*              magazine,
           bool                  round,
+          bool                  looping,
           uint8_t*              rack,
           uint8_t*              hinge,
           bool                  swing,

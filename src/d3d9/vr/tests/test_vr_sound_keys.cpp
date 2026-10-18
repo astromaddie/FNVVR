@@ -31,3 +31,14 @@ TEST_CASE(sound_key_gives_the_sound_editor_id) {
   CHECK(vrSoundKeyEditorId("Enum: StopSounds ").empty());
   CHECK(vrSoundKeyEditorId(nullptr).empty());
 }
+
+TEST_CASE(hit_key_is_found_without_case) {
+  // 2hrreloadz has "Hit" at 0.5 s, 1hpreloadx "hit" at 0.633 s
+  CHECK(vrIsHitKey("Hit"));
+  CHECK(vrIsHitKey("hit"));
+  CHECK(vrIsHitKey("HIT\r"));
+  CHECK(!vrIsHitKey("Hits"));
+  CHECK(!vrIsHitKey("start"));
+  CHECK(!vrIsHitKey("Sound: Hit"));
+  CHECK(!vrIsHitKey(nullptr));
+}

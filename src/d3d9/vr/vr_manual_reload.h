@@ -45,6 +45,10 @@ namespace dxvk {
     /// (the well), in the right hand's frame (VrWeaponHand::actionBarrel),
     /// or \c nullptr if the weapon is not a break action
     const VrVector3*        barrel = nullptr;
+    /// Where the left controller is as the loading loop puts its round in
+    /// its place, in the right hand's frame (VrWeaponHand::roundPort), or
+    /// \c nullptr if the weapon is not loaded round by round
+    const VrVector3*        port = nullptr;
     /// Axis a revolver is flicked open about, in the right hand's frame
     /// (VrWeaponHand::actionRoll), or \c nullptr if the weapon is not a
     /// revolver
@@ -63,6 +67,7 @@ namespace dxvk {
     VrMagazineEvent magazine = VrMagazineEvent::None;
     VrRackEvent     rack     = VrRackEvent::None;
     VrBreakEvent    action   = VrBreakEvent::None;
+    VrRoundEvent    round    = VrRoundEvent::None;
     /// The weapon jammed since the last frame
     bool            jammed   = false;
   };
@@ -101,12 +106,14 @@ namespace dxvk {
    * the way back. Racking clears the jam; without a rack part, taking
    * the magazine out does. In V.A.T.S. the game's own jam is kept.
    *
-   * Phase 5a (findings/reload.md §8.6): a weapon loaded round by round
-   * (tube or lever action, not a revolver) is loaded one round at a time:
-   * each round is taken behind the back and pushed into the loading port,
-   * where the game's own looping reload with no animation adds it, see
-   * VrMagazineHand. A full weapon refuses the round, which stays in the
-   * hand. When a weapon with a rack part (its lever) fires its last round,
+   * Phase 5a (findings/reload.md §8.7, §8.10): a weapon loaded round by
+   * round (tube or lever action, and a revolver's loading gate) is loaded
+   * from a handful of rounds taken behind the back: brought to the
+   * loading port, the hand plays the game's loading loop, and each round
+   * the loop puts in its place is added by the game's own looping reload
+   * with no animation, see VrRoundLoader. The loop's sounds play as the
+   * game plays them. A full weapon refuses the round and the loop stops.
+   * When a weapon with a rack part (its lever) fires its last round,
    * nothing is chambered: it does not fire until rounds are loaded and its
    * action is worked. Its jams are held as above; one with nothing to rack
    * keeps the game's jam.
@@ -173,7 +180,23 @@ namespace dxvk {
      * \brief Where the magazine is drawn, see VrWeaponHand::setMagazine
      */
     VrMagazineState magazineState() const {
-      return m_magazine.state();
+      return m_loadsRounds
+        ? (m_rounds.state() == VrRoundState::Empty ? VrMagazineState::InWeapon : VrMagazineState::InHand)
+        : m_magazine.state();
+    }
+
+    /**
+     * \brief Where the handful of rounds is, see VrWeaponHand::setRoundLoop
+     */
+    VrRoundState roundState() const {
+      return m_rounds.state();
+    }
+
+    /**
+     * \brief Time in the loading loop, see VrWeaponHand::setRoundLoop
+     */
+    float roundTime() const {
+      return m_rounds.time();
     }
 
     /**
@@ -235,6 +258,9 @@ namespace dxvk {
     const uint8_t*  m_wellWeapon = nullptr;
 
     VrMagazineHand  m_magazine;
+    VrRoundLoader   m_rounds;
+    // The weapon in the hand is loaded by m_rounds
+    bool            m_loadsRounds = false;
     VrRackHand      m_rack;
     VrBreakHand     m_action;
     VrFlickHand     m_flick;
@@ -284,7 +310,12 @@ namespace dxvk {
 
     void rackWeapon(uint8_t* player, uint8_t* weapon, const VrReloadSound* sound, const VrVector3& rack);
 
-    bool loadRound(uint8_t* player, uint8_t* weapon, const VrReloadSound* sound, const VrVector3& port);
+    VrRoundEvent updateRounds(const VrManualReloadInput& input, uint8_t* player, uint8_t* weapon,
+      bool active, bool closed);
+
+    bool loadRound(uint8_t* player, uint8_t* weapon);
+
+    void playLoopSounds(const VrRoundLoop& loop, const VrVector3& port) const;
 
     void cycleAction(uint8_t* player, uint8_t* weapon, const VrReloadSound* sound, const VrVector3& rack);
 

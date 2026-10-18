@@ -199,6 +199,34 @@ namespace dxvk {
     void setMagazine(VrMagazineState state, float seat);
 
     /**
+     * \brief Sets how the left hand loads a weapon loaded round by round
+     *
+     * Applied when the model is next drawn. While the hand loads, it is
+     * drawn as the game's loading loop has it at that time, in the
+     * weapon's frame, with the loop's round; it blends from and back to
+     * its controller. A hand holding a handful holds its round between
+     * the thumb and the index finger.
+     *
+     * \param [in] state Where the handful is
+     * \param [in] time Time in the loading loop, while it loads
+     */
+    void setRoundLoop(VrRoundState state, float time);
+
+    /**
+     * \brief Where the left controller is when the loading loop puts its
+     *    round in its place
+     *
+     * In the right hand's frame (see vrPointFromHand), measured each time
+     * the model is drawn.
+     *
+     * \returns The point, or \c nullptr if the weapon in the hand is not
+     *    loaded round by round with a loading loop
+     */
+    const VrVector3* roundPort() const {
+      return m_hasRoundPort ? &m_roundPort : nullptr;
+    }
+
+    /**
      * \brief Where the magazine sits in the weapon in the right hand
      *
      * The centre of the magazine's meshes where the game draws it, measured
@@ -457,6 +485,19 @@ namespace dxvk {
     VrGameTransform  m_magazineFrom;
     float            m_magazineBlend = 1.0f;
 
+    // The left hand loading a weapon round by round: where its handful
+    // is, the time in the loading loop, how far the hand is on the loop
+    // rather than at its controller, the loop's hand and fingers drawn
+    // last, and where the controller puts the round in its place
+    VrRoundState     m_roundState = VrRoundState::Empty;
+    float            m_roundTime  = 0.0f;
+    float            m_loopBlend  = 0.0f;
+    VrRoundLoopPose  m_loopPose;
+    VrGameTransform  m_loopHand;
+    bool             m_hasLoopHand = false;
+    VrVector3        m_roundPort;
+    bool             m_hasRoundPort = false;
+
     // Rack part of the weapon in the hand: how the hand holds it, where it
     // is home in the right hand's frame, the way back and its length, and
     // its rack part the name was logged for, compared but not dereferenced
@@ -599,6 +640,9 @@ namespace dxvk {
       const VrGameTransform*         inHand;
       /// Rotations of the bones below the hand
       const std::vector<VrBonePose>* fingers;
+      /// How far the hand is on the part rather than at its controller,
+      /// from 0 to 1
+      float                          weight = 1.0f;
     };
 
     /**
@@ -643,6 +687,17 @@ namespace dxvk {
             ActionKind            kind,
       const uint8_t*              form,
             void*                 updateData);
+
+    /**
+     * \brief Puts a round held in the left hand between its thumb and its
+     *    index finger
+     *
+     * Called once the hand is placed: the round keeps its rotation in the
+     * hand, its centre goes to the middle of their last joints.
+     *
+     * \param [in,out] pose Where the round is drawn
+     */
+    void pinchRound(uint8_t* otherHand, uint8_t* round, VrGameTransform& pose) const;
 
     /**
      * \brief Culls the cartridges in a revolver's cylinder while it is
