@@ -1738,7 +1738,11 @@ namespace dxvk {
      * 0x40 is set and 3D otherwise, one shot, first person, ignoring the
      * time scale and driven by an animation. Sounds played with no
      * reference (interface animations) are system sounds
-     * (BSAnimGroupSequence::PlaySounds, 0x004EF7D1).
+     * (BSAnimGroupSequence::PlaySounds, 0x004EF7D1). Sounds driven by an
+     * animation are paused while a menu is open
+     * (InterfaceManager::PreIdleStuff calls BSAudio::PauseAnimationSounds,
+     * 0x0070BBA0); the interface's own sounds are 2D, system and one shot
+     * only (InterfaceManager::PlayMenuSound, 0x00717280).
      */
     constexpr uintptr_t AudioSingleton             = 0x011F6D98;
     constexpr uintptr_t AudioGetSoundByFilename    = 0x00AD7480;

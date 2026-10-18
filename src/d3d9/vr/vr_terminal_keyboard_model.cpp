@@ -238,7 +238,9 @@ namespace dxvk {
     // The sounds of the model's sequences are 3D sounds of the world's
     // terminals; the game would play them at the world's origin, out of
     // hearing, as it has no reference here. The keyboard is in front of
-    // the head, so they play as the interface's sounds do.
+    // the head, so they play as the interface's sounds do
+    // (InterfaceManager::PlayMenuSound): not driven by an animation, as
+    // those are paused while a menu is open.
     float previous = field<float>(m_sequence, VrGame::SequenceStartTime);
     float current  = field<float>(m_sequence, VrGame::SequenceLastScaledTime);
 
@@ -267,8 +269,8 @@ namespace dxvk {
         continue;
       }
 
-      vrPlayGameSound(sound, VrGame::SoundFlag2D | VrGame::SoundFlagSystem | VrGame::SoundFlagOneShot
-        | VrGame::SoundFlagIgnoreTimescale | VrGame::SoundFlagAnimationDriven, VrVector3(), 1.0f, 1.0f);
+      vrPlayGameSound(sound, VrGame::SoundFlag2D | VrGame::SoundFlagSystem | VrGame::SoundFlagOneShot,
+        VrVector3(), 1.0f, 1.0f);
     }
   }
 
