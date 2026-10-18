@@ -709,6 +709,11 @@ namespace dxvk {
     uint8_t* main = m_main;
     m_main = nullptr;
 
+    // Found again by each placement, for the eye about to be drawn
+    m_highlightRoot = nullptr;
+    m_highlightParts.clear();
+    m_highlightDrawn.clear();
+
     uint8_t* object = player();
 
     if (!object || root != field<uint8_t*>(object, VrGame::PlayerFirstPersonRoot))
@@ -906,6 +911,8 @@ namespace dxvk {
     if (rack)
       drawPart(rack, rackPose, updateData);
 
+    findHighlight(root, weapon, hinge, action == ActionKind::Swing);
+
     uint8_t* muzzle = findObject(weapon, VrGame::ProjectileNodeName);
 
     if (!muzzle)
@@ -946,6 +953,53 @@ namespace dxvk {
     if (!m_loggedActive) {
       Logger::info("VR: The weapon is in the right hand");
       m_loggedActive = true;
+    }
+  }
+
+
+  bool VrWeaponHand::takeHighlight(uint8_t*& root, std::vector<uint8_t*>& parts, VrGameWorldTransforms& drawn) {
+    if (!m_highlightRoot)
+      return false;
+
+    root = m_highlightRoot;
+    parts.swap(m_highlightParts);
+    std::swap(drawn, m_highlightDrawn);
+
+    m_highlightRoot = nullptr;
+    m_highlightParts.clear();
+    m_highlightDrawn.clear();
+    return true;
+  }
+
+
+  void VrWeaponHand::findHighlight(uint8_t* root, uint8_t* weapon, uint8_t* hinge, bool swing) {
+    if (!m_highlight.any())
+      return;
+
+    auto add = [this] (uint8_t* part) {
+      if (part && !(field<uint32_t>(part, VrGame::ObjectFlags) & VrGame::ObjectFlagAppCulled))
+        m_highlightParts.push_back(part);
+    };
+
+    if (m_highlight.magazine && m_magazineState == VrMagazineState::InWeapon)
+      add(vrFindWeaponPart(weapon, VrWeaponPartKind::Magazine));
+
+    if (m_highlight.rack && !m_hasHinge)
+      add(vrFindWeaponPart(weapon, VrWeaponPartKind::Rack));
+
+    // A break action's barrel turns down about the breech
+    if (m_highlight.hinge && m_hasHinge && !swing)
+      add(hinge);
+
+    // A revolver's loading gate swings out, a rifle's cap is named as one
+    if (m_highlight.port)
+      add(swing ? hinge : vrFindWeaponPart(weapon, VrWeaponPartKind::Gate));
+
+    // Every part is placed by now: the game draws the model as it is, then
+    // updates it again where it animates it, long before the highlight
+    if (!m_highlightParts.empty()) {
+      m_highlightRoot = root;
+      m_highlightDrawn.capture(reinterpret_cast<uintptr_t>(root));
     }
   }
 

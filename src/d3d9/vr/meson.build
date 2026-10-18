@@ -71,6 +71,7 @@ vr_dxvk_src = files([
   'vr_game_file.cpp',
   'vr_menu_scenes.cpp',
   'vr_manual_reload.cpp',
+  'vr_part_highlight.cpp',
   'vr_reload_animation.cpp',
   'vr_game_sound.cpp',
   'vr_npc_gaze.cpp',

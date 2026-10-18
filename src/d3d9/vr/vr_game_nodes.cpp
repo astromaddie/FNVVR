@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstring>
 
 #include "vr_game_addresses.h"
@@ -14,6 +15,9 @@ namespace dxvk {
 
     // The head bone is about ten levels below a character's root
     constexpr uint32_t MaxSkeletonDepth = 16;
+
+    // A first-person weapon's parts are about fifteen levels below its root
+    constexpr uint32_t MaxCaptureDepth = 64;
 
     template<typename T>
     T readField(uintptr_t base, uintptr_t offset) {
@@ -76,6 +80,35 @@ namespace dxvk {
 
     if (root)
       walk(root, 0);
+  }
+
+
+  void VrGameWorldTransforms::capture(uintptr_t root) {
+    m_objects.clear();
+
+    vrVisitGameObjects(root, MaxCaptureDepth, [this] (uintptr_t object, uint32_t) {
+      Object kept = { object, readField<uintptr_t>(object, VrGame::ObjectWorldBound) };
+      std::memcpy(kept.world, reinterpret_cast<const void*>(object + VrGame::ObjectWorldRotation), sizeof(kept.world));
+
+      if (kept.boundAt)
+        std::memcpy(kept.bound, reinterpret_cast<const void*>(kept.boundAt), sizeof(kept.bound));
+
+      m_objects.push_back(kept);
+    });
+  }
+
+
+  void VrGameWorldTransforms::swap() {
+    for (Object& kept : m_objects) {
+      auto world = reinterpret_cast<uint8_t*>(kept.object + VrGame::ObjectWorldRotation);
+      std::swap_ranges(kept.world, kept.world + sizeof(kept.world), world);
+
+      // A bound the game replaced since is left alone
+      if (kept.boundAt && kept.boundAt == readField<uintptr_t>(kept.object, VrGame::ObjectWorldBound)) {
+        auto bound = reinterpret_cast<uint8_t*>(kept.boundAt);
+        std::swap_ranges(kept.bound, kept.bound + sizeof(kept.bound), bound);
+      }
+    }
   }
 
 

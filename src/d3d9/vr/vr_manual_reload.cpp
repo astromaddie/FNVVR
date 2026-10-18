@@ -226,6 +226,7 @@ namespace dxvk {
       m_fillFrames  = 0;
       m_jammed      = false;
       m_unchambered = false;
+      m_refusedClip = -1;
       m_lastWeapon  = weapon;
       m_lastClip    = clip;
     }
@@ -257,6 +258,12 @@ namespace dxvk {
       m_lastRight = *input.rightHand;
 
     m_loadsRounds = looping;
+    m_hasRackPart = handled && input.rack;
+    m_kind        = !handled ? VrReloadKind::None
+      : looping ? VrReloadKind::Rounds
+      : hinged  ? VrReloadKind::BreakAction
+      : swung   ? VrReloadKind::Cylinder
+      : VrReloadKind::Magazine;
 
     if (!handled) {
       m_magazine.reset();
@@ -517,6 +524,22 @@ namespace dxvk {
   }
 
 
+  VrReloadSituation VrManualReload::situation() const {
+    VrReloadSituation situation;
+    situation.kind        = m_kind;
+    situation.hasRack     = m_hasRackPart;
+    situation.magazine    = m_magazine.state();
+    situation.rounds      = m_rounds.state();
+    situation.clip        = m_lastClip;
+    situation.full        = m_refusedClip >= 0 && m_lastClip >= m_refusedClip;
+    situation.pendingFill = m_pendingFill;
+    situation.jammed      = m_jammed;
+    situation.unchambered = m_unchambered;
+    situation.actionOpen  = actionOpen();
+    return situation;
+  }
+
+
   void VrManualReload::clearJam(const uint8_t* weapon, const char* how) {
     if (m_jammed.exchange(false))
       Logger::info(str::format("VR: '", weaponName(weapon), "' is no longer jammed: ", how));
@@ -692,6 +715,7 @@ namespace dxvk {
 
     // The game's own looping reload with no animation adds one round
     if (!fillClip(player, weapon)) {
+      m_refusedClip = before;
       Logger::info(str::format("VR: '", weaponName(weapon), "' takes no more rounds, clip ", before,
         ": the loading loop stops, the hand keeps its rounds"));
       return false;
