@@ -401,10 +401,32 @@ namespace dxvk {
 
 
     /**
-     * \brief Reads how the sequence breaks the action open about its hinge
+     * \brief A node's transform in one of its ancestors' frame, as the
+     *    model has it now
+     */
+    bool restToAncestor(uint8_t* node, const uint8_t* ancestor, Pose& pose) {
+      pose = Pose();
+
+      for (; node && node != ancestor; node = readField<uint8_t*>(node, VrGame::ObjectParent)) {
+        Pose local;
+        local.rotate    = readRotation(node, VrGame::ObjectLocalRotation);
+        local.translate = readVector(node, VrGame::NodeLocalTranslate);
+        local.scale     = readField<float>(node, VrGame::ObjectLocalScale);
+        pose = compose(local, pose);
+      }
+
+      return node == ancestor;
+    }
+
+
+    /**
+     * \brief Reads how the sequence opens the action about a part
+     *
+     * The part turns away from where the model has it now, closed.
      *
      * \param [in] placed When the shells are in their place
-     * \param [out] from When the hinge part starts turning
+     * \param [out] widest How far it turns at most
+     * \param [out] from When the part starts turning
      * \param [out] to When it is closed again, or a negative time if it
      *    stays open
      */
@@ -416,8 +438,14 @@ namespace dxvk {
             float                 end,
             float                 placed,
             VrHingeAnimation&     animation,
+            float&                widest,
             float&                from,
             float&                to) {
+      Pose closed;
+
+      if (!restToAncestor(hinge, weapon, closed))
+        return false;
+
       std::vector<float> times;
       std::vector<Pose> poses;
 
@@ -433,10 +461,10 @@ namespace dxvk {
       }
 
       std::vector<float> angles;
-      float widest = 0.0f;
+      widest = 0.0f;
 
       for (const Pose& pose : poses) {
-        angles.push_back(vrRotationAngle(poses.front().rotate, pose.rotate));
+        angles.push_back(vrRotationAngle(closed.rotate, pose.rotate));
         widest = std::max(widest, angles.back());
       }
 
@@ -466,14 +494,58 @@ namespace dxvk {
 
       size_t open = angles[placedAt] >= 0.5f * widest ? placedAt : widestAt;
 
+      animation.part           = partName(hinge);
       animation.open.rotate    = poses[open].rotate;
       animation.open.translate = poses[open].translate;
       animation.angle          = angles[open];
 
-      Logger::info(str::format("VR: Reload animation breaks the action open about '", partName(hinge), "' by ",
-        angles[open] * 57.2957795f, " degrees (", widest * 57.2957795f, " at most), from ", from, " s",
-        to >= 0.0f ? str::format(", closed again at ", to, " s") : std::string(", open to the end")));
+      // The axis of the turn from closed to open, the way it opens
+      VrQuaternion turn = vrQuaternionFromGameRotation(poses[open].rotate * vrTranspose(closed.rotate));
+      VrVector3 axis = { turn.x, turn.y, turn.z };
+      float length = vrLength(axis);
+      animation.axis = length > 1e-6f ? axis * ((turn.w < 0.0f ? -1.0f : 1.0f) / length) : VrVector3();
       return true;
+    }
+
+
+    /**
+     * \brief Reads how the sequence swings a revolver's cylinder out
+     *
+     * Of the round's ancestors below the weapon node, the one the sequence
+     * turns furthest.
+     */
+    bool readSwing(
+      const SequenceTracks&       tracks,
+            uint8_t*              weapon,
+            uint8_t*              round,
+            float                 begin,
+            float                 end,
+            float                 placed,
+            VrHingeAnimation&     animation,
+            float&                from,
+            float&                to) {
+      float widest = 0.0f;
+      bool found = false;
+
+      for (uint8_t* part = readField<uint8_t*>(round, VrGame::ObjectParent); part && part != weapon;
+          part = readField<uint8_t*>(part, VrGame::ObjectParent)) {
+        VrHingeAnimation candidate;
+        float candidateWidest = 0.0f;
+        float candidateFrom   = 0.0f;
+        float candidateTo     = -1.0f;
+
+        if (!readHinge(tracks, weapon, part, begin, end, placed, candidate, candidateWidest, candidateFrom, candidateTo)
+         || candidateWidest <= widest)
+          continue;
+
+        animation = candidate;
+        widest    = candidateWidest;
+        from      = candidateFrom;
+        to        = candidateTo;
+        found     = true;
+      }
+
+      return found;
     }
 
 
@@ -570,6 +642,7 @@ namespace dxvk {
           bool                  round,
           uint8_t*              rack,
           uint8_t*              hinge,
+          bool                  swing,
           uint8_t*              leftHand,
           VrReloadAnimation&    animation) {
     const uint8_t* sequence = findReloadSequence(player);
@@ -683,12 +756,28 @@ namespace dxvk {
     if (rack && !animation.hasRack)
       Logger::info(str::format("VR: The reload animation does not rack '", partName(rack), "'"));
 
-    float hingeFrom = 0.0f;
-    float hingeTo   = -1.0f;
-    animation.hasHinge = hinge && readHinge(tracks, weapon, hinge, begin, end, timing.in, animation.hinge, hingeFrom, hingeTo);
+    float hingeFrom   = 0.0f;
+    float hingeTo     = -1.0f;
+    float hingeWidest = 0.0f;
 
-    if (hinge && !animation.hasHinge)
-      Logger::info(str::format("VR: The reload animation does not break the action open about '", partName(hinge), "'"));
+    if (hinge)
+      animation.hasHinge = readHinge(tracks, weapon, hinge, begin, end, timing.in, animation.hinge, hingeWidest, hingeFrom, hingeTo);
+    else if (swing)
+      animation.hasHinge = readSwing(tracks, weapon, magazine, begin, end, timing.in, animation.hinge, hingeFrom, hingeTo);
+    else
+      animation.hasHinge = false;
+
+    const VrHingeAnimation& opened = animation.hinge;
+
+    if (animation.hasHinge) {
+      Logger::info(str::format(swing ? "VR: Reload animation swings '" : "VR: Reload animation breaks the action open about '",
+        opened.part, swing ? "' open by " : "' by ", opened.angle * 57.2957795f, " degrees about ",
+        opened.axis.x, ", ", opened.axis.y, ", ", opened.axis.z, " in the weapon, from ", hingeFrom, " s",
+        hingeTo >= 0.0f ? str::format(", closed again at ", hingeTo, " s") : std::string(", open to the end")));
+    } else if (hinge || swing) {
+      Logger::info(str::format(swing ? "VR: The reload animation does not swing open '" : "VR: The reload animation does not break the action open about '",
+        hinge ? partName(hinge) : "any part holding the round", "'"));
+    }
 
     readSounds(sequence, timing, rackFrom, rackTo, hingeFrom, hingeTo, animation);
 

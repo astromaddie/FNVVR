@@ -45,6 +45,12 @@ namespace dxvk {
     /// (the well), in the right hand's frame (VrWeaponHand::actionBarrel),
     /// or \c nullptr if the weapon is not a break action
     const VrVector3*        barrel = nullptr;
+    /// Axis a revolver is flicked open about, in the right hand's frame
+    /// (VrWeaponHand::actionRoll), or \c nullptr if the weapon is not a
+    /// revolver
+    const VrVector3*        roll = nullptr;
+    /// Time since the last frame, in seconds
+    float                   frameTime = 0.0f;
     /// The game's reload animation of the weapon, for its sounds, or
     /// \c nullptr
     const VrReloadAnimation* animation = nullptr;
@@ -111,6 +117,15 @@ namespace dxvk {
    * clears a jam); while it is open it does not fire. Its shells are taken
    * behind the back and pushed into the open breech as a magazine is,
    * where the game's own reload with no animation fills the clip.
+   *
+   * Phase 5c (findings/reload.md §8.9): a revolver's cylinder is swung out
+   * and closed with a flick of the right wrist, see VrFlickHand. Swinging
+   * it out throws its cases out (the clip is emptied, which loses no
+   * round, and clears a jam); while it is open it does not fire. Its speed
+   * loader is taken behind the back and pushed into the open cylinder as
+   * a magazine is. A revolver loaded round by round opens its loading gate
+   * instead, which empties nothing: its rounds only go in while it is
+   * open.
    *
    * The reloads may be started from the game's other threads, so the clip
    * left to watch is shared under a lock, and the weapon reloaded by hand
@@ -183,11 +198,11 @@ namespace dxvk {
     }
 
     /**
-     * \brief Whether the break action in the hand is open, see
+     * \brief Whether the action of the weapon in the hand is open, see
      *    VrWeaponHand::setActionOpen
      */
     bool actionOpen() const {
-      return m_action.open();
+      return m_action.open() || m_flick.open();
     }
 
     /**
@@ -222,6 +237,11 @@ namespace dxvk {
     VrMagazineHand  m_magazine;
     VrRackHand      m_rack;
     VrBreakHand     m_action;
+    VrFlickHand     m_flick;
+
+    // The right hand at the last frame, to tell how fast it turns
+    VrGameCameraPose m_lastRight;
+    bool            m_hasLastRight = false;
 
     // A magazine went in with nothing chambered: racking fills the clip.
     // The clip count at the last frame, to tell when the game fills it, and
@@ -246,7 +266,7 @@ namespace dxvk {
     // was not worked since: it does not fire, as if jammed
     std::atomic<bool> m_unchambered = { false };
 
-    // The break action in the hand is open: it does not fire
+    // The action in the hand is open: it does not fire
     std::atomic<bool> m_actionOpen  = { false };
 
     // How far back the rack part rests, in metres
@@ -268,7 +288,8 @@ namespace dxvk {
 
     void cycleAction(uint8_t* player, uint8_t* weapon, const VrReloadSound* sound, const VrVector3& rack);
 
-    void openAction(uint8_t* player, const uint8_t* weapon, const VrReloadSound* sound, const VrVector3& breech);
+    void openAction(uint8_t* player, const uint8_t* weapon, const VrReloadSound* sound, const VrVector3& breech,
+      bool cylinder);
 
     bool fillClip(uint8_t* player, uint8_t* weapon);
 

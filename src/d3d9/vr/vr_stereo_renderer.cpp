@@ -548,7 +548,7 @@ namespace dxvk {
     m_controls.adjustCamera(m_gameCameraPose);
     updateNpcGaze();
     updateWeaponHand(input, state, modelCamera, dt);
-    updateManualReload(input, state);
+    updateManualReload(input, state, dt);
     updateMeleeSwing(input, state, dt);
     updateHandPick(input, state);
     updatePipBoyGaze(input, state, dt);
@@ -867,7 +867,8 @@ namespace dxvk {
 
   void VrStereoRenderer::updateManualReload(
     const VrInputState&         input,
-          VrGameStateKind       state) {
+          VrGameStateKind       state,
+          float                 dt) {
     if (!m_manualReload)
       return;
 
@@ -876,6 +877,7 @@ namespace dxvk {
 
     VrManualReloadInput hands;
     VrGameCameraPose head, rightHand, leftHand;
+    hands.frameTime = dt;
 
     bool tracked = state == VrGameStateKind::InGame && m_hasReference && m_hasHeadPose
       && right.isActive && left.isActive && input.hasActions;
@@ -904,6 +906,7 @@ namespace dxvk {
       hands.rackAxis   = m_weaponHand->rackAxis();
       hands.rackTravel = m_weaponHand->rackTravel();
       hands.barrel     = m_weaponHand->actionBarrel();
+      hands.roll       = m_weaponHand->actionRoll();
     }
 
     VrReloadEvents events = m_manualReload->updateHands(hands);

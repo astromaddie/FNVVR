@@ -58,13 +58,20 @@ namespace dxvk {
   };
 
   /**
-   * \brief How the game's reload animation breaks a break action open
+   * \brief How the game's reload animation opens the action
+   *
+   * A break action turns its stock (the hinge) away from the barrel; a
+   * revolver swings its cylinder out, or opens its loading gate.
    */
   struct VrHingeAnimation {
-    /// The hinge part in the weapon node's frame while the action is open
+    /// Name of the part that turns
+    std::string     part;
+    /// The part in the weapon node's frame while the action is open
     VrGameTransform open;
     /// How far it turns, in radians
     float           angle = 0.0f;
+    /// Axis it turns about to open, unit, in the weapon node's frame
+    VrVector3       axis;
     /// The action opening and closing
     VrReloadSound   openSound;
     VrReloadSound   closeSound;
@@ -101,7 +108,7 @@ namespace dxvk {
     /// How the animation racks the weapon, valid if \c hasRack
     VrRackAnimation         rack;
     bool                    hasRack = false;
-    /// How the animation breaks the action open, valid if \c hasHinge
+    /// How the animation opens the action, valid if \c hasHinge
     VrHingeAnimation        hinge;
     bool                    hasHinge = false;
   };
@@ -124,7 +131,10 @@ namespace dxvk {
    * and it has no sound going out. A break action's shells are read the
    * same way, and its hinge part's track tells how far the action opens
    * while they go in, and the sounds nearest the times it starts opening
-   * and is closed again are the action's.
+   * and is closed again are the action's. A revolver's cylinder is read
+   * the same way: its speed loader is the round, and the part that swings
+   * it out is the one of its ancestors the animation turns furthest; or
+   * its loading gate is the hinge.
    *
    * Only called on the game's main thread, while the animation is not
    * played. Evaluating a track keeps nothing but its last time.
@@ -136,8 +146,11 @@ namespace dxvk {
    *    round part
    * \param [in] round The part is a round
    * \param [in] rack The rack part below the weapon node, or \c nullptr
-   * \param [in] hinge The hinge part of a break action below the weapon
-   *    node, or \c nullptr
+   * \param [in] hinge The hinge part of a break action, or the loading gate
+   *    of a revolver, below the weapon node, or \c nullptr
+   * \param [in] swing The action is a revolver's: the hinge, or without
+   *    one the ancestor of the round the animation turns furthest, swings
+   *    open in the weapon
    * \param [in] leftHand The left hand bone
    * \param [out] animation What the animation does
    * \returns \c false if the weapon has no first-person reload animation
@@ -152,6 +165,7 @@ namespace dxvk {
           bool                  round,
           uint8_t*              rack,
           uint8_t*              hinge,
+          bool                  swing,
           uint8_t*              leftHand,
           VrReloadAnimation&    animation);
 

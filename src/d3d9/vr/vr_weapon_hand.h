@@ -276,11 +276,12 @@ namespace dxvk {
     }
 
     /**
-     * \brief Opens or closes the action of a break action in the hand
+     * \brief Opens or closes the action of the weapon in the hand
      *
-     * The barrel swings down about the hinge from the next frame on, as
-     * far as the game's reload animation opens it; the stock stays in the
-     * hand.
+     * From the next frame on, the barrel of a break action swings down
+     * about the hinge, the stock staying in the hand, and a revolver's
+     * cylinder or loading gate swings out, as far as the game's reload
+     * animation opens them.
      */
     void setActionOpen(bool open) {
       m_actionOpen = open;
@@ -298,7 +299,22 @@ namespace dxvk {
      *    not a break action reloaded by hand
      */
     const VrVector3* actionBarrel() const {
-      return m_hasMagazine && m_hasHinge ? &m_actionBarrel : nullptr;
+      return m_hasMagazine && m_hasHinge && !m_swingAction ? &m_actionBarrel : nullptr;
+    }
+
+    /**
+     * \brief Axis a revolver in the hand turns about when it is flicked
+     *    open
+     *
+     * Along its barrel, the way its cylinder or loading gate swings out: a
+     * unit vector in the right hand's frame, measured each time the model
+     * is drawn.
+     *
+     * \returns The axis, or \c nullptr if the weapon in the hand is not a
+     *    revolver reloaded by hand
+     */
+    const VrVector3* actionRoll() const {
+      return m_hasMagazine && m_hasHinge && m_swingAction ? &m_actionRoll : nullptr;
     }
 
     /**
@@ -311,6 +327,15 @@ namespace dxvk {
     }
 
   private:
+
+    /**
+     * \brief How the action of the weapon opens to be loaded
+     */
+    enum class ActionKind {
+      None,           ///< It does not open: a magazine, or a loading port
+      Break,          ///< A break action: the barrel turns about the stock
+      Swing,          ///< A revolver: its cylinder or loading gate swings out
+    };
 
     enum class GripKind {
       None,           ///< The other hand does not hold the weapon
@@ -444,13 +469,16 @@ namespace dxvk {
     bool             m_hasRack = false;
     const uint8_t*   m_loggedRack = nullptr;
 
-    // Break action in the hand: whether it is to be open, how far it is
-    // open (0 closed, 1 open), whether the weapon has a hinge it opens
-    // about and the direction of its barrel in the right hand's frame
+    // Action that opens in the hand: whether it is to be open, how far it
+    // is open (0 closed, 1 open), whether the weapon has one, whether it
+    // is a revolver's, the direction of a break action's barrel and the
+    // axis a revolver is flicked open about, in the right hand's frame
     bool             m_actionOpen = false;
     float            m_actionSwing = 0.0f;
     bool             m_hasHinge = false;
+    bool             m_swingAction = false;
     VrVector3        m_actionBarrel;
+    VrVector3        m_actionRoll;
 
     // The shells of a break action besides the one found as its round: the
     // caravan shotgun has one part per shell. Each one's pose relative to
@@ -585,28 +613,44 @@ namespace dxvk {
       const HeldPart*             held);
 
     /**
-     * \brief Finds the hinge of a break action
+     * \brief Finds how the action of the weapon opens
      *
-     * A weapon that is not loaded round by round, with no magazine part,
-     * whose model has a hinge part.
+     * A break action is not loaded round by round, has no magazine part
+     * and has a hinge part. A revolver (a one-handed pistol) has a speed
+     * loader, or is loaded round by round through a loading gate.
      *
-     * \returns The hinge part, or \c nullptr if the weapon is not a break
-     *    action
+     * \param [out] kind How it opens
+     * \returns The hinge part or the loading gate, or \c nullptr if there
+     *    is none or the reload animation tells which part swings out
      */
-    static uint8_t* findHinge(uint8_t* weapon, const uint8_t* form);
+    static uint8_t* findAction(uint8_t* weapon, const uint8_t* form, ActionKind& kind);
 
     /**
-     * \brief Draws a break action as far open as it is
+     * \brief Draws the action as far open as it is
      *
-     * The weapon node is turned about the hinge so that the hinge part (the
-     * stock, which the hand holds) stays where the game draws it while the
-     * barrel turns away from it as the reload animation opens it.
+     * A break action's weapon node is turned about the hinge so that the
+     * hinge part (the stock, which the hand holds) stays where the game
+     * draws it while the barrel turns away from it as the reload animation
+     * opens it. A revolver's swinging part turns in the weapon as the
+     * reload animation turns it.
+     *
+     * \param [in] hinge The part found by findAction
      */
     void openAction(
             uint8_t*              weapon,
             uint8_t*              hinge,
+            ActionKind            kind,
       const uint8_t*              form,
             void*                 updateData);
+
+    /**
+     * \brief Culls the cartridges in a revolver's cylinder while it is
+     *    emptied
+     *
+     * Its live rounds and spent cases, not those of its speed loader, from
+     * the time it is swung open until a speed loader is pushed home.
+     */
+    void hideCylinder(uint8_t* weapon);
 
     /**
      * \brief Draws the other shells of a break action with its round
@@ -629,7 +673,8 @@ namespace dxvk {
     /**
      * \brief Finds the weapon's magazine and where it is drawn
      *
-     * The magazine of a break action (with a hinge) is its shells.
+     * The magazine of a break action (with a hinge) is its shells, that of
+     * a revolver its speed loader, or its round with a loading gate.
      * \param [out] pose Where the magazine is drawn, in the model's
      *    drawing space
      * \returns The magazine to draw at the pose, or \c nullptr if the
@@ -638,6 +683,7 @@ namespace dxvk {
     uint8_t* placeMagazine(
             uint8_t*              root,
             uint8_t*              weapon,
+            ActionKind            action,
             uint8_t*              hinge,
             uint8_t*              leftHand,
             bool                  handPlaced,

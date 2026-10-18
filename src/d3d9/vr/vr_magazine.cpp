@@ -42,6 +42,13 @@ namespace dxvk {
 
     const char* const HingeWords[] = { "stock" };
 
+    const char* const LoaderWords[] = { "speedloader" };
+
+    const char* const GateWords[] = { "gate" };
+
+    // What a cylinder holds besides rounds: spent cases
+    const char* const CartridgeWords[] = { "shell", "bullet", "casing" };
+
     template<size_t N>
     bool containsAny(const std::string& name, const char* const (&words)[N]) {
       for (const char* word : words) {
@@ -55,19 +62,42 @@ namespace dxvk {
   }
 
 
+  namespace {
+
+    // The name without its "##" prefix and geometry suffix, in lower case,
+    // or an empty name if it is not a part
+    std::string partName(const char* name) {
+      std::string part;
+
+      if (!name || std::strncmp(name, "##", 2))
+        return part;
+
+      for (const char* c = name + 2; *c && *c != ':'; c++)
+        part += char(std::tolower(static_cast<unsigned char>(*c)));
+
+      return part;
+    }
+
+    VrVector3 cross(const VrVector3& a, const VrVector3& b) {
+      return { a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x };
+    }
+
+  }
+
+
   VrWeaponPartKind vrClassifyWeaponPart(const char* name) {
-    if (!name || std::strncmp(name, "##", 2))
+    std::string part = partName(name);
+
+    if (part.empty())
       return VrWeaponPartKind::None;
-
-    std::string part;
-
-    for (const char* c = name + 2; *c && *c != ':'; c++)
-      part += char(std::tolower(static_cast<unsigned char>(*c)));
 
     for (const PartException& exception : PartExceptions) {
       if (part == exception.name)
         return exception.kind;
     }
+
+    if (containsAny(part, LoaderWords))
+      return VrWeaponPartKind::Loader;
 
     if (containsAny(part, MagazineWords) && !containsAny(part, NotMagazineWords))
       return VrWeaponPartKind::Magazine;
@@ -81,7 +111,18 @@ namespace dxvk {
     if (containsAny(part, HingeWords))
       return VrWeaponPartKind::Hinge;
 
+    if (containsAny(part, GateWords))
+      return VrWeaponPartKind::Gate;
+
     return VrWeaponPartKind::None;
+  }
+
+
+  bool vrIsCartridgePart(const char* name) {
+    VrWeaponPartKind kind = vrClassifyWeaponPart(name);
+
+    return kind == VrWeaponPartKind::Round
+      || (kind == VrWeaponPartKind::None && containsAny(partName(name), CartridgeWords));
   }
 
 
@@ -327,6 +368,59 @@ namespace dxvk {
   float VrBreakHand::workDistance(const VrBreakInput& input) const {
     constexpr float M = VrGameUnitsPerMetre;
     return vrDistanceToSegment(input.hand, input.breech, input.barrel, m_reach.length * M) / M;
+  }
+
+
+  float vrTurnRate(
+    const VrGameCameraPose&     from,
+    const VrGameCameraPose&     to,
+    const VrVector3&            axis,
+          float                 dt) {
+    if (dt <= 0.0f)
+      return 0.0f;
+
+    // Each axis of a frame turned by an angle about a unit axis, crossed
+    // with where it was, adds up to twice the sine of the angle along it
+    VrVector3 turn = cross(from.forward, to.forward) + cross(from.up, to.up) + cross(from.right, to.right);
+    float s = std::clamp(0.5f * vrLength(turn), 0.0f, 1.0f);
+
+    if (s <= 0.0f)
+      return 0.0f;
+
+    float angle = std::asin(s);
+    return angle * vrDot(turn, axis) / (2.0f * s * dt);
+  }
+
+
+  VrBreakEvent VrFlickHand::update(const VrFlickInput& input) {
+    float last = m_lastRoll;
+    m_lastRoll = input.active ? input.roll : 0.0f;
+    m_wait     = std::max(m_wait - input.dt, 0.0f);
+
+    if (!input.active || input.blocked || m_wait > 0.0f)
+      return VrBreakEvent::None;
+
+    // The slower of the two frames, if they turn the same way
+    float roll = last * m_lastRoll > 0.0f
+      ? (m_lastRoll > 0.0f ? std::min(last, m_lastRoll) : std::max(last, m_lastRoll))
+      : 0.0f;
+
+    bool opens  = !m_open && roll >=  m_reach.rate;
+    bool closes =  m_open && roll <= -m_reach.rate;
+
+    if (!opens && !closes)
+      return VrBreakEvent::None;
+
+    m_open = opens;
+    m_wait = m_reach.rest;
+    return m_open ? VrBreakEvent::Opened : VrBreakEvent::Closed;
+  }
+
+
+  void VrFlickHand::reset() {
+    m_open     = false;
+    m_lastRoll = 0.0f;
+    m_wait     = 0.0f;
   }
 
 

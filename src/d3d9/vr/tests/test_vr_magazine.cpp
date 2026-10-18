@@ -630,7 +630,6 @@ TEST_CASE(rounds_are_found_by_keyword) {
   CHECK(vrClassifyWeaponPart("##NifRound") == VrWeaponPartKind::Round);
   CHECK(vrClassifyWeaponPart("##ShellEmpty") == VrWeaponPartKind::None);
   CHECK(vrClassifyWeaponPart("##swmCasing") == VrWeaponPartKind::None);
-  CHECK(vrClassifyWeaponPart("##SpeedLoaderBullets") == VrWeaponPartKind::Round);
 }
 
 
@@ -864,4 +863,106 @@ TEST_CASE(opening_a_break_action_empties_it) {
   CHECK(shells.update(input(true, Pouch)) == VrMagazineEvent::Taken);
   CHECK(shells.update(input(false, Pouch)) == VrMagazineEvent::Dropped);
   CHECK(shells.state() == VrMagazineState::Out);
+}
+
+
+TEST_CASE(revolver_parts_are_found_by_keyword) {
+  CHECK(vrClassifyWeaponPart("##SpeedLoader") == VrWeaponPartKind::Loader);
+  CHECK(vrClassifyWeaponPart("##SpeedLoaderBullets:1") == VrWeaponPartKind::Loader);
+  CHECK(vrClassifyWeaponPart("##LoadingGate") == VrWeaponPartKind::Gate);
+  CHECK(vrClassifyWeaponPart("##swmCrane") == VrWeaponPartKind::None);
+  CHECK(vrClassifyWeaponPart("##ShellFull") == VrWeaponPartKind::Round);
+
+  CHECK(vrIsCartridgePart("##swmCasing"));
+  CHECK(vrIsCartridgePart("##ShellEmpty"));
+  CHECK(vrIsCartridgePart("##Bullet3"));
+  CHECK(vrIsCartridgePart("##Shell2:0"));
+  CHECK(!vrIsCartridgePart("##SpeedLoaderBullets"));
+  CHECK(!vrIsCartridgePart("##swmCylinder"));
+  CHECK(!vrIsCartridgePart("Bullet1"));
+}
+
+
+namespace {
+
+  // The north-facing frame rolled about its forward axis
+  VrGameCameraPose rolled(float angle) {
+    VrGameCameraPose pose = northHead();
+    pose.right = { std::cos(angle), 0.0f, -std::sin(angle) };
+    pose.up    = { std::sin(angle), 0.0f,  std::cos(angle) };
+    return pose;
+  }
+
+  VrFlickInput flick(float roll, float dt = 0.011f) {
+    VrFlickInput in;
+    in.active = true;
+    in.roll   = roll;
+    in.dt     = dt;
+    return in;
+  }
+
+}
+
+
+TEST_CASE(turn_rate_about_an_axis) {
+  const VrVector3 forward = { 0.0f, 1.0f, 0.0f };
+  const VrVector3 up      = { 0.0f, 0.0f, 1.0f };
+
+  CHECK(std::fabs(vrTurnRate(rolled(0.2f), rolled(0.3f), forward, 0.01f) - 10.0f) < 0.01f);
+  CHECK(std::fabs(vrTurnRate(rolled(0.3f), rolled(0.2f), forward, 0.01f) + 10.0f) < 0.01f);
+  CHECK(std::fabs(vrTurnRate(rolled(0.2f), rolled(0.3f), up, 0.01f)) < 0.01f);
+  CHECK(vrTurnRate(rolled(0.2f), rolled(0.2f), forward, 0.01f) == 0.0f);
+  CHECK(vrTurnRate(rolled(0.2f), rolled(0.3f), forward, 0.0f) == 0.0f);
+}
+
+
+TEST_CASE(flick_opens_and_closes_the_cylinder) {
+  VrFlickHand cylinder;
+
+  CHECK(cylinder.update(flick(10.0f)) == VrBreakEvent::None);
+  CHECK(cylinder.update(flick(9.0f)) == VrBreakEvent::Opened);
+  CHECK(cylinder.open());
+
+  // The wrist turning back right after it does not close it
+  CHECK(cylinder.update(flick(-10.0f)) == VrBreakEvent::None);
+  CHECK(cylinder.update(flick(-10.0f)) == VrBreakEvent::None);
+
+  for (int i = 0; i < 6; i++)
+    CHECK(cylinder.update(flick(0.0f, 0.1f)) == VrBreakEvent::None);
+
+  // Turned the way it opens again, it stays open
+  CHECK(cylinder.update(flick(10.0f)) == VrBreakEvent::None);
+  CHECK(cylinder.update(flick(10.0f)) == VrBreakEvent::None);
+
+  CHECK(cylinder.update(flick(-10.0f)) == VrBreakEvent::None);
+  CHECK(cylinder.update(flick(-8.0f)) == VrBreakEvent::Closed);
+  CHECK(!cylinder.open());
+}
+
+
+TEST_CASE(flick_needs_two_fast_frames) {
+  VrFlickHand cylinder;
+
+  // One fast frame, a slow one, and turns that change direction
+  CHECK(cylinder.update(flick(20.0f)) == VrBreakEvent::None);
+  CHECK(cylinder.update(flick(3.0f)) == VrBreakEvent::None);
+  CHECK(cylinder.update(flick(20.0f)) == VrBreakEvent::None);
+  CHECK(cylinder.update(flick(-20.0f)) == VrBreakEvent::None);
+  CHECK(cylinder.update(flick(20.0f)) == VrBreakEvent::None);
+  CHECK(!cylinder.open());
+
+  // Not while the hand pushes rounds in, nor when it is not active
+  VrFlickInput blocked = flick(20.0f);
+  blocked.blocked = true;
+  CHECK(cylinder.update(blocked) == VrBreakEvent::None);
+  CHECK(cylinder.update(blocked) == VrBreakEvent::None);
+
+  VrFlickInput inactive = flick(20.0f);
+  inactive.active = false;
+  CHECK(cylinder.update(inactive) == VrBreakEvent::None);
+  CHECK(cylinder.update(flick(20.0f)) == VrBreakEvent::None);
+  CHECK(cylinder.update(flick(20.0f)) == VrBreakEvent::Opened);
+
+  cylinder.reset();
+  CHECK(!cylinder.open());
 }

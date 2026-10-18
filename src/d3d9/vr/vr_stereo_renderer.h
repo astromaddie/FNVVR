@@ -511,7 +511,7 @@ namespace dxvk {
 
     void updateMeleeSwing(const VrInputState& input, VrGameStateKind state, float dt);
 
-    void updateManualReload(const VrInputState& input, VrGameStateKind state);
+    void updateManualReload(const VrInputState& input, VrGameStateKind state, float dt);
 
     bool updatePowerCharge(const VrInputState& input, int32_t& cost);
 

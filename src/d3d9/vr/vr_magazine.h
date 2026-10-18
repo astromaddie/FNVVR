@@ -30,6 +30,11 @@ namespace dxvk {
     /// What a break action opens about: its stock, which the reload
     /// animation turns away from the barrel
     Hinge,
+    /// A revolver's speed loader, which its reload animation carries into
+    /// the swung out cylinder
+    Loader,
+    /// The loading gate of a revolver loaded round by round
+    Gate,
   };
 
   /**
@@ -43,12 +48,25 @@ namespace dxvk {
    * also names a barrel, a lock, a pin, a release or a trigger. A round is
    * one whose name contains "shell", "bullet" or "round", unless it is a
    * spent case ("empty", "casing"). A hinge is one whose name contains
-   * "stock". A table of exceptions comes first. The ":n" suffix of a
+   * "stock". A speed loader is one whose name contains "speedloader",
+   * whatever else it names, and a loading gate one whose name contains
+   * "gate". A table of exceptions comes first. The ":n" suffix of a
    * part's geometry is ignored.
    *
    * \param [in] name Name of the object, with its "##" prefix
    */
   VrWeaponPartKind vrClassifyWeaponPart(const char* name);
+
+  /**
+   * \brief Whether a part of a weapon's model is a cartridge, live or spent
+   *
+   * A round (VrWeaponPartKind::Round), or a part whose name contains
+   * "shell", "bullet" or "casing" and that is not a speed loader: what a
+   * revolver's cylinder holds.
+   *
+   * \param [in] name Name of the object, with its "##" prefix
+   */
+  bool vrIsCartridgePart(const char* name);
 
   /**
    * \brief Distance from a point to a segment
@@ -506,6 +524,96 @@ namespace dxvk {
     bool         m_open     = false;
 
   };
+
+  /**
+   * \brief How fast a hand turns about an axis
+   *
+   * From the hand's frame at two times: each of its axes turns from the
+   * first time to the second, and their turns add up to the hand's.
+   *
+   * \param [in] from The hand at the first time
+   * \param [in] to The hand at the second time
+   * \param [in] axis Axis to turn about, unit, in the frame of the poses
+   * \param [in] dt Time between the two, in seconds
+   * \returns The rate in radians per second, positive for a turn about the
+   *    axis by the right-hand rule, 0 if no time passed
+   */
+  float vrTurnRate(
+    const VrGameCameraPose&     from,
+    const VrGameCameraPose&     to,
+    const VrVector3&            axis,
+          float                 dt);
+
+  /**
+   * \brief What the flick logic sees in a frame
+   */
+  struct VrFlickInput {
+    /// The weapon in the right hand is a revolver that opens with a flick,
+    /// and the left hand is tracked and free (not on the weapon)
+    bool  active = false;
+    /// A flick does not open or close it: the left hand pushes rounds into
+    /// the cylinder
+    bool  blocked = false;
+    /// How fast the right hand turns about the barrel, in radians per
+    /// second, positive in the direction the cylinder swings out
+    float roll = 0.0f;
+    /// Time since the last frame, in seconds
+    float dt = 0.0f;
+  };
+
+  /**
+   * \brief How hard and how often the revolver is flicked
+   */
+  struct VrFlickReach {
+    /// How fast the hand must turn about the barrel, in two frames in a
+    /// row, in radians per second (about 400 degrees per second)
+    float rate = 7.0f;
+    /// How long after a flick the next one is ignored, in seconds: the
+    /// wrist turns back after a flick
+    float rest = 0.5f;
+  };
+
+  /**
+   * \brief Follows the cylinder of a revolver in the right hand
+   *
+   * A flick of the right wrist that turns the revolver about its barrel the
+   * way the cylinder swings out opens it, and one the other way closes it,
+   * see findings/reload.md §8.9. A flick is a turn faster than the reach's
+   * rate in two frames in a row; the wrist turning back right after it is
+   * not another one.
+   */
+  class VrFlickHand {
+
+  public:
+
+    explicit VrFlickHand(const VrFlickReach& reach = VrFlickReach())
+    : m_reach(reach) { }
+
+    /**
+     * \brief Takes the frame's input
+     * \returns What happened in this frame
+     */
+    VrBreakEvent update(const VrFlickInput& input);
+
+    /**
+     * \brief Closes the cylinder, when the weapon changes or the game
+     *    reloads it
+     */
+    void reset();
+
+    bool open() const {
+      return m_open;
+    }
+
+  private:
+
+    VrFlickReach m_reach;
+    bool         m_open     = false;
+    float        m_lastRoll = 0.0f;
+    float        m_wait     = 0.0f;
+
+  };
+
 
   /**
    * \brief Where the magazine is at a time of the game's reload animation
