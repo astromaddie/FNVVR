@@ -55,10 +55,13 @@ namespace dxvk {
     using SetFloatFn = void (__thiscall*)(void* tile, int32_t trait, float value, bool propagate);
     using AddTraitFn = int32_t (__cdecl*)(const char* name, int32_t id);
     using ListInitFn = void* (__thiscall*)(void* list, void* tile, const char* itemTemplate);
+    using IsForModesFn = bool (__thiscall*)(void* option, uint32_t modes);
+    using IsInStartMenuFn = bool (__cdecl*)();
 
     VrOptions                    g_options;
     VrOptionsMenu::ChangedFn     g_onChanged;
     VrOptionsMenu::ConsoleFn     g_onConsole;
+    void*                        g_consoleOption = nullptr;
 
     uint8_t* startMenu() {
       return *reinterpret_cast<uint8_t* const*>(VrGame::StartMenuGlobal);
@@ -240,6 +243,7 @@ namespace dxvk {
           consoleMemory, ConsoleText, &chooseConsole, VrGame::OptionMaskSettingsList);
 
         append(optionArray, nullptr, &console);
+        g_consoleOption = console;
       }
 
       // The page lists its options in the order they are added
@@ -262,6 +266,24 @@ namespace dxvk {
     }
 
 
+    // The console is only opened in game: the main menu has no world to
+    // draw its terminal in. StartMenu::_Create sets the menu's in-game
+    // flag before it fills its lists.
+    bool showsConsoleEntry() {
+      return !reinterpret_cast<IsInStartMenuFn>(VrGame::IsInStartMenu)();
+    }
+
+
+    // Replaces the call that tells whether an option goes in the Settings
+    // list, to leave the Console entry out of the main menu's
+    bool __fastcall isSettingsEntry(void* option, void* unused, uint32_t modes) {
+      if (option == g_consoleOption && !showsConsoleEntry())
+        return false;
+
+      return reinterpret_cast<IsForModesFn>(VrGame::OptionIsForModes)(option, modes);
+    }
+
+
     // Number of entries of the Settings list, the game's and the fork's
     uint32_t settingsEntryCount() {
       auto array = reinterpret_cast<const uint8_t*>(VrGame::OptionArray);
@@ -270,7 +292,8 @@ namespace dxvk {
       uint32_t entries = 0;
 
       for (uint32_t i = 0; i < count; i++) {
-        if (options[i] && (*reinterpret_cast<const uint32_t*>(options[i] + VrGame::OptionMask) & VrGame::OptionMaskSettingsList))
+        if (options[i] && (*reinterpret_cast<const uint32_t*>(options[i] + VrGame::OptionMask) & VrGame::OptionMaskSettingsList)
+         && (options[i] != g_consoleOption || showsConsoleEntry()))
           entries += 1;
       }
 
@@ -324,6 +347,10 @@ namespace dxvk {
           VrGame::HeapAllocatePrologue, sizeof(VrGame::HeapAllocatePrologue))
         && VrGameMemory::matches(VrGame::ListBoxInitialize,
           VrGame::ListBoxInitializePrologue, sizeof(VrGame::ListBoxInitializePrologue))
+        && VrGameMemory::matches(VrGame::OptionIsForModes,
+          VrGame::OptionIsForModesPrologue, sizeof(VrGame::OptionIsForModesPrologue))
+        && VrGameMemory::matches(VrGame::IsInStartMenu,
+          VrGame::IsInStartMenuPrologue, sizeof(VrGame::IsInStartMenuPrologue))
         && VrGameMemory::readable(VrGame::StartMenuGlobal, sizeof(uintptr_t));
     }
 
@@ -349,6 +376,10 @@ namespace dxvk {
     if (!VrGameMemory::redirectCall(VrGame::SettingsListInitCallSite,
         VrGame::ListBoxInitialize, reinterpret_cast<const void*>(&initSettingsList)))
       Logger::warn("VR: The Settings list keeps its height, its last entries may be cut off");
+
+    if (!VrGameMemory::redirectCall(VrGame::SettingsEntryModesCallSite,
+        VrGame::OptionIsForModes, reinterpret_cast<const void*>(&isSettingsEntry)))
+      Logger::warn("VR: The Console entry is also shown in the main menu's Settings list");
 
     Logger::info("VR: Added the VR page to the Settings menu");
     return true;

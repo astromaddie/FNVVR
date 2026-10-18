@@ -19,7 +19,8 @@ namespace dxvk {
    * The page has four options: snap or smooth turning, the speed of
    * smooth turning, how large the Pip-Boy grows while it is open, and
    * whether the weapons are reloaded with the hands.
-   * After the VR entry, a Console entry opens the game's console.
+   * After the VR entry, a Console entry opens the game's console; it is
+   * only in the pause menu's Settings list, not in the main menu's.
    *
    * Only used on the game's main thread.
    */
