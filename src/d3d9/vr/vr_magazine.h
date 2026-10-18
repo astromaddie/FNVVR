@@ -23,6 +23,9 @@ namespace dxvk {
     /// What is pulled back to chamber a round: a slide, charging handle,
     /// bolt or cocking lever
     Rack,
+    /// A round loaded by itself: a cartridge or shell that the reload
+    /// animation of a weapon loaded round by round carries in
+    Round,
   };
 
   /**
@@ -33,8 +36,9 @@ namespace dxvk {
    * magazine (its release, latch or bay) or a magazine that is not
    * detachable (a revolver's moon clip). A rack part is one whose name
    * contains "slide", "bolt", "charginghandle", "lever" or "bar", unless it
-   * also names a barrel, a lock, a pin, a release or a trigger. A table of
-   * exceptions comes first. The ":n" suffix of a part's geometry is
+   * also names a barrel, a lock, a pin, a release or a trigger. A round is
+   * one whose name contains "shell", "bullet" or "round", unless it is a
+   * spent case ("empty", "casing"). A table of exceptions comes first. The ":n" suffix of a part's geometry is
    * ignored.
    *
    * \param [in] name Name of the object, with its "##" prefix
@@ -121,6 +125,8 @@ namespace dxvk {
     Dropped,
     /// The magazine was pushed home into the weapon
     Inserted,
+    /// The weapon took no more rounds: the round stays in the hand
+    Full,
   };
 
   /**
@@ -149,6 +155,10 @@ namespace dxvk {
     VrGameCameraPose head;
     /// The inventory holds rounds for the weapon
     bool             roundsHeld = false;
+    /// The weapon is loaded round by round: nothing is taken out of it,
+    /// and with no round in the hand (VrMagazineState::InWeapon) a press
+    /// behind the back takes a new one
+    bool             rounds = false;
   };
 
   /**
@@ -200,6 +210,11 @@ namespace dxvk {
    *
    * The game decides the clip: it is emptied on the way out and filled on
    * the way in by the caller.
+   *
+   * A weapon loaded round by round is loaded the same way, one round at a
+   * time, with the round in the place of the magazine: each one is taken
+   * behind the back and pushed into the loading port, and nothing comes
+   * out of the weapon.
    */
   class VrMagazineHand {
 
@@ -221,6 +236,15 @@ namespace dxvk {
      * (equipping, V.A.T.S., an ammunition swap...).
      */
     void reset();
+
+    /**
+     * \brief Gives back a round the weapon did not take
+     *
+     * After VrMagazineEvent::Inserted, when the game refuses the round
+     * (the weapon is full): it is in the hand again, and must be moved
+     * away from the way in before it can enter again.
+     */
+    void refuse();
 
     /**
      * \brief How far the hand is from where a press of the trigger takes the
@@ -257,6 +281,10 @@ namespace dxvk {
     VrVector3       m_acrossStart;
 
     void seat(const VrMagazineInput& input, float start);
+
+    VrMagazineEvent take(const VrMagazineInput& input, bool pressed, float toWay);
+
+    VrMagazineEvent drop(const VrMagazineInput& input);
 
   };
 
@@ -419,6 +447,30 @@ namespace dxvk {
     const VrMagazineSample*     samples,
           size_t                count,
           VrMagazineTiming&     timing);
+
+  /**
+   * \brief Finds where the game's reload animation puts a round
+   *
+   * The round, carried in by the left hand, stops in its place: the first
+   * time it stays within a few millimetres of where it is for a tenth of
+   * a second after having been three centimetres away from there. It
+   * comes from the direction it was in the last time before that it was
+   * about four centimetres out (less if it never went that far), which
+   * is also the time the hand holds it if it never carries it still.
+   * \c out is the first sample's time.
+   *
+   * \param [in] samples The round through the animation, in time order,
+   *    each relative to the same point of the weapon
+   * \param [in] count Number of samples
+   * \param [out] timing When the round goes in, and from where
+   * \param [out] place The sample where it is in its place
+   * \returns \c false if the round never comes to rest after moving in
+   */
+  bool vrFindRoundTiming(
+    const VrMagazineSample*     samples,
+          size_t                count,
+          VrMagazineTiming&     timing,
+          size_t&               place);
 
   /**
    * \brief Finds when the game's reload animation holds the magazine best

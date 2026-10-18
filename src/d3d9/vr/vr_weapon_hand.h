@@ -64,7 +64,11 @@ namespace dxvk {
    *   is in it, and hidden while it is neither in the hand nor in the
    *   weapon, see VrMagazineHand. The game's reload animation of the
    *   weapon tells how the hand holds it and along which direction it
-   *   comes out, see vrReadReloadAnimation.
+   *   comes out, see vrReadReloadAnimation. A weapon loaded round by
+   *   round (a tube or lever-action weapon, not a revolver) has the round
+   *   its reload animation carries in in the place of the magazine: it is
+   *   drawn in the left hand, shown even if the game hides it, and slides
+   *   into the place the animation puts it.
    * - The weapon's rack part (slide, charging handle, bolt) is drawn back
    *   while the left hand pulls it, see VrRackHand, and locked back while
    *   nothing is chambered, along the way the reload animation pulls it,
@@ -390,6 +394,8 @@ namespace dxvk {
     VrGameRotation   m_magazineGrip;
     bool             m_hasMagazineGrip = false;
     uint8_t*         m_hiddenMagazine = nullptr;
+    // A round the game hides, shown by the VR layer while it is held
+    uint8_t*         m_shownRound = nullptr;
     bool             m_loggedMagazine = false;
 
     // Where the magazine was last drawn out of the weapon, in the game

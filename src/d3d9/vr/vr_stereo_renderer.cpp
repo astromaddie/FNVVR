@@ -919,6 +919,7 @@ namespace dxvk {
         break;
 
       case VrMagazineEvent::NoRounds:
+      case VrMagazineEvent::Full:
       case VrMagazineEvent::Cleared:
       case VrMagazineEvent::Engaged:
         m_backend.applyHaptic(VrHand::Left, MagazineFaintHaptic, MagazineHapticDuration);

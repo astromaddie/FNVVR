@@ -35,6 +35,11 @@ namespace dxvk {
     // Barrels, and parts next to the rack part
     const char* const NotRackWords[] = { "barrel", "lock", "pin", "release", "trigger" };
 
+    const char* const RoundWords[] = { "shell", "bullet", "round" };
+
+    // Spent cases
+    const char* const NotRoundWords[] = { "empty", "casing" };
+
     template<size_t N>
     bool containsAny(const std::string& name, const char* const (&words)[N]) {
       for (const char* word : words) {
@@ -67,6 +72,9 @@ namespace dxvk {
 
     if (containsAny(part, RackWords) && !containsAny(part, NotRackWords))
       return VrWeaponPartKind::Rack;
+
+    if (containsAny(part, RoundWords) && !containsAny(part, NotRoundWords))
+      return VrWeaponPartKind::Round;
 
     return VrWeaponPartKind::None;
   }
@@ -128,6 +136,10 @@ namespace dxvk {
 
     switch (m_state) {
       case VrMagazineState::InWeapon:
+        // With no round in the hand, the next one is taken behind the back
+        if (input.rounds)
+          return take(input, pressed, toWay);
+
         if (input.active && pressed && !input.blocked && ejectDistance(input) <= m_reach.eject) {
           seat(input, along);
           m_canInsert = false;
@@ -136,10 +148,8 @@ namespace dxvk {
         break;
 
       case VrMagazineState::Seating: {
-        if (!input.grip || !input.active) {
-          m_state = VrMagazineState::Out;
-          return VrMagazineEvent::Dropped;
-        }
+        if (!input.grip || !input.active)
+          return drop(input);
 
         VrVector3 across = fromWell - input.axis * along;
         float slide = along - m_alongStart;
@@ -161,10 +171,8 @@ namespace dxvk {
       } break;
 
       case VrMagazineState::InHand:
-        if (!input.grip || !input.active) {
-          m_state = VrMagazineState::Out;
-          return VrMagazineEvent::Dropped;
-        }
+        if (!input.grip || !input.active)
+          return drop(input);
 
         if (toWay > m_reach.capture + m_reach.rearm)
           m_canEnter = true;
@@ -178,18 +186,30 @@ namespace dxvk {
         break;
 
       case VrMagazineState::Out:
-        if (input.active && pressed && vrIsAtMagazinePouch(input.head, input.hand, m_reach.pouch)) {
-          if (!input.roundsHeld)
-            return VrMagazineEvent::NoRounds;
-
-          m_state    = VrMagazineState::InHand;
-          m_canEnter = toWay > m_reach.capture + m_reach.rearm;
-          return VrMagazineEvent::Taken;
-        }
-        break;
+        return take(input, pressed, toWay);
     }
 
     return VrMagazineEvent::None;
+  }
+
+
+  VrMagazineEvent VrMagazineHand::take(const VrMagazineInput& input, bool pressed, float toWay) {
+    if (!input.active || !pressed || !vrIsAtMagazinePouch(input.head, input.hand, m_reach.pouch))
+      return VrMagazineEvent::None;
+
+    if (!input.roundsHeld)
+      return VrMagazineEvent::NoRounds;
+
+    m_state    = VrMagazineState::InHand;
+    m_canEnter = toWay > m_reach.capture + m_reach.rearm;
+    return VrMagazineEvent::Taken;
+  }
+
+
+  VrMagazineEvent VrMagazineHand::drop(const VrMagazineInput& input) {
+    // A round let go of is gone: nothing is missing from the weapon
+    m_state = input.rounds ? VrMagazineState::InWeapon : VrMagazineState::Out;
+    return VrMagazineEvent::Dropped;
   }
 
 
@@ -206,6 +226,14 @@ namespace dxvk {
 
   void VrMagazineHand::reset() {
     m_state     = VrMagazineState::InWeapon;
+    m_canInsert = false;
+    m_canEnter  = false;
+    m_seat      = 0.0f;
+  }
+
+
+  void VrMagazineHand::refuse() {
+    m_state     = VrMagazineState::InHand;
     m_canInsert = false;
     m_canEnter  = false;
     m_seat      = 0.0f;
@@ -310,6 +338,59 @@ namespace dxvk {
     timing.grip = samples[grip].time;
     timing.axis = samples[grip].offset * (1.0f / length);
     return true;
+  }
+
+
+  bool vrFindRoundTiming(
+    const VrMagazineSample*     samples,
+          size_t                count,
+          VrMagazineTiming&     timing,
+          size_t&               place) {
+    // Within this of its place the round is still, for this long
+    constexpr float Still     = 0.003f;
+    constexpr float StillTime = 0.1f;
+    // It must have come from this far
+    constexpr float Moved     = 0.03f;
+    // It is held this far out of its place before it goes in
+    constexpr float Held      = 0.04f;
+
+    for (size_t i = 1; i < count; i++) {
+      const VrVector3& at = samples[i].offset;
+
+      // Still from here on for long enough
+      size_t end = i;
+
+      while (end + 1 < count && vrLength(samples[end + 1].offset - at) <= Still)
+        end += 1;
+
+      if (samples[end].time - samples[i].time < StillTime)
+        continue;
+
+      float far = 0.0f;
+
+      for (size_t j = 0; j < i; j++)
+        far = std::max(far, vrLength(samples[j].offset - at));
+
+      if (far < Moved)
+        continue;
+
+      float reach = std::min(Held, far * 0.75f);
+      size_t grip = i - 1;
+
+      while (grip > 0 && vrLength(samples[grip].offset - at) < reach)
+        grip -= 1;
+
+      VrVector3 from = samples[grip].offset - at;
+
+      timing.out  = samples[0].time;
+      timing.in   = samples[i].time;
+      timing.grip = samples[grip].time;
+      timing.axis = from * (1.0f / vrLength(from));
+      place = i;
+      return true;
+    }
+
+    return false;
   }
 
 

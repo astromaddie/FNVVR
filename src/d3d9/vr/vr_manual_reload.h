@@ -90,6 +90,16 @@ namespace dxvk {
    * the way back. Racking clears the jam; without a rack part, taking
    * the magazine out does. In V.A.T.S. the game's own jam is kept.
    *
+   * Phase 5a (findings/reload.md §8.6): a weapon loaded round by round
+   * (tube or lever action, not a revolver) is loaded one round at a time:
+   * each round is taken behind the back and pushed into the loading port,
+   * where the game's own looping reload with no animation adds it, see
+   * VrMagazineHand. A full weapon refuses the round, which stays in the
+   * hand. When a weapon with a rack part (its lever) fires its last round,
+   * nothing is chambered: it does not fire until rounds are loaded and its
+   * action is worked. Its jams are held as above; one with nothing to rack
+   * keeps the game's jam.
+   *
    * The reloads may be started from the game's other threads, so the clip
    * left to watch is shared under a lock, and the weapon reloaded by hand
    * is atomic.
@@ -208,6 +218,13 @@ namespace dxvk {
     std::atomic<bool> m_jammed     = { false };
     std::atomic<bool> m_jamStarted = { false };
 
+    // The jams of the weapon reloaded by hand are held by the VR layer
+    std::atomic<bool> m_holdsJam   = { false };
+
+    // A weapon loaded round by round fired its last round and its action
+    // was not worked since: it does not fire, as if jammed
+    std::atomic<bool> m_unchambered = { false };
+
     // How far back the rack part rests, in metres
     float           m_rackRest = 0.0f;
 
@@ -222,6 +239,10 @@ namespace dxvk {
       const VrVector3& well, bool chambered);
 
     void rackWeapon(uint8_t* player, uint8_t* weapon, const VrReloadSound* sound, const VrVector3& rack);
+
+    bool loadRound(uint8_t* player, uint8_t* weapon, const VrReloadSound* sound, const VrVector3& port);
+
+    void cycleAction(uint8_t* player, uint8_t* weapon, const VrReloadSound* sound, const VrVector3& rack);
 
     bool fillClip(uint8_t* player, uint8_t* weapon);
 

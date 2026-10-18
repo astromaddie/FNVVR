@@ -275,7 +275,8 @@ namespace dxvk {
       float scale = readField<float>(part, VrGame::ObjectWorldScale);
       auto bound  = readField<const uint8_t*>(part, VrGame::ObjectWorldBound);
 
-      if (!bound || scale <= 0.0f)
+      // A part the game hides, such as a round, may have no bound
+      if (!bound || scale <= 0.0f || readField<float>(bound, sizeof(VrVector3)) <= 0.0f)
         return VrVector3();
 
       return vrTranspose(readRotation(part, VrGame::ObjectWorldRotation))
@@ -413,7 +414,8 @@ namespace dxvk {
         }
       }
 
-      int32_t out = vrFindNearestSound(times.data(), times.size(), timing.out, SoundWindow, -1);
+      int32_t out = animation.round ? -1
+        : vrFindNearestSound(times.data(), times.size(), timing.out, SoundWindow, -1);
       int32_t in  = vrFindNearestSound(times.data(), times.size(), timing.in,  SoundWindow, out);
 
       auto toSound = [&entries] (int32_t index) {
@@ -451,7 +453,7 @@ namespace dxvk {
         Logger::info(str::format("VR: Reload animation sound at ", times[i], " s: '",
           vrGameSoundFile(readField<const uint8_t*>(entries[i], VrGame::AnimGroupSoundForm)), "'",
           int32_t(i) == out  ? ", the magazine going out" : "",
-          int32_t(i) == in   ? ", the magazine going in" : "",
+          int32_t(i) == in   ? (animation.round ? ", the round going in" : ", the magazine going in") : "",
           int32_t(i) == rack ? ", the weapon chambering" : ""));
       }
     }
@@ -464,6 +466,7 @@ namespace dxvk {
           uint8_t*              root,
           uint8_t*              weapon,
           uint8_t*              magazine,
+          bool                  round,
           uint8_t*              rack,
           uint8_t*              leftHand,
           VrReloadAnimation&    animation) {
@@ -483,7 +486,7 @@ namespace dxvk {
     // The magazine in the weapon's frame through the animation, from where
     // it is at the start
     std::vector<VrMagazineSample> samples;
-    Pose rest;
+    std::vector<Pose> poses;
 
     for (uint32_t i = 0; begin + float(i) / SamplesPerSecond <= end; i++) {
       float time = begin + float(i) / SamplesPerSecond;
@@ -492,18 +495,26 @@ namespace dxvk {
       if (!tracks.toAncestor(magazine, weapon, time, pose))
         return false;
 
-      if (!i)
-        rest = pose;
-
-      samples.push_back({ time, (pose.translate - rest.translate) * (1.0f / VrGameUnitsPerMetre) });
+      VrVector3 offset = poses.empty() ? VrVector3() : (pose.translate - poses.front().translate);
+      samples.push_back({ time, offset * (1.0f / VrGameUnitsPerMetre) });
+      poses.push_back(pose);
     }
 
     VrMagazineTiming timing;
+    size_t place = 0;
 
-    if (!vrFindMagazineTiming(samples.data(), samples.size(), timing)) {
+    animation.round = round;
+
+    if (round ? !vrFindRoundTiming(samples.data(), samples.size(), timing, place)
+              : !vrFindMagazineTiming(samples.data(), samples.size(), timing)) {
       Logger::info(str::format("VR: The reload animation '", sequenceName ? sequenceName : "",
-        "' does not take the magazine out and put it back"));
+        round ? "' does not carry the round in" : "' does not take the magazine out and put it back"));
       return false;
+    }
+
+    if (round) {
+      animation.place.rotate    = poses[place].rotate;
+      animation.place.translate = poses[place].translate;
     }
 
     // The centre of the magazine's meshes in its own frame
@@ -532,7 +543,7 @@ namespace dxvk {
       // What the hand does through the animation, for findings/reload.md
       if (!inHand.empty() && !(inHand.size() % 3)) {
         const VrGameTransform& last = inHand.back();
-        Logger::info(str::format("VR: Reload animation at ", sample.time, " s: the magazine ",
+        Logger::info(str::format("VR: Reload animation at ", sample.time, " s: the ", round ? "round " : "magazine ",
           vrLength(sample.offset) * 100.0f, " cm out, its centre ", vrLength(transform.translate) * 100.0f,
           " cm from the left hand bone, moving ", vrLength(transform.translate - last.translate) * 100.0f,
           " cm and ", vrRotationAngle(last.rotate, transform.rotate) * 57.2957795f, " degrees in the hand"));
@@ -573,7 +584,7 @@ namespace dxvk {
     readSounds(sequence, timing, rackFrom, rackTo, animation);
 
     Logger::info(str::format("VR: Reload animation '", sequenceName ? sequenceName : "", "' from ", begin, " to ", end,
-      " s: the magazine goes out at ", timing.out, " s and in at ", timing.in, " s, along ",
+      round ? " s: the round is carried in from " : " s: the magazine goes out at ", timing.out, " s and in at ", timing.in, " s, along ",
       timing.axis.x, ", ", timing.axis.y, ", ", timing.axis.z, " in the weapon; the left hand holds it at ", timing.grip,
       carried < inHand.size() ? " s, where it carries it" : " s, before it goes in (the hand never carries it)",
       ", ", animation.magazineInHand.translate.x, ", ", animation.magazineInHand.translate.y, ", ",

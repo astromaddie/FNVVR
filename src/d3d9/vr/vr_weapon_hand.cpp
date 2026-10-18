@@ -1235,21 +1235,39 @@ namespace dxvk {
     // A magazine culled by the VR layer is still the magazine, even if a
     // culled part no longer has a bound to be found by
     bool hiddenFound = false;
+    bool shownFound  = false;
 
-    if (m_hiddenMagazine) {
+    if (m_hiddenMagazine || m_shownRound) {
       vrVisitGameObjects(reinterpret_cast<uintptr_t>(weapon), MaxModelDepth,
-        [this, &hiddenFound] (uintptr_t object, uint32_t) {
+        [this, &hiddenFound, &shownFound] (uintptr_t object, uint32_t) {
           hiddenFound |= object == reinterpret_cast<uintptr_t>(m_hiddenMagazine);
+          shownFound  |= object == reinterpret_cast<uintptr_t>(m_shownRound);
         });
     }
 
-    uint8_t* magazine = hiddenFound ? m_hiddenMagazine : vrFindWeaponPart(weapon, VrWeaponPartKind::Magazine);
+    // Weapons loaded round by round are loaded with the round their reload
+    // animation carries in; revolvers come later
+    bool round = form && readField<uint8_t>(form, VrGame::WeaponLoopingReload)
+      && readField<int8_t>(form, VrGame::WeaponAnimationType) != WeaponTypePistol;
+
+    uint8_t* magazine = hiddenFound ? m_hiddenMagazine
+      : vrFindWeaponPart(weapon, round ? VrWeaponPartKind::Round : VrWeaponPartKind::Magazine);
 
     if (m_hiddenMagazine && (!hiddenFound || m_magazineState != VrMagazineState::Out)) {
       if (hiddenFound)
         field<uint32_t>(m_hiddenMagazine, VrGame::ObjectFlags) &= ~VrGame::ObjectFlagAppCulled;
 
       m_hiddenMagazine = nullptr;
+    }
+
+    // A round the game hides is shown only while the hand holds it
+    bool drawn = m_magazineState == VrMagazineState::InHand || m_magazineState == VrMagazineState::Seating;
+
+    if (m_shownRound && (!shownFound || m_shownRound != magazine || !drawn)) {
+      if (shownFound)
+        field<uint32_t>(m_shownRound, VrGame::ObjectFlags) |= VrGame::ObjectFlagAppCulled;
+
+      m_shownRound = nullptr;
     }
 
     if (!magazine)
@@ -1275,22 +1293,33 @@ namespace dxvk {
       } else {
         m_reloadTries += 1;
         m_reloadWait   = ReloadAnimationRetryDraws;
-        m_hasReloadAnimation = vrReadReloadAnimation(player(), root, weapon, magazine,
+        m_hasReloadAnimation = vrReadReloadAnimation(player(), root, weapon, magazine, round,
           vrFindWeaponPart(weapon, VrWeaponPartKind::Rack), leftHand, m_reloadAnimation);
       }
     }
 
     // Where the game draws the magazine in the weapon. Its bound is only
-    // read while the game draws it there.
+    // read while the game draws it there. A round is put where the reload
+    // animation leaves it, which may not be where its part rests.
     VrGameRotation rotation = readRotation(magazine, VrGame::ObjectWorldRotation);
     VrVector3 position      = readVector(magazine, VrGame::ObjectWorldTranslation);
     float scale             = field<float>(magazine, VrGame::ObjectWorldScale);
 
-    auto bound = field<const uint8_t*>(magazine, VrGame::ObjectWorldBound);
+    auto bound = field<uint8_t*>(magazine, VrGame::ObjectWorldBound);
+    bool shown = !(field<uint32_t>(magazine, VrGame::ObjectFlags) & VrGame::ObjectFlagAppCulled);
 
-    if (m_magazineState == VrMagazineState::InWeapon && bound && scale > 0.0f) {
+    if (m_magazineState == VrMagazineState::InWeapon && bound && scale > 0.0f && shown
+     && field<float>(bound, sizeof(VrVector3)) > 0.0f) {
       m_magazineCentre    = vrTranspose(rotation) * (readVector(bound, 0) - position) * (1.0f / scale);
       m_hasMagazineCentre = true;
+    }
+
+    if (round && m_hasReloadAnimation && m_reloadAnimation.round) {
+      VrGameRotation weaponRotation = readRotation(weapon, VrGame::ObjectWorldRotation);
+
+      rotation = weaponRotation * m_reloadAnimation.place.rotate;
+      position = readVector(weapon, VrGame::ObjectWorldTranslation)
+        + weaponRotation * m_reloadAnimation.place.translate * field<float>(weapon, VrGame::ObjectWorldScale);
     }
 
     VrVector3 centre = m_hasMagazineCentre ? m_magazineCentre : VrVector3();
@@ -1328,7 +1357,8 @@ namespace dxvk {
 
     if (!m_loggedMagazine) {
       auto name = field<const char*>(magazine, VrGame::ObjectName);
-      Logger::info(str::format("VR: The weapon's magazine is '", name ? name : "", "'"));
+      Logger::info(str::format(round ? "VR: The weapon is loaded round by round with '" : "VR: The weapon's magazine is '",
+        name ? name : "", "'"));
       m_loggedMagazine = true;
     }
 
@@ -1390,6 +1420,14 @@ namespace dxvk {
     m_magazineDrawn.rotate    = pose.rotate;
     m_magazineDrawn.translate = pose.translate + shift;
     m_hasMagazineDrawn        = true;
+
+    uint32_t& flags = field<uint32_t>(magazine, VrGame::ObjectFlags);
+
+    if (round && (flags & VrGame::ObjectFlagAppCulled)) {
+      flags &= ~VrGame::ObjectFlagAppCulled;
+      m_shownRound = magazine;
+    }
+
     return magazine;
   }
 

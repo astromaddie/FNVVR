@@ -115,7 +115,6 @@ TEST_CASE(parts_next_to_the_magazine_are_not_magazines) {
 TEST_CASE(other_parts_are_not_magazines) {
   CHECK(vrClassifyWeaponPart("##Cover") == VrWeaponPartKind::None);
   CHECK(vrClassifyWeaponPart("##Cylinder") == VrWeaponPartKind::None);
-  CHECK(vrClassifyWeaponPart("##Shells") == VrWeaponPartKind::None);
   CHECK(vrClassifyWeaponPart("Clip") == VrWeaponPartKind::None);
   CHECK(vrClassifyWeaponPart("ProjectileNode") == VrWeaponPartKind::None);
   CHECK(vrClassifyWeaponPart(nullptr) == VrWeaponPartKind::None);
@@ -619,4 +618,144 @@ TEST_CASE(rack_motion_needs_the_part_to_move) {
   VrRackMotion motion;
   CHECK(!vrFindRackMotion(samples.data(), samples.size(), motion));
   CHECK(!vrFindRackMotion(samples.data(), 0, motion));
+}
+
+
+TEST_CASE(rounds_are_found_by_keyword) {
+  CHECK(vrClassifyWeaponPart("##357Shell") == VrWeaponPartKind::Round);
+  CHECK(vrClassifyWeaponPart("##Shell") == VrWeaponPartKind::Round);
+  CHECK(vrClassifyWeaponPart("##Shells") == VrWeaponPartKind::Round);
+  CHECK(vrClassifyWeaponPart("##ShellFull") == VrWeaponPartKind::Round);
+  CHECK(vrClassifyWeaponPart("##Bullet1") == VrWeaponPartKind::Round);
+  CHECK(vrClassifyWeaponPart("##NifRound") == VrWeaponPartKind::Round);
+  CHECK(vrClassifyWeaponPart("##ShellEmpty") == VrWeaponPartKind::None);
+  CHECK(vrClassifyWeaponPart("##swmCasing") == VrWeaponPartKind::None);
+  CHECK(vrClassifyWeaponPart("##SpeedLoaderBullets") == VrWeaponPartKind::Round);
+}
+
+
+namespace {
+
+  VrMagazineInput roundInput(bool grip, const VrVector3& hand) {
+    VrMagazineInput in = input(grip, hand);
+    in.rounds = true;
+    return in;
+  }
+
+}
+
+
+TEST_CASE(rounds_are_taken_one_by_one) {
+  VrMagazineHand rounds;
+
+  // Nothing comes out of the weapon
+  CHECK(rounds.update(roundInput(true, nearWell(0.0f))) == VrMagazineEvent::None);
+  CHECK(rounds.state() == VrMagazineState::InWeapon);
+  rounds.update(roundInput(false, nearWell(0.0f)));
+
+  for (int i = 0; i < 2; i++) {
+    CHECK(rounds.update(roundInput(true, Pouch)) == VrMagazineEvent::Taken);
+    CHECK(rounds.state() == VrMagazineState::InHand);
+    CHECK(rounds.update(roundInput(true, belowWell(0.2f))) == VrMagazineEvent::None);
+    CHECK(rounds.update(roundInput(true, belowWell(0.06f))) == VrMagazineEvent::Engaged);
+    CHECK(rounds.update(roundInput(true, belowWell(0.03f))) == VrMagazineEvent::Inserted);
+    CHECK(rounds.state() == VrMagazineState::InWeapon);
+
+    // Still held: the next round needs another press behind the back
+    CHECK(rounds.update(roundInput(true, Pouch)) == VrMagazineEvent::None);
+    rounds.update(roundInput(false, Pouch));
+  }
+}
+
+
+TEST_CASE(round_let_go_of_leaves_the_hand_empty) {
+  VrMagazineHand rounds;
+
+  rounds.update(roundInput(true, Pouch));
+  CHECK(rounds.update(roundInput(false, Pouch)) == VrMagazineEvent::Dropped);
+  CHECK(rounds.state() == VrMagazineState::InWeapon);
+  CHECK(rounds.update(roundInput(true, Pouch)) == VrMagazineEvent::Taken);
+}
+
+
+TEST_CASE(round_refused_stays_in_the_hand) {
+  VrMagazineHand rounds;
+
+  rounds.update(roundInput(true, Pouch));
+  rounds.update(roundInput(true, belowWell(0.2f)));
+  rounds.update(roundInput(true, belowWell(0.06f)));
+  CHECK(rounds.update(roundInput(true, belowWell(0.03f))) == VrMagazineEvent::Inserted);
+
+  rounds.refuse();
+  CHECK(rounds.state() == VrMagazineState::InHand);
+
+  // It must leave the way in before it can enter again
+  CHECK(rounds.update(roundInput(true, belowWell(0.05f))) == VrMagazineEvent::None);
+  CHECK(rounds.update(roundInput(true, belowWell(0.25f))) == VrMagazineEvent::None);
+  CHECK(rounds.update(roundInput(true, belowWell(0.06f))) == VrMagazineEvent::Engaged);
+}
+
+
+TEST_CASE(round_timing_finds_its_place) {
+  // As the lever-action shotgun: carried in from 8 cm out along +z over
+  // 0.3 s, still for 0.7 s, then moved away again (hidden by the game)
+  std::vector<VrMagazineSample> samples;
+
+  for (int32_t i = 0; i <= 90; i++) {
+    float t = float(i) / 60.0f;
+    float out = 0.0f;
+
+    if (t < 0.3f)
+      out = 0.08f * (0.3f - t) / 0.3f;
+    else if (t > 1.0f)
+      out = -0.02f * (t - 1.0f) / 0.5f;
+
+    samples.push_back({ t, { 0.1f, 0.05f, out } });
+  }
+
+  VrMagazineTiming timing;
+  size_t place = 0;
+  CHECK(vrFindRoundTiming(samples.data(), samples.size(), timing, place));
+  CHECK(std::abs(timing.in - 0.3f) < 0.02f);
+  CHECK(std::abs(samples[place].offset.z) < 0.003f);
+  CHECK(timing.axis.z > 0.999f);
+  CHECK(timing.grip > 0.1f && timing.grip < 0.17f);
+}
+
+
+TEST_CASE(round_timing_from_a_round_that_starts_in_its_place) {
+  // As the .357 revolver: at its place, out 13 cm, back at 0.33 s
+  std::vector<VrMagazineSample> samples;
+
+  for (int32_t i = 0; i <= 60; i++) {
+    float t = float(i) / 60.0f;
+    float out = 0.0f;
+
+    if (t > 0.0f && t < 0.33f)
+      out = 0.13f * std::sin(3.14159265f * t / 0.33f);
+
+    samples.push_back({ t, { -out, 0.0f, 0.0f } });
+  }
+
+  VrMagazineTiming timing;
+  size_t place = 0;
+  CHECK(vrFindRoundTiming(samples.data(), samples.size(), timing, place));
+  CHECK(timing.in > 0.3f && timing.in < 0.36f);
+  CHECK(timing.axis.x < -0.999f);
+}
+
+
+TEST_CASE(round_timing_needs_the_round_to_move_in_and_stop) {
+  std::vector<VrMagazineSample> still, moving;
+
+  for (int32_t i = 0; i <= 30; i++) {
+    float t = float(i) / 60.0f;
+    still.push_back({ t, { } });
+    moving.push_back({ t, { 0.0f, 0.0f, 0.01f * float(i) } });
+  }
+
+  VrMagazineTiming timing;
+  size_t place = 0;
+  CHECK(!vrFindRoundTiming(still.data(), still.size(), timing, place));
+  CHECK(!vrFindRoundTiming(moving.data(), moving.size(), timing, place));
 }

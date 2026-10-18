@@ -65,6 +65,13 @@ namespace dxvk {
    * times, see findings/reload.md §8.2.
    */
   struct VrReloadAnimation {
+    /// The part is a round loaded by itself (VrWeaponPartKind::Round),
+    /// read from the animation that loads one round
+    bool                    round = false;
+    /// Where a round is in its place, in the weapon node's frame (the
+    /// round part's own place in the model may be elsewhere), valid if
+    /// \c round
+    VrGameTransform         place;
     /// The magazine part in the left hand bone's frame while the hand
     /// holds the new magazine, in units of the hand's scale
     VrGameTransform         magazineInHand;
@@ -74,7 +81,8 @@ namespace dxvk {
     /// Direction the magazine comes out of the weapon along, unit, in the
     /// weapon node's frame
     VrVector3               axis;
-    /// The magazine going out and going in
+    /// The magazine going out and going in (a round has no sound going
+    /// out)
     VrReloadSound           out;
     VrReloadSound           in;
     /// How the animation racks the weapon, valid if \c hasRack
@@ -94,24 +102,33 @@ namespace dxvk {
    * weapon is racked, and the sound nearest the time it is furthest back
    * is the chambering.
    *
+   * For a weapon loaded round by round, the animation is the one that
+   * loads one round, and the part is the round it carries in: where it
+   * comes to rest is its place, the direction it comes from the way in,
+   * and it has no sound going out.
+   *
    * Only called on the game's main thread, while the animation is not
    * played. Evaluating a track keeps nothing but its last time.
    *
    * \param [in] player The PlayerCharacter
    * \param [in] root Root of the first-person model
    * \param [in] weapon The weapon node in it
-   * \param [in] magazine The magazine part below the weapon node
+   * \param [in] magazine The magazine part below the weapon node, or the
+   *    round part
+   * \param [in] round The part is a round
    * \param [in] rack The rack part below the weapon node, or \c nullptr
    * \param [in] leftHand The left hand bone
    * \param [out] animation What the animation does
    * \returns \c false if the weapon has no first-person reload animation
-   *    that takes the magazine out and puts it back
+   *    that takes the magazine out and puts it back, or that carries the
+   *    round in
    */
   bool vrReadReloadAnimation(
           uint8_t*              player,
           uint8_t*              root,
           uint8_t*              weapon,
           uint8_t*              magazine,
+          bool                  round,
           uint8_t*              rack,
           uint8_t*              leftHand,
           VrReloadAnimation&    animation);
