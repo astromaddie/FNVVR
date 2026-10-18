@@ -1782,6 +1782,86 @@ namespace dxvk {
     constexpr uint32_t  SoundFlagIgnoreTimescale   = 0x200000;
     constexpr uint32_t  SoundFlagAnimationDriven   = 0x40000000;
 
+    /**
+     * The V.A.T.S. highlight, reproduced for the weapon parts to work, see
+     * findings/reload.md §9.1. DrawWorld_ImageSpace (0x00875FD0) calls
+     * BSShaderManager::RenderImageSpaceEffects (__cdecl: renderer, target,
+     * destination) at ImageSpaceEffectsCallSite. V.A.T.S. keeps its mask in
+     * the NiPointer at VatsMaskTexture while it draws one.
+     *
+     * The mask, a rendered texture of type TEX_INTERFACE_VATS, is borrowed
+     * from and returned to the texture manager (GetTextureManager, __cdecl;
+     * BorrowRenderedTexture, __thiscall: renderer, type, three zeros;
+     * ReturnRenderedTexture, __thiscall: the texture). It is drawn into
+     * between StartOffscreen (__cdecl: clear flags, the texture's group from
+     * GetGroup, __thiscall) and StopOffscreen (__cdecl), with the renderer's
+     * background colour cleared (vtable slots, __thiscall with a NiColorA*),
+     * colour writes off for the depth pass (SetColorWriteEnable, __cdecl:
+     * mask, 1; RestoreColorWriteEnable, __cdecl: 1), both lighting shaders
+     * writing alpha, and the V.A.T.S. manager's accumulator and the shader
+     * manager in the constant alpha render mode (__thiscall and __cdecl).
+     * The nodes go through the world scene graph's culling process
+     * (WorldSceneGraph and SceneGraphCuller above; SetAccumulator,
+     * SetCullMode, __thiscall) into AccumulateScene (__cdecl: camera, node,
+     * culler) and RenderScene (__cdecl: camera, accumulator, 0).
+     *
+     * The manager (Interface::GetVATSEffect, __cdecl) sets the interface
+     * image space effect up from the mask in PrepareHighlightEffect
+     * (__thiscall: 0, mask, 0, 0; ret 0x10), from its own distortion,
+     * pulse and burst; ShutdownEffect (__cdecl) turns it off again. The
+     * effect's statics the fork sets afterwards are below, and the
+     * settings' values are at SettingValue. The texture manager's calls are
+     * the interface texture's, above.
+     */
+    constexpr uintptr_t ImageSpaceEffectsCallSite  = 0x00876136;
+    constexpr uintptr_t RenderImageSpaceEffects    = 0x00B55AC0;
+    constexpr uintptr_t VatsMaskTexture            = 0x011DEB38;
+    constexpr uintptr_t GetVatsEffect              = 0x00705910;
+    constexpr uintptr_t VatsPrepareHighlight       = 0x00801BB0;
+    constexpr uintptr_t VatsShutdownEffect         = 0x008019D0;
+    constexpr uintptr_t VatsEffectAccumulator      = 0x2CC;
+    constexpr uint32_t  TextureInterfaceVats       = 0x2F;
+    constexpr uintptr_t RenderedTextureGetGroup    = 0x00B6B260;
+    constexpr uintptr_t StartOffscreen             = 0x00B6B8D0;
+    constexpr uintptr_t StopOffscreen              = 0x00B6B790;
+    constexpr uint32_t  ClearAll                   = 7;
+    constexpr uintptr_t RendererGetBackgroundSlot  = 0xB4;
+    constexpr uintptr_t RendererSetBackgroundSlot  = 0xAC;
+    constexpr uintptr_t SetColorWriteEnable        = 0x00B98380;
+    constexpr uintptr_t RestoreColorWriteEnable    = 0x004ECED0;
+    constexpr uintptr_t Lighting30AlwaysWriteAlpha = 0x01200BF6;
+    constexpr uintptr_t ShadowLightAlwaysWriteAlpha = 0x011FD86C;
+    constexpr uintptr_t AccumulatorSetRenderMode   = 0x004A1040;
+    constexpr uintptr_t ShaderManagerSetRenderMode = 0x00B4F450;
+    constexpr uint32_t  RenderModeNormal           = 0;
+    constexpr uint32_t  RenderModeConstAlpha       = 8;
+    constexpr uintptr_t CullingSetAccumulator      = 0x004A0FD0;
+    constexpr uintptr_t CullingSetCullMode         = 0x004FB0B0;
+    constexpr uint32_t  CullModeNormal             = 0;
+    constexpr uint32_t  CullModeAllPass            = 1;
+    constexpr uintptr_t AccumulateScene            = 0x00B6BEE0;
+    constexpr uintptr_t RenderScene                = 0x00B6C0D0;
+    constexpr uintptr_t InterfaceBlurIntensity     = 0x011AE5EC;
+    constexpr uintptr_t InterfaceBlurRadius        = 0x011AE5E8;
+    constexpr uintptr_t InterfacePulse             = 0x011AE5FC;
+    constexpr uintptr_t InterfaceDistortVertical   = 0x012007F0;
+    constexpr uintptr_t InterfaceDistortHorizontal = 0x011AE5F8;
+    constexpr uintptr_t InterfaceDistortPosition   = 0x012007F4;
+    constexpr uintptr_t SettingBlurIntensityVats   = 0x011DB714;
+    constexpr uintptr_t SettingBlurRadiusVats      = 0x011DB720;
+    constexpr uintptr_t SettingTargetPulseRateVats = 0x011DB78C;
+
+    /**
+     * First bytes of the functions above, compared between the GOG database
+     * and the Steam executable (2026-10-18) and checked before any is
+     * called: PrepareHighlightEffect, ShutdownEffect, AccumulateScene and
+     * RenderScene (BorrowRenderedTexture's is above).
+     */
+    constexpr uint8_t VatsPrepareHighlightPrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x14, 0x89, 0x4D, 0xEC, 0x51, 0xD9, 0xEE };
+    constexpr uint8_t VatsShutdownEffectPrologue[]   = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x0C, 0x89, 0x4D, 0xFC, 0x6A, 0x00, 0x6A };
+    constexpr uint8_t AccumulateScenePrologue[]      = { 0x6A, 0xFF, 0x68, 0x18, 0xAD, 0xF2, 0x00, 0x64, 0xA1, 0x00, 0x00, 0x00 };
+    constexpr uint8_t RenderScenePrologue[]          = { 0x8B, 0x0D, 0x48, 0x47, 0x1F, 0x01, 0x56, 0x8B, 0x74, 0x24, 0x0C, 0x85 };
+
   }
 
 }

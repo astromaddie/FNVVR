@@ -1030,3 +1030,133 @@ TEST_CASE(full_weapon_keeps_the_handful_until_the_hand_moves_away) {
   CHECK(loader.update(handfulInput(true, nearPort(0.2f)), Loop) == VrRoundEvent::None);
   CHECK(loader.update(handfulInput(true, nearPort(0.03f)), Loop) == VrRoundEvent::Started);
 }
+
+
+TEST_CASE(loading_port_cap_is_a_gate) {
+  CHECK(vrClassifyWeaponPart("##ReloadCap") == VrWeaponPartKind::Gate);
+  CHECK(vrClassifyWeaponPart("##CRLever") == VrWeaponPartKind::Rack);
+}
+
+
+namespace {
+
+  VrReloadSituation situation(VrReloadKind kind, int32_t clip) {
+    VrReloadSituation s;
+    s.kind = kind;
+    s.clip = clip;
+    return s;
+  }
+
+}
+
+
+TEST_CASE(nothing_glows_on_a_loaded_magazine_weapon) {
+  VrReloadSituation s = situation(VrReloadKind::Magazine, 12);
+  s.hasRack = true;
+  CHECK(!vrPartsToWork(s).any());
+}
+
+
+TEST_CASE(empty_magazine_glows) {
+  VrReloadSituation s = situation(VrReloadKind::Magazine, 0);
+  s.hasRack = true;
+
+  VrReloadParts parts = vrPartsToWork(s);
+  CHECK(parts.magazine);
+  CHECK(!parts.rack);
+
+  // Once out, nothing of it is left in the weapon to glow
+  s.magazine = VrMagazineState::InHand;
+  CHECK(!vrPartsToWork(s).any());
+  s.magazine = VrMagazineState::Out;
+  CHECK(!vrPartsToWork(s).any());
+}
+
+
+TEST_CASE(new_magazine_with_nothing_chambered_asks_for_the_rack) {
+  VrReloadSituation s = situation(VrReloadKind::Magazine, 0);
+  s.hasRack     = true;
+  s.pendingFill = true;
+
+  VrReloadParts parts = vrPartsToWork(s);
+  CHECK(parts.rack);
+  CHECK(!parts.magazine);
+}
+
+
+TEST_CASE(jam_glows_on_the_rack_or_the_cell) {
+  VrReloadSituation s = situation(VrReloadKind::Magazine, 5);
+  s.jammed  = true;
+  s.hasRack = true;
+  CHECK(vrPartsToWork(s).rack);
+  CHECK(!vrPartsToWork(s).magazine);
+
+  // An energy weapon with no rack part is cleared by taking its cell out
+  s.hasRack = false;
+  CHECK(vrPartsToWork(s).magazine);
+  CHECK(!vrPartsToWork(s).rack);
+}
+
+
+TEST_CASE(port_glows_while_rounds_are_held_until_full) {
+  VrReloadSituation s = situation(VrReloadKind::Rounds, 3);
+  s.hasRack = true;
+  CHECK(!vrPartsToWork(s).any());
+
+  s.rounds = VrRoundState::Holding;
+  CHECK(vrPartsToWork(s).port);
+
+  s.rounds = VrRoundState::Loading;
+  CHECK(vrPartsToWork(s).port);
+
+  s.full = true;
+  CHECK(!vrPartsToWork(s).port);
+}
+
+
+TEST_CASE(lever_glows_once_rounds_are_loaded_after_the_last_shot) {
+  VrReloadSituation s = situation(VrReloadKind::Rounds, 0);
+  s.hasRack     = true;
+  s.unchambered = true;
+  CHECK(!vrPartsToWork(s).rack);
+
+  s.clip = 2;
+  CHECK(vrPartsToWork(s).rack);
+
+  // Not while the hand holds rounds: it cannot take the lever then
+  s.rounds = VrRoundState::Holding;
+  CHECK(!vrPartsToWork(s).rack);
+  CHECK(vrPartsToWork(s).port);
+}
+
+
+TEST_CASE(break_action_glows_to_open_then_to_close) {
+  VrReloadSituation s = situation(VrReloadKind::BreakAction, 0);
+  CHECK(vrPartsToWork(s).hinge);
+
+  // Open and empty: the shells are needed, nothing glows
+  s.actionOpen = true;
+  s.magazine   = VrMagazineState::Out;
+  CHECK(!vrPartsToWork(s).any());
+
+  s.magazine = VrMagazineState::Seating;
+  CHECK(!vrPartsToWork(s).any());
+
+  // Loaded and open: close it
+  s.magazine = VrMagazineState::InWeapon;
+  s.clip     = 2;
+  CHECK(vrPartsToWork(s).hinge);
+
+  // Closed and loaded
+  s.actionOpen = false;
+  CHECK(!vrPartsToWork(s).any());
+
+  s.jammed = true;
+  CHECK(vrPartsToWork(s).hinge);
+}
+
+
+TEST_CASE(cylinders_and_weapons_not_reloaded_by_hand_never_glow) {
+  CHECK(!vrPartsToWork(situation(VrReloadKind::Cylinder, 0)).any());
+  CHECK(!vrPartsToWork(situation(VrReloadKind::None, 0)).any());
+}

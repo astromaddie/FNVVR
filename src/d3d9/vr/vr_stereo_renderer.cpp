@@ -293,6 +293,14 @@ namespace dxvk {
     if (!renderer->m_manualReload)
       Logger::info("VR: The player's reload was not found, the weapons are reloaded as in the game");
 
+    if (renderer->m_manualReload && renderer->m_weaponHand) {
+      renderer->m_partHighlight = VrPartHighlight::install(
+        [self] (uint8_t*& root, std::vector<uint8_t*>& parts) { return self->m_weaponHand->takeHighlight(root, parts); });
+
+      if (!renderer->m_partHighlight)
+        Logger::info("VR: The game's V.A.T.S. highlight was not found, the weapon's parts to work do not glow");
+    }
+
     if (developer.enabled) {
       renderer->m_developerMode = VrDeveloperMode::install(developer.weaponTypes);
 
@@ -989,6 +997,7 @@ namespace dxvk {
       m_weaponHand->setRack(m_manualReload->rackHeld(), m_manualReload->rackPull(), m_manualReload->rackRest());
       m_weaponHand->setActionOpen(m_manualReload->actionOpen());
       m_weaponHand->setRoundLoop(m_manualReload->roundState(), m_manualReload->roundTime());
+      m_weaponHand->setHighlight(vrPartsToWork(m_manualReload->situation()));
     }
   }
 

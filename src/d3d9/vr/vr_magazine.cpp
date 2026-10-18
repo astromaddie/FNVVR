@@ -44,7 +44,9 @@ namespace dxvk {
 
     const char* const LoaderWords[] = { "speedloader" };
 
-    const char* const GateWords[] = { "gate" };
+    // A loading gate, and the cap over the loading port of the Cowboy
+    // repeater, the brush gun and the trail carbine
+    const char* const GateWords[] = { "gate", "reloadcap" };
 
     // What a cylinder holds besides rounds: spent cases
     const char* const CartridgeWords[] = { "shell", "bullet", "casing" };
@@ -696,6 +698,46 @@ namespace dxvk {
     }
 
     return nearest;
+  }
+
+
+  VrReloadParts vrPartsToWork(const VrReloadSituation& situation) {
+    VrReloadParts parts;
+
+    // The hand is busy with what it reloads the weapon with
+    bool handBusy = situation.magazine == VrMagazineState::InHand
+                 || situation.magazine == VrMagazineState::Seating;
+    bool empty    = situation.clip <= 0;
+
+    switch (situation.kind) {
+      case VrReloadKind::Magazine:
+        if (situation.magazine != VrMagazineState::InWeapon)
+          break;
+
+        parts.rack     = situation.hasRack && (situation.jammed || situation.pendingFill);
+        parts.magazine = !parts.rack && (empty || (situation.jammed && !situation.hasRack));
+        break;
+
+      case VrReloadKind::Rounds: {
+        bool holding = situation.rounds != VrRoundState::Empty;
+
+        parts.port = holding && !situation.full;
+        parts.rack = !holding && situation.hasRack
+          && (situation.jammed || (situation.unchambered && !empty));
+      } break;
+
+      case VrReloadKind::BreakAction:
+        parts.hinge = situation.actionOpen
+          ? situation.magazine == VrMagazineState::InWeapon && !empty
+          : !handBusy && (empty || situation.jammed);
+        break;
+
+      case VrReloadKind::Cylinder:
+      case VrReloadKind::None:
+        break;
+    }
+
+    return parts;
   }
 
 }

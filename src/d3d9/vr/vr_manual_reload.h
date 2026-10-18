@@ -235,6 +235,12 @@ namespace dxvk {
       return m_rackRest;
     }
 
+    /**
+     * \brief Where the reload of the weapon in the hand stands, for the
+     *    parts that glow, see vrPartsToWork
+     */
+    VrReloadSituation situation() const;
+
   private:
 
     VrManualReload() = default;
@@ -297,6 +303,15 @@ namespace dxvk {
 
     // How far back the rack part rests, in metres
     float           m_rackRest = 0.0f;
+
+    // How the weapon in the hand is reloaded and whether it has a rack
+    // part, as seen at the last frame
+    VrReloadKind    m_kind = VrReloadKind::None;
+    bool            m_hasRackPart = false;
+
+    // Clip count at which the weapon in the hand last refused a round, or
+    // -1: it is full while its clip holds that many
+    int32_t         m_refusedClip = -1;
 
     void clearJam(const uint8_t* weapon, const char* how);
 

@@ -34,7 +34,8 @@ namespace dxvk {
     /// A revolver's speed loader, which its reload animation carries into
     /// the swung out cylinder
     Loader,
-    /// The loading gate of a revolver loaded round by round
+    /// The loading gate of a revolver loaded round by round, or the cap
+    /// over the loading port of a rifle loaded round by round
     Gate,
   };
 
@@ -923,5 +924,79 @@ namespace dxvk {
           float                 to,
           float                 window,
           int32_t               exclude);
+
+  /**
+   * \brief How the weapon in the hand is reloaded by hand
+   */
+  enum class VrReloadKind {
+    /// It is not reloaded by hand
+    None,
+    /// With a detachable magazine or cell
+    Magazine,
+    /// Round by round, through a loading port or a revolver's loading gate
+    Rounds,
+    /// A break action, opened with the left hand
+    BreakAction,
+    /// A revolver whose cylinder swings out
+    Cylinder,
+  };
+
+  /**
+   * \brief Where the reload of the weapon in the hand stands
+   */
+  struct VrReloadSituation {
+    VrReloadKind     kind     = VrReloadKind::None;
+    /// The weapon has a rack part (slide, bolt, lever, pump)
+    bool             hasRack  = false;
+    /// Where its magazine, shells or speed loader are
+    VrMagazineState  magazine = VrMagazineState::InWeapon;
+    /// Where the handful of rounds is
+    VrRoundState     rounds   = VrRoundState::Empty;
+    /// Rounds in the clip, or -1 without a clip
+    int32_t          clip     = 0;
+    /// The weapon refused a round at this clip count
+    bool             full     = false;
+    /// A magazine went in with nothing chambered: racking fills the clip
+    bool             pendingFill = false;
+    /// The weapon is jammed
+    bool             jammed   = false;
+    /// The weapon fired its last round and its action was not worked since
+    bool             unchambered = false;
+    /// The action (a break action) is open
+    bool             actionOpen = false;
+  };
+
+  /**
+   * \brief Parts of the weapon the next reload gesture works
+   *
+   * They glow as V.A.T.S. highlights a limb, see findings/reload.md §9.
+   */
+  struct VrReloadParts {
+    /// The magazine or cell, to take out
+    bool magazine = false;
+    /// The rack part, to work
+    bool rack     = false;
+    /// The barrel of a break action, to open or close
+    bool hinge    = false;
+    /// The loading port or gate, where the rounds in the hand go
+    bool port     = false;
+
+    bool any() const {
+      return magazine || rack || hinge || port;
+    }
+  };
+
+  /**
+   * \brief Tells which parts of the weapon the reload needs worked
+   *
+   * Whenever the weapon needs it, wherever the left hand is (user,
+   * 2026-10-18): an empty or jammed magazine is taken out, a weapon with
+   * nothing chambered or jammed is racked, an empty break action is opened
+   * and a loaded one closed, and the port takes the rounds in the hand
+   * until the weapon is full. A hand that holds a magazine, shells or
+   * rounds is not asked to rack, and a cylinder that swings out is worked
+   * with the right wrist, so nothing of it glows.
+   */
+  VrReloadParts vrPartsToWork(const VrReloadSituation& situation);
 
 }

@@ -318,6 +318,28 @@ namespace dxvk {
     }
 
     /**
+     * \brief Sets the parts of the weapon in the hand that glow
+     *
+     * Applied when the model is next drawn, see vrPartsToWork. A part
+     * glows only if the weapon has it and it is drawn.
+     */
+    void setHighlight(const VrReloadParts& parts) {
+      m_highlight = parts;
+    }
+
+    /**
+     * \brief Takes the parts to glow in the eye being drawn
+     *
+     * Each placement of the model, once per eye, finds them again in the
+     * model, so they are only taken once.
+     *
+     * \param [out] root The first-person model's root
+     * \param [out] parts The parts that glow
+     * \returns \c false if nothing glows in this eye
+     */
+    bool takeHighlight(uint8_t*& root, std::vector<uint8_t*>& parts);
+
+    /**
      * \brief Direction the barrel of a break action points along from its
      *    breech
      *
@@ -487,6 +509,12 @@ namespace dxvk {
     VrGameTransform  m_magazineFrom;
     float            m_magazineBlend = 1.0f;
 
+    // Parts of the weapon to glow, and those found at the last placement
+    // of the model, in the model below its root
+    VrReloadParts         m_highlight;
+    uint8_t*              m_highlightRoot = nullptr;
+    std::vector<uint8_t*> m_highlightParts;
+
     // The left hand loading a weapon round by round: where its handful
     // is, the time in the loading loop, and where a round enters the port
     VrRoundState     m_roundState = VrRoundState::Empty;
@@ -631,6 +659,8 @@ namespace dxvk {
     void updateGrip(GripKind kind, bool canHold, const VrVector3& support);
 
     void measureBlade(const uint8_t* weapon, const VrGameCameraPose& hand);
+
+    void findHighlight(uint8_t* root, uint8_t* weapon, uint8_t* hinge, bool swing);
 
     /**
      * \brief A part of the weapon the left hand holds as the reload

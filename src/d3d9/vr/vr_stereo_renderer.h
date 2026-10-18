@@ -26,6 +26,7 @@
 #include "vr_melee_swing.h"
 #include "vr_menu_scenes.h"
 #include "vr_manual_reload.h"
+#include "vr_part_highlight.h"
 #include "vr_npc_gaze.h"
 #include "vr_pipboy_animation.h"
 #include "vr_weapon_drawn.h"
@@ -364,6 +365,9 @@ namespace dxvk {
 
     // Reloading with the hands
     std::unique_ptr<VrManualReload> m_manualReload;
+
+    // Makes the parts of the weapon the reload needs worked glow
+    std::unique_ptr<VrPartHighlight> m_partHighlight;
 
     // God mode, weapons and ammunition, for testing (d3d9.vrDeveloperMode)
     std::unique_ptr<VrDeveloperMode> m_developerMode;
