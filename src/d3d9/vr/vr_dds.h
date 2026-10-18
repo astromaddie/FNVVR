@@ -36,4 +36,15 @@ namespace dxvk {
    */
   bool vrDecodeDds(const uint8_t* data, size_t size, VrImage& image);
 
+  /**
+   * \brief Samples one channel of an image with bilinear filtering
+   *
+   * \param [in] image The image
+   * \param [in] x Horizontal position in pixels, pixel centres at whole numbers
+   * \param [in] y Vertical position in pixels
+   * \param [in] shift Bit position of the channel: 24 alpha, 16 red, 8 green, 0 blue
+   * \returns The channel's value, from 0 to 255
+   */
+  float vrSampleChannel(const VrImage& image, float x, float y, uint32_t shift);
+
 }

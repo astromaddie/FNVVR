@@ -165,6 +165,36 @@ namespace dxvk {
           float             unitsPerMetre);
 
   /**
+   * \brief Finds where a point of a menu's own scene is seen in the room
+   *
+   * The reverse of the mapping of vrComputeMenuSceneCameraPose: a point
+   * drawn in the menu's space appears there to the eyes.
+   *
+   * \param [in] anchor Where the target is shown, in tracking space
+   * \param [in] target Point of the menu's space shown at the anchor
+   * \param [in] unitsPerMetre Menu units per metre of the room
+   * \param [in] point Point of the menu's space
+   * \returns The point in tracking space
+   */
+  VrVector3 vrComputeMenuScenePointInRoom(
+    const VrPose&           anchor,
+    const VrVector3&        target,
+          float             unitsPerMetre,
+    const VrVector3&        point);
+
+  /**
+   * \brief Finds which way a direction of a menu's own scene points in the room
+   *
+   * \param [in] anchor Where the menu's scene is shown, see
+   *    vrComputeMenuScenePointInRoom
+   * \param [in] direction Direction in the menu's space
+   * \returns The direction in tracking space, of the same length
+   */
+  VrVector3 vrComputeMenuSceneDirectionInRoom(
+    const VrPose&           anchor,
+    const VrVector3&        direction);
+
+  /**
    * \brief Field of view that covers both eyes, widened by a margin
    *
    * Each side takes the wider of the two eyes and the margin, and is

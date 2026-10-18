@@ -216,6 +216,7 @@ namespace dxvk {
     }
 
     std::unique_ptr<VrConsoleScreen> screen(new VrConsoleScreen(device));
+    screen->m_keyboard = VrTerminalKeyboardModel::create();
     g_screen = screen.get();
     return screen;
   }
@@ -232,8 +233,18 @@ namespace dxvk {
   bool VrConsoleScreen::show(const VrPose& anchor, float width) {
     m_anchor = anchor;
 
-    if (m_shown)
+    if (m_shown && !m_closing)
       return true;
+
+    // Opened again while folding: the keyboard unfolds again
+    if (m_shown) {
+      m_closing = false;
+
+      if (m_keyboard)
+        m_keyboard->attach(field<void*>(m_menu, VrGame::TerminalModel));
+
+      return true;
+    }
 
     uint8_t* manager = interfaceManager();
 
@@ -255,7 +266,52 @@ namespace dxvk {
     m_debugTextCulled = false;
     hideDebugText();
 
-    Logger::info("VR: The console is shown on the game's terminal");
+    if (m_keyboard && m_keyboard->attach(field<void*>(m_menu, VrGame::TerminalModel)))
+      Logger::info("VR: The console is shown on the game's terminal, with the keyboard of the world's terminals");
+    else
+      Logger::info("VR: The console is shown on the game's terminal");
+
+    return true;
+  }
+
+
+  void VrConsoleScreen::close() {
+    if (!hasKeyboard()) {
+      hide();
+      return;
+    }
+
+    m_keyboard->close();
+    m_closing = true;
+  }
+
+
+  void VrConsoleScreen::update(float dt) {
+    if (!m_shown || !m_keyboard)
+      return;
+
+    auto previous = m_keyboard->state();
+    m_keyboard->update(dt);
+
+    VrPanelPlacement plate;
+
+    if (previous == VrTerminalKeyboardModel::State::Opening && keyboardPlacement(plate)) {
+      Logger::info(str::format("VR: The console's keyboard is unfolded, its keys ", plate.width, " m by ",
+        plate.height, " m at (", plate.pose.position.x, ", ", plate.pose.position.y, ", ", plate.pose.position.z, ")"));
+    }
+
+    if (m_closing && !hasKeyboard())
+      hide();
+  }
+
+
+  bool VrConsoleScreen::keyboardPlacement(VrPanelPlacement& placement) const {
+    if (!m_shown || m_closing || !m_keyboard
+     || m_keyboard->state() != VrTerminalKeyboardModel::State::Open)
+      return false;
+
+    placement = VrTerminalKeyboardPlate::placement(m_keyboard->keyboardTransform(),
+      m_anchor, m_target, m_unitsPerMetre);
     return true;
   }
 
@@ -263,6 +319,11 @@ namespace dxvk {
   void VrConsoleScreen::hide() {
     if (!m_shown)
       return;
+
+    if (m_keyboard)
+      m_keyboard->detach();
+
+    m_closing = false;
 
     method<MethodFn>(m_menu, VrGame::TerminalOnMenuClose)(m_menu);
 
@@ -336,12 +397,19 @@ namespace dxvk {
     void*  gameTexture = texture;
     texture = m_texture;
 
+    // The keyboard is drawn with the console's copy of the terminal texture
+    if (m_keyboard)
+      m_keyboard->beginDraw(m_keyboardTexture);
+
     // The terminal is nearer than the world, which never hides it. The
     // game's renderer is between its world and interface passes here, so
     // the device clears the depth buffer the eye is drawn with.
     m_device->Clear(0, nullptr, D3DCLEAR_ZBUFFER, 0, 1.0f, 0);
     game<MainFn>(VrGame::DrawRenderedMenuParent)(main);
     game<ScreenFn>(VrGame::RenderPipBoy)(main, field<void*>(m_menu, VrGame::TerminalScreen), renderer);
+
+    if (m_keyboard)
+      m_keyboard->endDraw();
 
     texture = gameTexture;
     current = previous;

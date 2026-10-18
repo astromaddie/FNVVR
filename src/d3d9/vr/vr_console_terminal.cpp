@@ -40,20 +40,20 @@ namespace dxvk {
 
   VrConsoleTerminal::VrConsoleTerminal(IDirect3DDevice9* device, IVRBackend& backend)
   : m_device(device), m_backend(backend), m_screen(VrConsoleScreen::install(device)) {
-    m_placement.width  = KeyboardWidth;
-    m_placement.height = KeyboardWidth * float(VrTerminalImage::Height) / float(VrTerminalImage::Width);
+    m_flatPlacement.width  = KeyboardWidth;
+    m_flatPlacement.height = KeyboardWidth * float(VrTerminalImage::Height) / float(VrTerminalImage::Width);
   }
 
 
   VrConsoleTerminal::~VrConsoleTerminal() {
-    if (m_shown)
+    if (m_panelShown)
       m_backend.hidePanel(VrPanelId::Terminal);
   }
 
 
   void VrConsoleTerminal::update(const VrPose& head, bool stereo, const VrPointerState& pointer, bool back, float dt) {
     if (m_failed || !VrGameConsole::isOpen()) {
-      hide();
+      close(stereo, dt);
       return;
     }
 
@@ -63,8 +63,9 @@ namespace dxvk {
       return;
     }
 
-    if (!m_shown) {
+    if (!m_active) {
       place(head);
+      m_active    = true;
       m_button    = pointer.button;
       m_blinkTime = 0.0f;
       m_pressTime = 0.0f;
@@ -99,20 +100,17 @@ namespace dxvk {
 
     m_view.hoveredKey = hovered;
 
-    updateScreen(stereo);
+    updateScreen(stereo, dt);
 
     bool changed = m_image.update(m_view);
+    bool shown   = m_screen && m_screen->hasKeyboard() && !m_modelFailed
+      ? showModelKeyboard(changed)
+      : showFlatKeyboard(changed);
 
-    if ((changed || !m_shown) && !upload()) {
+    if (!shown) {
       Logger::err("VR: Failed to draw the console's keyboard, the console is not shown in the headset");
       m_failed = true;
-      hide();
-      return;
-    }
-
-    if (changed || !m_shown) {
-      m_shown = VrD3D9Bridge::submitPanel(m_device, m_backend, VrPanelId::Terminal,
-        m_texture.ptr(), m_placement.pose, KeyboardWidth, VrPanelAnchor::Room);
+      close(stereo, dt);
     }
   }
 
@@ -123,15 +121,73 @@ namespace dxvk {
   }
 
 
-  void VrConsoleTerminal::hide() {
-    if (m_screen)
-      m_screen->hide();
+  void VrConsoleTerminal::close(bool stereo, float dt) {
+    hideFlatKeyboard();
+    m_active = false;
 
-    if (!m_shown)
+    if (!m_screen)
+      return;
+
+    // The keyboard folds before the terminal disappears, where it is seen
+    if (stereo && !m_failed) {
+      m_screen->close();
+      m_screen->update(dt);
+    } else {
+      m_screen->hide();
+    }
+  }
+
+
+  bool VrConsoleTerminal::showFlatKeyboard(bool changed) {
+    m_placement    = m_flatPlacement;
+    m_keyTopsDrawn = false;
+
+    if (!changed && m_panelShown)
+      return true;
+
+    if (!upload())
+      return false;
+
+    m_panelShown = VrD3D9Bridge::submitPanel(m_device, m_backend, VrPanelId::Terminal,
+      m_texture.ptr(), m_placement.pose, KeyboardWidth, VrPanelAnchor::Room);
+    return true;
+  }
+
+
+  void VrConsoleTerminal::hideFlatKeyboard() {
+    if (!m_panelShown)
       return;
 
     m_backend.hidePanel(VrPanelId::Terminal);
-    m_shown = false;
+    m_panelShown = false;
+  }
+
+
+  bool VrConsoleTerminal::showModelKeyboard(bool changed) {
+    hideFlatKeyboard();
+
+    if (m_modelTexture == nullptr && !createModelTexture()) {
+      // The flat keyboard is shown from the next frame on
+      Logger::err("VR: Failed to create the texture of the console's 3D keyboard");
+      m_modelFailed = true;
+      m_screen->hide();
+      m_placement = m_flatPlacement;
+      return true;
+    }
+
+    if ((changed || !m_keyTopsDrawn) && !uploadKeyTops())
+      return false;
+
+    m_keyTopsDrawn = true;
+    m_screen->setKeyboardTexture(m_modelTexture.ptr());
+
+    // The lasers only type on the unfolded keyboard
+    if (!m_screen->keyboardPlacement(m_placement)) {
+      m_placement.width  = 0.0f;
+      m_placement.height = 0.0f;
+    }
+
+    return true;
   }
 
 
@@ -146,6 +202,9 @@ namespace dxvk {
       && readImage(KeyboardTexture, keyboard)
       && m_image.initialize(keyboard, metrics, glyphs);
 
+    if (m_loaded && !m_modelImage.initialize(keyboard))
+      m_modelFailed = true;
+
     return m_loaded;
   }
 
@@ -159,7 +218,8 @@ namespace dxvk {
     VrVector3 centre = vrComputePanelPose(head, KeyboardDistance).position;
     centre.y -= KeyboardDrop;
 
-    m_placement.pose = vrComputePanelPoseTowards(head, centre, KeyboardDistance, MaxPitch);
+    m_flatPlacement.pose = vrComputePanelPoseTowards(head, centre, KeyboardDistance, MaxPitch);
+    m_placement = m_flatPlacement;
   }
 
 
@@ -204,7 +264,7 @@ namespace dxvk {
   }
 
 
-  void VrConsoleTerminal::updateScreen(bool stereo) {
+  void VrConsoleTerminal::updateScreen(bool stereo, float dt) {
     if (!m_screen)
       return;
 
@@ -212,6 +272,8 @@ namespace dxvk {
       m_screen->hide();
       return;
     }
+
+    m_screen->update(dt);
 
     std::vector<std::string> lines;
     VrGameConsole::readOutput(lines, VrTerminalTextLayout::OutputLines);
@@ -268,6 +330,76 @@ namespace dxvk {
     m_staging->UnlockRect(0);
 
     return SUCCEEDED(m_device->UpdateTexture(m_staging.ptr(), m_texture.ptr()));
+  }
+
+
+  bool VrConsoleTerminal::createModelTexture() {
+    std::vector<uint32_t> pixels;
+    m_modelImage.drawBase(pixels);
+
+    UINT width  = m_modelImage.width();
+    UINT height = m_modelImage.height();
+
+    // Filled once through a staging texture of the whole size, which is
+    // let go: only the key tops change afterwards
+    Com<IDirect3DTexture9> staging;
+    D3DLOCKED_RECT locked = { };
+
+    bool created = SUCCEEDED(m_device->CreateTexture(width, height, 1, 0, D3DFMT_A8R8G8B8,
+          D3DPOOL_SYSTEMMEM, &staging, nullptr))
+      && SUCCEEDED(m_device->CreateTexture(width, height, 1, 0, D3DFMT_A8R8G8B8,
+          D3DPOOL_DEFAULT, &m_modelTexture, nullptr))
+      && SUCCEEDED(m_device->CreateOffscreenPlainSurface(VrTerminalTexture::KeyTopsWidth,
+          VrTerminalTexture::KeyTopsHeight, D3DFMT_A8R8G8B8, D3DPOOL_SYSTEMMEM, &m_keyTopsStaging, nullptr))
+      && SUCCEEDED(staging->LockRect(0, &locked, nullptr, 0));
+
+    if (created) {
+      for (uint32_t y = 0; y < height; y++) {
+        std::memcpy(static_cast<uint8_t*>(locked.pBits) + y * locked.Pitch,
+          &pixels[size_t(y) * width], width * sizeof(uint32_t));
+      }
+
+      staging->UnlockRect(0);
+      created = SUCCEEDED(m_device->UpdateTexture(staging.ptr(), m_modelTexture.ptr()));
+    }
+
+    if (!created) {
+      m_modelTexture   = nullptr;
+      m_keyTopsStaging = nullptr;
+      return false;
+    }
+
+    m_keyTopsDrawn = false;
+    return true;
+  }
+
+
+  bool VrConsoleTerminal::uploadKeyTops() {
+    constexpr uint32_t Width  = VrTerminalTexture::KeyTopsWidth;
+    constexpr uint32_t Height = VrTerminalTexture::KeyTopsHeight;
+
+    std::vector<uint32_t> pixels(size_t(Width) * Height);
+    m_modelImage.drawKeyTops(m_image, pixels.data());
+
+    D3DLOCKED_RECT locked = { };
+
+    if (FAILED(m_keyTopsStaging->LockRect(&locked, nullptr, 0)))
+      return false;
+
+    for (uint32_t y = 0; y < Height; y++) {
+      std::memcpy(static_cast<uint8_t*>(locked.pBits) + y * locked.Pitch,
+        &pixels[size_t(y) * Width], Width * sizeof(uint32_t));
+    }
+
+    m_keyTopsStaging->UnlockRect();
+
+    Com<IDirect3DSurface9> target;
+
+    if (FAILED(m_modelTexture->GetSurfaceLevel(0, &target)))
+      return false;
+
+    POINT point = { LONG(VrTerminalTexture::KeyTopsX), LONG(VrTerminalTexture::KeyTopsY) };
+    return SUCCEEDED(m_device->UpdateSurface(m_keyTopsStaging.ptr(), nullptr, target.ptr(), &point));
   }
 
 }

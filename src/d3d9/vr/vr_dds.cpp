@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstring>
 
 #include "vr_dds.h"
@@ -246,6 +247,29 @@ namespace dxvk {
       image = VrImage();
 
     return decoded;
+  }
+
+
+
+  float vrSampleChannel(const VrImage& image, float x, float y, uint32_t shift) {
+    auto channel = [shift] (uint32_t pixel) {
+      return float((pixel >> shift) & 0xFF);
+    };
+
+    x = std::clamp(x, 0.0f, float(image.width  - 1));
+    y = std::clamp(y, 0.0f, float(image.height - 1));
+
+    uint32_t x0 = uint32_t(x);
+    uint32_t y0 = uint32_t(y);
+    uint32_t x1 = std::min(x0 + 1, image.width  - 1);
+    uint32_t y1 = std::min(y0 + 1, image.height - 1);
+
+    float fx = x - float(x0);
+    float fy = y - float(y0);
+
+    float top    = channel(image.at(x0, y0)) * (1.0f - fx) + channel(image.at(x1, y0)) * fx;
+    float bottom = channel(image.at(x0, y1)) * (1.0f - fx) + channel(image.at(x1, y1)) * fx;
+    return top * (1.0f - fy) + bottom * fy;
   }
 
 }

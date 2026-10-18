@@ -7,6 +7,8 @@
 #include "../d3d9_include.h"
 
 #include "vr_game_camera.h"
+#include "vr_menu_pointer.h"
+#include "vr_terminal_keyboard_model.h"
 #include "vr_terminal_text.h"
 #include "vr_types.h"
 
@@ -24,6 +26,10 @@ namespace dxvk {
    * its screen once per frame where the game draws a terminal's screen,
    * and its model and screen in each eye with that eye's camera, where
    * the interface pass starts. See findings/console.md §6.
+   *
+   * The world terminal's keyboard hangs below the monitor
+   * (VrTerminalKeyboardModel): it unfolds when the terminal is shown and
+   * folds when the console closes, before the terminal disappears.
    *
    * Only used on the game's main thread.
    */
@@ -60,12 +66,55 @@ namespace dxvk {
     bool show(const VrPose& anchor, float width);
 
     /**
+     * \brief Folds the keyboard, then hides the terminal
+     *
+     * Hides it at once when there is no keyboard to fold. The terminal
+     * keeps its last text meanwhile.
+     */
+    void close();
+
+    /**
      * \brief Hides the terminal until it is shown again
      */
     void hide();
 
     bool isShown() const {
       return m_shown;
+    }
+
+    /**
+     * \brief Whether the 3D keyboard hangs below the monitor
+     */
+    bool hasKeyboard() const {
+      return m_keyboard && m_keyboard->state() != VrTerminalKeyboardModel::State::Detached;
+    }
+
+    /**
+     * \brief Plays the keyboard's animation
+     *
+     * Called once per frame while the terminal is shown or folding.
+     *
+     * \param [in] dt Duration of a frame in seconds
+     */
+    void update(float dt);
+
+    /**
+     * \brief Where the keyboard's plate is, once unfolded
+     *
+     * \param [out] placement The keyboard rectangle of the terminal
+     *    texture (VrTerminalKeyboard::Plate) in the room
+     * \returns \c false while the keyboard is not unfolded
+     */
+    bool keyboardPlacement(VrPanelPlacement& placement) const;
+
+    /**
+     * \brief Sets the texture the keyboard is drawn with
+     *
+     * \param [in] texture Copy of the terminal texture with the keyboard's
+     *    keys, see VrTerminalTexture
+     */
+    void setKeyboardTexture(IDirect3DBaseTexture9* texture) {
+      m_keyboardTexture = texture;
     }
 
     /**
@@ -115,6 +164,10 @@ namespace dxvk {
     VrGameCamera m_camera;
 
     VrTerminalScreenText m_text;
+
+    std::unique_ptr<VrTerminalKeyboardModel> m_keyboard;
+    IDirect3DBaseTexture9* m_keyboardTexture = nullptr;
+    bool         m_closing   = false;
 
     static void __cdecl offscreenHook();
 

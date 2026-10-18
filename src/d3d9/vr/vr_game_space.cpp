@@ -130,6 +130,24 @@ namespace dxvk {
   }
 
 
+  VrVector3 vrComputeMenuScenePointInRoom(
+    const VrPose&           anchor,
+    const VrVector3&        target,
+          float             unitsPerMetre,
+    const VrVector3&        point) {
+    VrVector3 offset = (point - target) * (1.0f / unitsPerMetre);
+    return vrTransformPoint(anchor, VrVector3 { offset.z, offset.y, -offset.x });
+  }
+
+
+  VrVector3 vrComputeMenuSceneDirectionInRoom(
+    const VrPose&           anchor,
+    const VrVector3&        direction) {
+    // The menu's +Z, +Y and -X are the anchor's right, up and back axes
+    return vrRotate(anchor.orientation, VrVector3 { direction.z, direction.y, -direction.x });
+  }
+
+
   VrFov vrComputeCullingFov(const VrFov& left, const VrFov& right, float margin) {
     // Left and down are negative angles
     VrFov fov;

@@ -9,6 +9,7 @@
 #include "../vr_terminal_image.h"
 #include "../vr_terminal_keyboard.h"
 #include "../vr_terminal_text.h"
+#include "../vr_terminal_texture.h"
 
 using namespace dxvk;
 
@@ -375,6 +376,69 @@ TEST_CASE(terminal_image_needs_the_whole_plate) {
   VrTerminalImage image;
   CHECK(!image.initialize(small, font, solidGlyphs()));
   CHECK(!image.update(VrTerminalKeyboardView()));
+}
+
+
+TEST_CASE(terminal_texture_lays_the_keys_on_the_enlarged_texture) {
+  std::vector<uint8_t> file = fontFile(14.0f, 20.0f);
+  VrBitmapFont font;
+  font.parse(file.data(), file.size());
+
+  // A texture whose alpha the keyboard must keep
+  VrImage texture = terminalTexture();
+
+  for (uint32_t& texel : texture.pixels)
+    texel = (texel & 0x00FFFFFFu) | 0x80000000u;
+
+  VrTerminalImage image;
+  CHECK(image.initialize(terminalTexture(), font, solidGlyphs()));
+
+  VrTerminalKeyboardView view;
+  view.hoveredKey = findChar('q');
+  image.update(view);
+
+  VrTerminalTexture copy;
+  CHECK(copy.initialize(texture));
+  CHECK(copy.width()  == 512 * VrTerminalTexture::Scale);
+  CHECK(copy.height() == 512 * VrTerminalTexture::Scale);
+
+  std::vector<uint32_t> base;
+  copy.drawBase(base);
+  CHECK(base.size() == size_t(copy.width()) * copy.height());
+
+  // The middle of a texel keeps its colour
+  constexpr uint32_t Scale = VrTerminalTexture::Scale;
+  uint32_t texelX = 100, texelY = 340;
+  CHECK(base[size_t(texelY * Scale + Scale / 2) * copy.width() + texelX * Scale + Scale / 2]
+    == texture.at(texelX, texelY));
+
+  std::vector<uint32_t> keyTops(size_t(VrTerminalTexture::KeyTopsWidth) * VrTerminalTexture::KeyTopsHeight);
+  copy.drawKeyTops(image, keyTops.data());
+
+  // On the lit key the keyboard's colours, with the texture's alpha
+  const VrTerminalKey& key = keyAt(findChar('q'));
+  uint32_t x = uint32_t(0.5f * (key.rect.left + key.rect.right)) * Scale;
+  uint32_t y = uint32_t(0.5f * (key.rect.top + key.rect.bottom)) * Scale;
+
+  uint32_t drawn = keyTops[size_t(y - VrTerminalTexture::KeyTopsY) * VrTerminalTexture::KeyTopsWidth
+    + x - VrTerminalTexture::KeyTopsX];
+  uint32_t keyboard = image.pixels()[size_t(y - uint32_t(VrTerminalKeyboard::Plate.top) * Scale) * VrTerminalImage::Width
+    + x - uint32_t(VrTerminalKeyboard::Plate.left) * Scale];
+
+  CHECK((drawn >> 24) == 0x80);
+  CHECK((drawn & 0x00FFFFFFu) == (keyboard & 0x00FFFFFFu));
+  CHECK((drawn & 0x00FFFFFFu) != (texture.at(x / Scale, y / Scale) & 0x00FFFFFFu));
+}
+
+
+TEST_CASE(terminal_texture_needs_the_whole_plate) {
+  VrImage small;
+  small.width  = 256;
+  small.height = 256;
+  small.pixels.assign(256 * 256, 0xFF808080u);
+
+  VrTerminalTexture copy;
+  CHECK(!copy.initialize(small));
 }
 
 

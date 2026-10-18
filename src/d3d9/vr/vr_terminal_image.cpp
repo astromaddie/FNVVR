@@ -18,16 +18,16 @@ namespace dxvk {
 
     // Size of a key's name: one character in font pixels per image
     // pixel, longer names shrunk to fit the key
-    constexpr float CharScale      = 1.5f;
-    constexpr float NameScale      = 0.9f;
-    constexpr float MinScale       = 0.55f;
+    constexpr float CharScale      = 1.2f;
+    constexpr float NameScale      = 0.72f;
+    constexpr float MinScale       = 0.44f;
     constexpr float NameWidthShare = 0.85f;
 
     // A lit key is brightened, a pressed key darkened and its name moved down
     constexpr float HoverGain    = 1.3f;
     constexpr float HoverOffset  = 24.0f;
     constexpr float PressedGain  = 0.7f;
-    constexpr float PressedShift = 2.0f;
+    constexpr float PressedShift = 1.6f;
 
     // The orange light while Shift or Caps Lock is on: its core, then a
     // glow fading out to GlowExtent times its radius
@@ -48,24 +48,6 @@ namespace dxvk {
 
     uint32_t luminance(uint32_t pixel) {
       return (channel(pixel, 16) * 3 + channel(pixel, 8) * 6 + channel(pixel, 0)) / 10;
-    }
-
-    // Bilinear sample of one channel at a point in pixels of the image
-    float sampleChannel(const VrImage& image, float x, float y, uint32_t shift) {
-      x = std::clamp(x, 0.0f, float(image.width  - 1));
-      y = std::clamp(y, 0.0f, float(image.height - 1));
-
-      uint32_t x0 = uint32_t(x);
-      uint32_t y0 = uint32_t(y);
-      uint32_t x1 = std::min(x0 + 1, image.width  - 1);
-      uint32_t y1 = std::min(y0 + 1, image.height - 1);
-
-      float fx = x - float(x0);
-      float fy = y - float(y0);
-
-      float top    = float(channel(image.at(x0, y0), shift)) * (1.0f - fx) + float(channel(image.at(x1, y0), shift)) * fx;
-      float bottom = float(channel(image.at(x0, y1), shift)) * (1.0f - fx) + float(channel(image.at(x1, y1), shift)) * fx;
-      return top * (1.0f - fy) + bottom * fy;
     }
 
   }
@@ -189,13 +171,13 @@ namespace dxvk {
         float tx = (float(x) + 0.5f) / float(Scale) - 0.5f;
         float ty = (float(y) + 0.5f) / float(Scale) - 0.5f;
 
-        float a = sampleChannel(premultiplied, tx, ty, 24);
+        float a = vrSampleChannel(premultiplied, tx, ty, 24);
         float k = a > 0.0f ? 255.0f / a : 0.0f;
 
         m_plate[size_t(y) * Width + x] = pack(a,
-          sampleChannel(premultiplied, tx, ty, 16) * k,
-          sampleChannel(premultiplied, tx, ty, 8)  * k,
-          sampleChannel(premultiplied, tx, ty, 0)  * k);
+          vrSampleChannel(premultiplied, tx, ty, 16) * k,
+          vrSampleChannel(premultiplied, tx, ty, 8)  * k,
+          vrSampleChannel(premultiplied, tx, ty, 0)  * k);
       }
     }
   }
@@ -293,7 +275,7 @@ namespace dxvk {
         float u = (glyph.u0 + gx * (glyph.u1 - glyph.u0)) * atlasWidth  - 0.5f;
         float v = (glyph.v0 + gy * (glyph.v1 - glyph.v0)) * atlasHeight - 0.5f;
 
-        float coverage = sampleChannel(m_glyphs, u, v, 24) / 255.0f * InkOpacity;
+        float coverage = vrSampleChannel(m_glyphs, u, v, 24) / 255.0f * InkOpacity;
 
         if (coverage <= 0.0f)
           continue;

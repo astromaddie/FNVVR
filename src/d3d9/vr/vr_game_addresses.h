@@ -1226,6 +1226,105 @@ namespace dxvk {
     constexpr uintptr_t ComputersHeaderUseSite         = 0x00758DCF;
 
     /**
+     * The world terminal's keyboard on the console's monitor, see
+     * findings/console.md §11. Found in the GOG database, bytes compared
+     * with the Steam executable in Ghidra.
+     *
+     * - ModelLoaderLoadFile: ModelLoader::LoadFile, __thiscall on the
+     *   loader (ModelLoaderSingleton, loaded at ModelLoaderSingletonUseSite):
+     *   path, LOD fade type, assign shaders, 0, keep UVs, no use count;
+     *   returns the model's cached root (NiNode*), which the references of
+     *   the world may use directly, so it is cloned;
+     * - ObjectClone: NiObject::Clone, __thiscall: cloning process, built by
+     *   CloningProcessConstruct (__thiscall: scale) on CloningProcessSize
+     *   bytes and destroyed by CloningProcessDestruct (__thiscall);
+     * - ObjectGetController: NiObjectNET::GetController, __thiscall: RTTI,
+     *   with NiControllerManager's (ControllerManagerRtti, pushed at
+     *   ControllerManagerRttiUseSite);
+     * - NiControllerManager: its flags (NiTimeController, ControllerActive
+     *   set as NiTimeController::SetActive does), its sequences (NiTArray:
+     *   items, used size);
+     *   ActivateSequence (__thiscall: sequence, priority, start over,
+     *   weight, ease in, time sync sequence), DeactivateSequence
+     *   (__thiscall: sequence, ease out), DeactivateAll (__thiscall: ease
+     *   out); StartAnimations (__cdecl: object) starts every controller;
+     * - NiControllerSequence: name, end key time, last scaled time, offset
+     *   (SequenceOffset above; -FLT_MAX starts it at the next update);
+     * - PlaySequenceSounds: __cdecl (sequence), plays the sequence's
+     *   "Sound:" text keys its last update went past, as the interface's
+     *   3D tiles do; true once a sequence that does not loop has ended;
+     * - NiNode vtable: AttachChild (__thiscall: child, first free slot),
+     *   DetachChild without result (__thiscall: child);
+     * - NiAVObject: its collision object (NiPointer); NiUpdateData (time,
+     *   then flags, the first one "update the controllers"), UpdateDataSize
+     *   bytes, for ObjectUpdate;
+     * - BSFadeNode: FadeNodeSetRange (__thiscall: near, far),
+     *   FadeNodeTurnOff (__thiscall) and the LOD multiplier type, set as
+     *   FORenderedTerminal sets them on its monitor (LodMultRenderedMenu);
+     * - ShadowSceneNodeAddObject and ShadowSceneNodeRemoveObject
+     *   (__thiscall: node) link a model's geometry with the lights of a
+     *   shadow scene node, here the menu scene's
+     *   (ShadowSceneNodes[MenuShadowSceneNode]);
+     * - shader property (ObjectGetProperty, ShadePropertyType): its
+     *   textures (array of texture arrays, [0][0] the base map), a texture's
+     *   renderer data, and the Direct3D texture in it.
+     */
+    constexpr uintptr_t ModelLoaderLoadFile           = 0x00447080;
+    constexpr uintptr_t ModelLoaderSingleton          = 0x011C3B3C;
+    constexpr uintptr_t ModelLoaderSingletonUseSite   = 0x007FEF24;
+    constexpr uintptr_t ObjectClone                   = 0x00A5D2C0;
+    constexpr uintptr_t CloningProcessConstruct       = 0x004AD050;
+    constexpr uintptr_t CloningProcessDestruct        = 0x004AD270;
+    constexpr size_t    CloningProcessSize            = 0x1C;
+    constexpr uintptr_t ObjectGetController           = 0x00A5C570;
+    constexpr uintptr_t ControllerManagerRtti         = 0x011F36AC;
+    constexpr uintptr_t ControllerManagerRttiUseSite  = 0x00732818;
+    constexpr uintptr_t ControllerManagerSequences    = 0x38;
+    constexpr uintptr_t ControllerManagerSequenceCount = 0x3E;
+    constexpr uintptr_t ControllerFlags               = 0x08;
+    constexpr uint16_t  ControllerActive              = 0x8;
+    constexpr uintptr_t ActivateSequence              = 0x0047AAB0;
+    constexpr uintptr_t DeactivateSequence            = 0x0047B220;
+    constexpr uintptr_t DeactivateAllSequences        = 0x0048FEF0;
+    constexpr uintptr_t StartAnimations               = 0x00A6D2D0;
+    constexpr uintptr_t SequenceName                  = 0x08;
+    constexpr uintptr_t SequenceLastScaledTime        = 0x3C;
+    constexpr uintptr_t PlaySequenceSounds            = 0x00707970;
+    constexpr uintptr_t NodeAttachChildSlot           = 0xDC;
+    constexpr uintptr_t NodeDetachChildSlot           = 0xE8;
+    constexpr uintptr_t ObjectCollision               = 0x1C;
+    constexpr size_t    UpdateDataSize                = 0x0C;
+    constexpr uintptr_t FadeNodeSetRange              = 0x00B4DFD0;
+    constexpr uintptr_t FadeNodeTurnOff               = 0x0054B800;
+    constexpr uintptr_t FadeNodeLodMultType           = 0xC4;
+    constexpr uint32_t  LodMultRenderedMenu           = 8;
+    constexpr uintptr_t ShadowSceneNodeAddObject      = 0x00B5EEB0;
+    constexpr uintptr_t ShadowSceneNodeRemoveObject   = 0x00B5B1C0;
+    constexpr uint32_t  MenuShadowSceneNode           = 1;
+    constexpr uint32_t  ShadePropertyType             = 3;
+    constexpr uintptr_t ShaderPropertyTextures        = 0xAC;
+    constexpr uintptr_t TextureRendererData           = 0x24;
+    constexpr uintptr_t TextureDataD3DTexture         = 0x64;
+
+    /** First bytes of the functions and uses above, checked before any is used */
+    constexpr uint8_t   ModelLoaderLoadFilePrologue[]     = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x88, 0xCA, 0xEE, 0x00 };
+    constexpr uint8_t   ModelLoaderSingletonUse[]         = { 0x8B, 0x0D, 0x3C, 0x3B, 0x1C, 0x01 };
+    constexpr uint8_t   ObjectClonePrologue[]             = { 0x53, 0x56, 0x57, 0x8B, 0x7C, 0x24, 0x10, 0x8B, 0xF1 };
+    constexpr uint8_t   CloningProcessConstructPrologue[] = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x58, 0x04, 0xEF, 0x00 };
+    constexpr uint8_t   CloningProcessDestructPrologue[]  = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x8B, 0x4D, 0xFC, 0xE8, 0x51, 0xFF, 0xFF, 0xFF };
+    constexpr uint8_t   ObjectGetControllerPrologue[]     = { 0x56, 0x8B, 0x71, 0x0C, 0x57, 0x85, 0xF6, 0x74, 0x29 };
+    constexpr uint8_t   ControllerManagerRttiUse[]        = { 0x68, 0xAC, 0x36, 0x1F, 0x01 };
+    constexpr uint8_t   ActivateSequencePrologue[]        = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x6A, 0x00, 0x8B, 0x45, 0x1C };
+    constexpr uint8_t   DeactivateSequencePrologue[]      = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x6A, 0x00, 0x51, 0xD9, 0x45, 0x0C };
+    constexpr uint8_t   DeactivateAllSequencesPrologue[]  = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x0C, 0x89, 0x4D, 0xF4 };
+    constexpr uint8_t   StartAnimationsPrologue[]         = { 0x56, 0x57, 0x8B, 0x7C, 0x24, 0x0C, 0x8B, 0x77, 0x0C };
+    constexpr uint8_t   PlaySequenceSoundsBytes[]         = { 0x55, 0x8B, 0xEC, 0x6A, 0x00, 0x8B, 0x45, 0x08, 0x50, 0xE8, 0x82, 0x75, 0xDE, 0xFF };
+    constexpr uint8_t   FadeNodeSetRangePrologue[]        = { 0x51, 0xA1, 0x4C, 0x91, 0x1F, 0x01, 0x89, 0x04, 0x24 };
+    constexpr uint8_t   FadeNodeTurnOffPrologue[]         = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x8B, 0x45, 0xFC, 0xD9, 0xEE };
+    constexpr uint8_t   ShadowSceneNodeAddObjectPrologue[] = { 0x8B, 0x44, 0x24, 0x04, 0x85, 0xC0, 0x74, 0x0E, 0xF6, 0x40, 0x30, 0x01 };
+    constexpr uint8_t   ShadowSceneNodeRemoveObjectPrologue[] = { 0x56, 0x8B, 0xF1, 0x8B, 0x4C, 0x24, 0x08, 0x85, 0xC9, 0x74, 0x13 };
+
+    /**
      * Files of the game read through its own lookup, loose or in an archive,
      * see findings/console.md §7. FileFinderGetFile: __cdecl (path, mode
      * FileReadOnly, buffer size, archive type), returns a BSFile* or null.

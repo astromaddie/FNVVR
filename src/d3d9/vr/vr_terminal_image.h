@@ -43,8 +43,9 @@ namespace dxvk {
 
   public:
 
-    /// Image pixels per texel of the terminal texture
-    constexpr static uint32_t Scale  = 5;
+    /// Image pixels per texel of the terminal texture, the scale of the
+    /// 3D keyboard's texture too (VrTerminalTexture)
+    constexpr static uint32_t Scale  = 4;
     constexpr static uint32_t Width  = uint32_t(VrTerminalKeyboard::Plate.width())  * Scale;
     constexpr static uint32_t Height = uint32_t(VrTerminalKeyboard::Plate.height()) * Scale;
 
