@@ -16,8 +16,9 @@ namespace dxvk {
    * looks and works like the game's own pages, including the cursor
    * driven by the controllers' lasers. See findings/options-menu.md.
    *
-   * The page has three options: snap or smooth turning, the speed of
-   * smooth turning, and how large the Pip-Boy grows while it is open.
+   * The page has four options: snap or smooth turning, the speed of
+   * smooth turning, how large the Pip-Boy grows while it is open, and
+   * whether the weapons are reloaded with the hands.
    * After the VR entry, a Console entry opens the game's console.
    *
    * Only used on the game's main thread.

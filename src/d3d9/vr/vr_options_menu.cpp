@@ -34,6 +34,9 @@ namespace dxvk {
     constexpr char TurnSmoothText[] = "Smooth";
     constexpr char SpeedText[]      = "Smooth turn speed";
     constexpr char PipBoySizeText[] = "Pip-Boy size";
+    constexpr char ReloadText[]     = "Manual reload";
+    constexpr char ReloadOffText[]  = "Off";
+    constexpr char ReloadOnText[]   = "On";
 
     // One name per size of VrPipBoyScaleSteps, from the game's size up
     constexpr const char* PipBoySizeNames[VrPipBoyScaleSteps] = {
@@ -181,6 +184,23 @@ namespace dxvk {
     }
 
 
+    void __cdecl onReloadChanged(void* option) {
+      if (!optionsInitialised()) {
+        optionValue(option)   = g_options.manualReload ? 1u : 0u;
+        optionDefault(option) = 1u;
+        return;
+      }
+
+      bool manual = optionValue(option) != 0;
+
+      if (manual == g_options.manualReload)
+        return;
+
+      g_options.manualReload = manual;
+      notifyChanged();
+    }
+
+
     // Creates a user option and adds it to the game's list
     template<typename... Names>
     void* appendUserOption(const char* text, UserOptionCallback callback, int32_t type,
@@ -228,6 +248,8 @@ namespace dxvk {
       appendUserOption(SpeedText, &onSpeedChanged, SliderType, VrSmoothTurnSpeedSteps, 0);
       appendUserOption(PipBoySizeText, &onPipBoySizeChanged, ToggleType, VrPipBoyScaleSteps, ArrowSpacing,
         PipBoySizeNames[0], PipBoySizeNames[1], PipBoySizeNames[2], PipBoySizeNames[3], PipBoySizeNames[4]);
+      appendUserOption(ReloadText, &onReloadChanged, ToggleType, ToggleValues, ArrowSpacing,
+        ReloadOffText, ReloadOnText);
     }
 
 
