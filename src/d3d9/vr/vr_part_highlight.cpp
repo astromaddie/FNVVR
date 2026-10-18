@@ -138,7 +138,7 @@ namespace dxvk {
 
 
   VrPartHighlight::VrPartHighlight(IDirect3DDevice9* device, TakeFn take)
-  : m_take(std::move(take)), m_start(std::chrono::steady_clock::now()), m_measureStart(m_start) {
+  : m_device(device), m_take(std::move(take)), m_start(std::chrono::steady_clock::now()), m_measureStart(m_start) {
     if (FAILED(device->CreateQuery(D3DQUERYTYPE_OCCLUSION, &m_modelQuery))
      || FAILED(device->CreateQuery(D3DQUERYTYPE_OCCLUSION, &m_partQuery))) {
       m_modelQuery = nullptr;
@@ -190,6 +190,14 @@ namespace dxvk {
     // game gives the world camera
     void* shaderCamera = global<void*>(VrGame::ShaderManagerCamera);
 
+    // The first mask of each line of the log is read back, with the target
+    // the game had bound before, to see that the mask's own was bound
+    bool readback = !m_measure.mask.read;
+    Com<IDirect3DSurface9> previous;
+
+    if (readback)
+      m_device->GetRenderTarget(0, &previous);
+
     void* group = game<GetGroupFn>(VrGame::RenderedTextureGetGroup)(mask);
     game<StartOffscreenFn>(VrGame::StartOffscreen)(VrGame::ClearAll, group);
 
@@ -220,7 +228,18 @@ namespace dxvk {
       m_queryPending = true;
     }
 
+    Com<IDirect3DSurface9> target;
+
+    if (readback) {
+      Com<IDirect3DSurface9> depth;
+      m_device->GetRenderTarget(0, &target);
+      m_measure.mask.depth = SUCCEEDED(m_device->GetDepthStencilSurface(&depth)) && depth != nullptr;
+    }
+
     game<StopOffscreenFn>(VrGame::StopOffscreen)();
+
+    if (target != nullptr)
+      readMask(target.ptr(), target != previous);
 
     global<void*>(VrGame::ShaderManagerCamera) = shaderCamera;
 
@@ -242,6 +261,65 @@ namespace dxvk {
 
     float seconds = std::chrono::duration<float>(std::chrono::steady_clock::now() - m_start).count();
     global<float>(VrGame::InterfacePulse) = 0.5f * (std::sin(seconds * setting(VrGame::SettingTargetPulseRateVats)) + 1.0f);
+  }
+
+
+  void VrPartHighlight::readMask(IDirect3DSurface9* surface, bool bound) {
+    MaskReadback& mask = m_measure.mask;
+    mask.read  = true;
+    mask.bound = bound;
+
+    D3DSURFACE_DESC desc = { };
+    mask.result = surface->GetDesc(&desc);
+
+    if (FAILED(mask.result))
+      return;
+
+    mask.width        = desc.Width;
+    mask.height       = desc.Height;
+    mask.format       = desc.Format;
+    mask.multisampled = desc.MultiSampleType != D3DMULTISAMPLE_NONE;
+
+    // Reading the target back waits for the GPU, once per line of the log
+    Com<IDirect3DSurface9> copy;
+    mask.result = m_device->CreateOffscreenPlainSurface(desc.Width, desc.Height, desc.Format,
+      D3DPOOL_SYSTEMMEM, &copy, nullptr);
+
+    if (SUCCEEDED(mask.result))
+      mask.result = m_device->GetRenderTargetData(surface, copy.ptr());
+
+    D3DLOCKED_RECT rect = { };
+
+    if (SUCCEEDED(mask.result))
+      mask.result = copy->LockRect(&rect, nullptr, D3DLOCK_READONLY);
+
+    if (FAILED(mask.result))
+      return;
+
+    for (UINT y = 0; y < desc.Height; y++) {
+      auto row = static_cast<const uint8_t*>(rect.pBits) + size_t(y) * size_t(rect.Pitch);
+
+      for (UINT x = 0; x < desc.Width; x++) {
+        bool alpha = false;
+        bool color = false;
+
+        if (desc.Format == D3DFMT_A8R8G8B8 || desc.Format == D3DFMT_X8R8G8B8) {
+          uint32_t pixel = reinterpret_cast<const uint32_t*>(row)[x];
+          alpha = desc.Format == D3DFMT_A8R8G8B8 && (pixel >> 24) != 0;
+          color = (pixel & 0xFFFFFFu) != 0;
+        } else if (desc.Format == D3DFMT_A16B16G16R16F) {
+          // Halves: any bit but the sign's is a value other than zero
+          const uint16_t* pixel = reinterpret_cast<const uint16_t*>(row) + 4 * x;
+          alpha = (pixel[3] & 0x7FFFu) != 0;
+          color = ((pixel[0] | pixel[1] | pixel[2]) & 0x7FFFu) != 0;
+        }
+
+        mask.alphaPixels += alpha ? 1 : 0;
+        mask.colorPixels += color ? 1 : 0;
+      }
+    }
+
+    copy->UnlockRect();
   }
 
 
@@ -279,6 +357,7 @@ namespace dxvk {
     m_measure.effectActive   += active ? 1 : 0;
     m_measure.effectRendered += active && last >= int32_t(VrGame::ImageSpaceInterface) ? 1 : 0;
     m_measure.activeEffects  += uint32_t(field<int32_t>(imageSpace, VrGame::ImageSpaceActiveEffects));
+    m_measure.lastEffect      = last;
   }
 
 
@@ -296,7 +375,15 @@ namespace dxvk {
         " measured, the model's depth pass covered ", m.modelSamples / read, " samples and the parts ",
         m.partSamples / read, " on average (none in ", m.emptyParts, "); interface effect active in ",
         m.effectActive, ", within the image space effects run in ", m.effectRendered, ", ",
-        float(m.activeEffects) / float(m.masks), " effects active on average"));
+        float(m.activeEffects) / float(m.masks), " effects active on average, the last one number ", m.lastEffect));
+
+      if (m.mask.read) {
+        Logger::info(str::format("VR: Weapon part highlight mask read back: ", m.mask.width, "x", m.mask.height,
+          " format ", uint32_t(m.mask.format), m.mask.multisampled ? " multisampled" : "",
+          m.mask.bound ? ", bound as the render target" : ", NOT bound (the game's target stayed bound)",
+          m.mask.depth ? ", with" : ", without", " a depth buffer, result 0x", std::hex, uint32_t(m.mask.result), std::dec,
+          ": ", m.mask.alphaPixels, " pixel(s) with alpha, ", m.mask.colorPixels, " with colour"));
+      }
     }
 
     m_measure      = Measure();
