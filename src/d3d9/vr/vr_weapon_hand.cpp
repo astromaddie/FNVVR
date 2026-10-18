@@ -1290,6 +1290,8 @@ namespace dxvk {
           ActionKind            kind,
     const uint8_t*              form,
           void*                 updateData) {
+    m_actionTurn = VrGameRotation();
+
     if (kind == ActionKind::None || m_actionSwing <= 0.0f || form != m_reloadForm
      || !m_hasReloadAnimation || !m_reloadAnimation.hasHinge)
       return;
@@ -1327,26 +1329,14 @@ namespace dxvk {
       vrQuaternionFromGameRotation(closed.rotate), vrQuaternionFromGameRotation(open.rotate), t));
     opened.translate = closed.translate + (open.translate - closed.translate) * t;
 
-    // A revolver's part swings out in the weapon, which stays in the hand
-    if (kind == ActionKind::Swing) {
-      VrGameTransform partPose;
-      partPose.rotate    = weaponRotation * opened.rotate;
-      partPose.translate = weaponPosition + weaponRotation * opened.translate * weaponScale;
+    // The part swings out in the weapon, which stays in the hand: a
+    // break action's hinge part carries the barrel and its shells
+    VrGameTransform partPose;
+    partPose.rotate    = weaponRotation * opened.rotate;
+    partPose.translate = weaponPosition + weaponRotation * opened.translate * weaponScale;
 
-      drawPart(hinge, partPose, updateData);
-      return;
-    }
-
-    // The weapon node turned so that the hinge part, opened in it, stays
-    // where it was drawn closed
-    VrGameRotation turn = closed.rotate * vrTranspose(opened.rotate);
-
-    VrGameTransform weaponPose;
-    weaponPose.rotate    = weaponRotation * turn;
-    weaponPose.translate = weaponPosition + weaponRotation * (closed.translate - turn * opened.translate) * weaponScale;
-
-    drawPart(weapon, weaponPose, updateData);
-    drawPart(hinge, hingeWorld, updateData);
+    drawPart(hinge, partPose, updateData);
+    m_actionTurn = opened.rotate * vrTranspose(closed.rotate);
   }
 
 
@@ -1629,11 +1619,13 @@ namespace dxvk {
     m_hasHinge     = action != ActionKind::None;
     m_swingAction  = action == ActionKind::Swing;
 
-    // The barrel runs along the weapon node's x axis, as it is drawn. A
-    // revolver is flicked open about it, the way its part swings out.
+    // The barrel runs along the weapon node's x axis, turned down with
+    // the hinge part of a break action that is open. A revolver is
+    // flicked open about it, the way its part swings out.
     if (m_hasHinge) {
       VrGameRotation weaponRotation = readRotation(weapon, VrGame::ObjectWorldRotation);
-      VrVector3 barrel = { weaponRotation.m[0][0], weaponRotation.m[1][0], weaponRotation.m[2][0] };
+      VrGameRotation barrelRotation = weaponRotation * (m_swingAction ? VrGameRotation() : m_actionTurn);
+      VrVector3 barrel = { barrelRotation.m[0][0], barrelRotation.m[1][0], barrelRotation.m[2][0] };
 
       if (m_swingAction && vrDot(weaponRotation * m_reloadAnimation.hinge.axis, barrel) < 0.0f)
         barrel = barrel * -1.0f;

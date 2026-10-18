@@ -27,8 +27,9 @@ namespace dxvk {
     /// animation of a weapon loaded round by round carries in, or the
     /// shells of a break action
     Round,
-    /// What a break action opens about: its stock, which the reload
-    /// animation turns away from the barrel
+    /// What a break action opens about: the part named as its stock,
+    /// which carries the barrel and the shells and which the reload
+    /// animation turns down about the breech
     Hinge,
     /// A revolver's speed loader, which its reload animation carries into
     /// the swung out cylinder

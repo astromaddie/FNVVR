@@ -333,7 +333,7 @@ namespace dxvk {
      */
     enum class ActionKind {
       None,           ///< It does not open: a magazine, or a loading port
-      Break,          ///< A break action: the barrel turns about the stock
+      Break,          ///< A break action: the barrel turns down about the breech
       Swing,          ///< A revolver: its cylinder or loading gate swings out
     };
 
@@ -472,12 +472,14 @@ namespace dxvk {
     // Action that opens in the hand: whether it is to be open, how far it
     // is open (0 closed, 1 open), whether the weapon has one, whether it
     // is a revolver's, the direction of a break action's barrel and the
-    // axis a revolver is flicked open about, in the right hand's frame
+    // axis a revolver is flicked open about, in the right hand's frame,
+    // and the turn of the hinge part in the weapon node's frame as drawn
     bool             m_actionOpen = false;
     float            m_actionSwing = 0.0f;
     bool             m_hasHinge = false;
     bool             m_swingAction = false;
     VrVector3        m_actionBarrel;
+    VrGameRotation   m_actionTurn;
     VrVector3        m_actionRoll;
 
     // The shells of a break action besides the one found as its round: the
@@ -628,11 +630,10 @@ namespace dxvk {
     /**
      * \brief Draws the action as far open as it is
      *
-     * A break action's weapon node is turned about the hinge so that the
-     * hinge part (the stock, which the hand holds) stays where the game
-     * draws it while the barrel turns away from it as the reload animation
-     * opens it. A revolver's swinging part turns in the weapon as the
-     * reload animation turns it.
+     * The hinge part turns in the weapon as the reload animation turns
+     * it, and the weapon stays in the hand: a break action's hinge part,
+     * named as a stock, carries the barrel, the shells and the muzzle,
+     * and a revolver's swings its cylinder out or is its loading gate.
      *
      * \param [in] hinge The part found by findAction
      */
