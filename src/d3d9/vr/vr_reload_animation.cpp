@@ -7,6 +7,7 @@
 
 #include "vr_game_addresses.h"
 #include "vr_game_nodes.h"
+#include "vr_game_sound.h"
 #include "vr_magazine.h"
 #include "vr_reload_animation.h"
 
@@ -43,36 +44,12 @@ namespace dxvk {
     // NiInterpolator::IsTransformValueSupported, __thiscall without arguments
     using IsTransformFn = uint32_t (__fastcall*)(uint8_t* interpolator, void* unused);
 
-    // TESSound::GetFilename, __thiscall without arguments
-    using GetFilenameFn = const char* (__fastcall*)(const uint8_t* sound, void* unused);
-
-    // TESSound::ConvertLoopFlag, __cdecl with the sound's flags
-    using ConvertLoopFlagFn = uint32_t (__cdecl*)(uint32_t flags);
-
-    // BSAudio::GetSoundHandleByFilename, __thiscall with four stack arguments
-    using GetSoundFn = void* (__fastcall*)(void* audio, void* unused,
-      void* handle, const char* file, uint32_t flags, const uint8_t* sound);
-
-    // BSSoundHandle functions, __thiscall
-    using SetPositionFn  = uint32_t (__fastcall*)(void* handle, void* unused, float x, float y, float z);
-    using SetFloatFn     = uint32_t (__fastcall*)(void* handle, void* unused, float value);
-    using PlayFn         = uint32_t (__fastcall*)(void* handle, void* unused, uint32_t loop);
-
     /// NiQuatTransform: each part is -FLT_MAX where the track has none
     struct QuatTransform {
       float translate[3] = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
       float rotate[4]    = { -FLT_MAX, -FLT_MAX, -FLT_MAX, -FLT_MAX };
       float scale        = -FLT_MAX;
     };
-
-    /// BSSoundHandle: the sound's ID, -1 without one, and its state
-    struct SoundHandle {
-      int32_t  id      = -1;
-      uint8_t  assume  = 0;
-      uint32_t state   = 0;
-    };
-
-    static_assert(sizeof(SoundHandle) == 12);
 
     // How many times per second of the animation the magazine is sampled
     constexpr float SamplesPerSecond = 60.0f;
@@ -414,12 +391,6 @@ namespace dxvk {
     }
 
 
-    const char* soundFile(const uint8_t* sound) {
-      const char* file = sound ? reinterpret_cast<GetFilenameFn>(VrGame::SoundGetFilename)(sound, nullptr) : nullptr;
-      return file ? file : "";
-    }
-
-
     void readSounds(const uint8_t* sequence, const VrMagazineTiming& timing, float rackFrom, float rackTo, VrReloadAnimation& animation) {
       auto group = readField<const uint8_t*>(sequence, VrGame::AnimSequenceGroup);
 
@@ -478,7 +449,7 @@ namespace dxvk {
 
       for (size_t i = 0; i < entries.size(); i++) {
         Logger::info(str::format("VR: Reload animation sound at ", times[i], " s: '",
-          soundFile(readField<const uint8_t*>(entries[i], VrGame::AnimGroupSoundForm)), "'",
+          vrGameSoundFile(readField<const uint8_t*>(entries[i], VrGame::AnimGroupSoundForm)), "'",
           int32_t(i) == out  ? ", the magazine going out" : "",
           int32_t(i) == in   ? ", the magazine going in" : "",
           int32_t(i) == rack ? ", the weapon chambering" : ""));
@@ -614,17 +585,14 @@ namespace dxvk {
   void vrPlayReloadSound(
     const VrReloadSound&        sound,
     const VrVector3&            position) {
-    auto audio  = *reinterpret_cast<void* const*>(VrGame::AudioSingleton);
     auto player = *reinterpret_cast<uint8_t* const*>(VrGame::Player);
 
-    if (!sound.sound || !audio || !player)
+    if (!sound.sound || !player)
       return;
 
     uint32_t soundFlags = readField<uint32_t>(sound.sound, VrGame::SoundFormFlags);
-    uint32_t loop = reinterpret_cast<ConvertLoopFlagFn>(VrGame::SoundConvertLoopFlag)(soundFlags);
 
-    uint32_t flags = loop
-      | ((soundFlags & VrGame::SoundForm2D) ? VrGame::SoundFlag2D : VrGame::SoundFlag3D)
+    uint32_t flags = ((soundFlags & VrGame::SoundForm2D) ? VrGame::SoundFlag2D : VrGame::SoundFlag3D)
       | VrGame::SoundFlagOneShot | VrGame::SoundFlagFirstPerson
       | VrGame::SoundFlagIgnoreTimescale | VrGame::SoundFlagAnimationDriven;
 
@@ -632,14 +600,7 @@ namespace dxvk {
     auto animation = readField<const uint8_t*>(player, VrGame::PlayerFirstPersonAnimData);
     float speed = animation ? readField<float>(animation, VrGame::AnimDataReloadSpeed) : 1.0f;
 
-    SoundHandle handle;
-    reinterpret_cast<GetSoundFn>(VrGame::AudioGetSoundByFilename)(audio, nullptr,
-      &handle, soundFile(sound.sound), flags, sound.sound);
-
-    reinterpret_cast<SetPositionFn>(VrGame::SoundHandleSetPosition)(&handle, nullptr, position.x, position.y, position.z);
-    reinterpret_cast<SetFloatFn>(VrGame::SoundHandleSetVolume)(&handle, nullptr, sound.volume);
-    reinterpret_cast<SetFloatFn>(VrGame::SoundHandleSetFrequency)(&handle, nullptr, sound.pitch * speed);
-    reinterpret_cast<PlayFn>(VrGame::SoundHandlePlay)(&handle, nullptr, loop != 0);
+    vrPlayGameSound(sound.sound, flags, position, sound.volume, sound.pitch * speed);
   }
 
 }

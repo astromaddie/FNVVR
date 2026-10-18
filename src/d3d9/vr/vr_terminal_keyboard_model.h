@@ -17,8 +17,9 @@ namespace dxvk {
    * hidden, placed as VrTerminalKeyboardMount describes. The game's own
    * animation of the model unfolds the keyboard when the console opens
    * (its "Open" sequence) and folds it back when the console closes
-   * ("Close"), with their sounds, played by the model's controller manager
-   * as the game plays the animations of its menus' 3D models.
+   * ("Close"), played by the model's controller manager as the game plays
+   * the animations of its menus' 3D models. Their sounds are played as
+   * the interface's sounds.
    *
    * The keyboard is drawn with the game's terminal texture, shared with
    * the terminals of the world, so the console's copy of that texture is
@@ -133,6 +134,8 @@ namespace dxvk {
     void play(uint8_t* sequence, uint8_t* previous);
 
     bool sequenceEnded() const;
+
+    void playSounds();
 
   };
 

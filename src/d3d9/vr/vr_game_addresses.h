@@ -1250,9 +1250,15 @@ namespace dxvk {
      *   out); StartAnimations (__cdecl: object) starts every controller;
      * - NiControllerSequence: name, end key time, last scaled time, offset
      *   (SequenceOffset above; -FLT_MAX starts it at the next update);
-     * - PlaySequenceSounds: __cdecl (sequence), plays the sequence's
-     *   "Sound:" text keys its last update went past, as the interface's
-     *   3D tiles do; true once a sequence that does not loop has ended;
+     * - NiControllerSequence: its text keys (NiTextKeyExtraData, held by
+     *   a NiPointer at SequenceTextKeys: key count and array of 8-byte
+     *   NiTextKey, time then text) and the scaled time of the update
+     *   before the last (SequenceStartTime), read as
+     *   BSAnimGroupSequence::PlaySounds (0x004EEF00) reads them. That
+     *   function plays a sound with no reference as a 3D sound at the
+     *   world's origin, out of hearing, so the fork plays the "Sound:"
+     *   keys itself: DataHandlerGetSound (__thiscall on the data handler:
+     *   editor ID) finds the TESSound;
      * - NiNode vtable: AttachChild (__thiscall: child, first free slot),
      *   DetachChild without result (__thiscall: child);
      * - NiAVObject: its collision object (NiPointer); NiUpdateData (time,
@@ -1289,7 +1295,13 @@ namespace dxvk {
     constexpr uintptr_t StartAnimations               = 0x00A6D2D0;
     constexpr uintptr_t SequenceName                  = 0x08;
     constexpr uintptr_t SequenceLastScaledTime        = 0x3C;
-    constexpr uintptr_t PlaySequenceSounds            = 0x00707970;
+    constexpr uintptr_t SequenceTextKeys              = 0x20;
+    constexpr uintptr_t SequenceStartTime             = 0x4C;
+    constexpr uintptr_t TextKeyCount                  = 0x0C;
+    constexpr uintptr_t TextKeyArray                  = 0x10;
+    constexpr size_t    TextKeySize                   = 0x08;
+    constexpr uintptr_t TextKeyText                   = 0x04;
+    constexpr uintptr_t DataHandlerGetSound           = 0x004616C0;
     constexpr uintptr_t NodeAttachChildSlot           = 0xDC;
     constexpr uintptr_t NodeDetachChildSlot           = 0xE8;
     constexpr uintptr_t ObjectCollision               = 0x1C;
@@ -1318,7 +1330,7 @@ namespace dxvk {
     constexpr uint8_t   DeactivateSequencePrologue[]      = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x6A, 0x00, 0x51, 0xD9, 0x45, 0x0C };
     constexpr uint8_t   DeactivateAllSequencesPrologue[]  = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x0C, 0x89, 0x4D, 0xF4 };
     constexpr uint8_t   StartAnimationsPrologue[]         = { 0x56, 0x57, 0x8B, 0x7C, 0x24, 0x0C, 0x8B, 0x77, 0x0C };
-    constexpr uint8_t   PlaySequenceSoundsBytes[]         = { 0x55, 0x8B, 0xEC, 0x6A, 0x00, 0x8B, 0x45, 0x08, 0x50, 0xE8, 0x82, 0x75, 0xDE, 0xFF };
+    constexpr uint8_t   DataHandlerGetSoundPrologue[]     = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x08, 0x89, 0x4D, 0xF8, 0x8B, 0x45, 0x08, 0x50 };
     constexpr uint8_t   FadeNodeSetRangePrologue[]        = { 0x51, 0xA1, 0x4C, 0x91, 0x1F, 0x01, 0x89, 0x04, 0x24 };
     constexpr uint8_t   FadeNodeTurnOffPrologue[]         = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x8B, 0x45, 0xFC, 0xD9, 0xEE };
     constexpr uint8_t   ShadowSceneNodeAddObjectPrologue[] = { 0x8B, 0x44, 0x24, 0x04, 0x85, 0xC0, 0x74, 0x0E, 0xF6, 0x40, 0x30, 0x01 };
@@ -1724,7 +1736,9 @@ namespace dxvk {
      * Play (whether it loops). The flags are the TESSound's loop flag
      * (ConvertLoopFlag, __cdecl, of its flags at +0x48), 2D if its flag
      * 0x40 is set and 3D otherwise, one shot, first person, ignoring the
-     * time scale and driven by an animation.
+     * time scale and driven by an animation. Sounds played with no
+     * reference (interface animations) are system sounds
+     * (BSAnimGroupSequence::PlaySounds, 0x004EF7D1).
      */
     constexpr uintptr_t AudioSingleton             = 0x011F6D98;
     constexpr uintptr_t AudioGetSoundByFilename    = 0x00AD7480;
@@ -1738,6 +1752,7 @@ namespace dxvk {
     constexpr uint32_t  SoundForm2D                = 0x40;
     constexpr uint32_t  SoundFlag2D                = 0x1;
     constexpr uint32_t  SoundFlag3D                = 0x2;
+    constexpr uint32_t  SoundFlagSystem            = 0x20;
     constexpr uint32_t  SoundFlagOneShot           = 0x100;
     constexpr uint32_t  SoundFlagFirstPerson       = 0x40000;
     constexpr uint32_t  SoundFlagIgnoreTimescale   = 0x200000;

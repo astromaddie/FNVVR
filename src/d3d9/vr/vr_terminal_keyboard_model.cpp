@@ -2,10 +2,13 @@
 #include <cstring>
 
 #include "../../util/log/log.h"
+#include "../../util/util_string.h"
 
 #include "vr_game_addresses.h"
 #include "vr_game_memory.h"
 #include "vr_game_nodes.h"
+#include "vr_game_sound.h"
+#include "vr_sound_keys.h"
 #include "vr_terminal_keyboard_model.h"
 
 namespace dxvk {
@@ -23,7 +26,6 @@ namespace dxvk {
     using DeactivateFn     = bool  (__thiscall*)(void* manager, void* sequence, float easeOut);
     using DeactivateAllFn  = void  (__thiscall*)(void* manager, float easeOut);
     using StartFn          = void  (__cdecl*)(void* object);
-    using PlaySoundsFn     = bool  (__cdecl*)(void* sequence);
     using UpdateFn         = void  (__thiscall*)(void* object, void* data);
     using AttachChildFn    = void  (__thiscall*)(void* node, void* child, uint32_t firstFree);
     using DetachChildFn    = void  (__thiscall*)(void* node, void* child);
@@ -116,7 +118,7 @@ namespace dxvk {
         { VrGame::DeactivateSequence,          VrGame::DeactivateSequencePrologue,          sizeof(VrGame::DeactivateSequencePrologue) },
         { VrGame::DeactivateAllSequences,      VrGame::DeactivateAllSequencesPrologue,      sizeof(VrGame::DeactivateAllSequencesPrologue) },
         { VrGame::StartAnimations,             VrGame::StartAnimationsPrologue,             sizeof(VrGame::StartAnimationsPrologue) },
-        { VrGame::PlaySequenceSounds,          VrGame::PlaySequenceSoundsBytes,             sizeof(VrGame::PlaySequenceSoundsBytes) },
+        { VrGame::DataHandlerGetSound,         VrGame::DataHandlerGetSoundPrologue,         sizeof(VrGame::DataHandlerGetSoundPrologue) },
         { VrGame::FadeNodeSetRange,            VrGame::FadeNodeSetRangePrologue,            sizeof(VrGame::FadeNodeSetRangePrologue) },
         { VrGame::FadeNodeTurnOff,             VrGame::FadeNodeTurnOffPrologue,             sizeof(VrGame::FadeNodeTurnOffPrologue) },
         { VrGame::ShadowSceneNodeAddObject,    VrGame::ShadowSceneNodeAddObjectPrologue,    sizeof(VrGame::ShadowSceneNodeAddObjectPrologue) },
@@ -130,6 +132,8 @@ namespace dxvk {
       }
 
       return VrGameMemory::readable(VrGame::ModelLoaderSingleton, sizeof(uintptr_t))
+          && VrGameMemory::readable(VrGame::DataHandler, sizeof(uintptr_t))
+          && VrGameMemory::readable(VrGame::AudioSingleton, sizeof(uintptr_t))
           && VrGameMemory::readable(VrGame::ShadowSceneNodes, (VrGame::MenuShadowSceneNode + 1) * sizeof(uintptr_t));
     }
 
@@ -218,7 +222,7 @@ namespace dxvk {
     data[sizeof(m_time)] = 1;
 
     game<UpdateFn>(VrGame::ObjectUpdate)(m_root, data);
-    game<PlaySoundsFn>(VrGame::PlaySequenceSounds)(m_sequence);
+    playSounds();
 
     if (!sequenceEnded())
       return;
@@ -227,6 +231,45 @@ namespace dxvk {
       m_state = State::Open;
     else if (m_state == State::Closing)
       detach();
+  }
+
+
+  void VrTerminalKeyboardModel::playSounds() {
+    // The sounds of the model's sequences are 3D sounds of the world's
+    // terminals; the game would play them at the world's origin, out of
+    // hearing, as it has no reference here. The keyboard is in front of
+    // the head, so they play as the interface's sounds do.
+    float previous = field<float>(m_sequence, VrGame::SequenceStartTime);
+    float current  = field<float>(m_sequence, VrGame::SequenceLastScaledTime);
+
+    if (previous == -FLT_MAX || current == -FLT_MAX || previous == current)
+      return;
+
+    void* textKeys = field<void*>(m_sequence, VrGame::SequenceTextKeys);
+    uint8_t* keys  = textKeys ? field<uint8_t*>(textKeys, VrGame::TextKeyArray) : nullptr;
+    uint32_t count = textKeys ? field<uint32_t>(textKeys, VrGame::TextKeyCount) : 0;
+
+    for (uint32_t i = 0; keys && i < count; i++) {
+      uint8_t* key = keys + i * VrGame::TextKeySize;
+
+      if (!vrSoundKeyCrossed(previous, current, field<float>(key, 0)))
+        continue;
+
+      std::string editorId = vrSoundKeyEditorId(field<const char*>(key, VrGame::TextKeyText));
+
+      if (editorId.empty())
+        continue;
+
+      const uint8_t* sound = vrFindGameSound(editorId);
+
+      if (!sound) {
+        Logger::warn(str::format("VR: The terminal's keyboard sound '", editorId, "' was not found"));
+        continue;
+      }
+
+      vrPlayGameSound(sound, VrGame::SoundFlag2D | VrGame::SoundFlagSystem | VrGame::SoundFlagOneShot
+        | VrGame::SoundFlagIgnoreTimescale | VrGame::SoundFlagAnimationDriven, VrVector3(), 1.0f, 1.0f);
+    }
   }
 
 
