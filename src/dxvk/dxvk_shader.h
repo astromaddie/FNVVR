@@ -447,6 +447,7 @@ namespace dxvk {
     std::array<SpirvCodeBuffer,                 5>  m_codeBuffers;
     std::array<ShaderModuleInfo,                5>  m_moduleInfos = { };
     std::array<VkPipelineShaderStageCreateInfo, 5>  m_stageInfos  = { };
+    std::array<VkShaderModule,                  5>  m_legacyModules = { };
     uint32_t                                        m_stageCount  = 0;
 
   };

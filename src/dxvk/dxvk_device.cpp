@@ -94,6 +94,20 @@ namespace dxvk {
       info.pNext = &formatList;
     }
 
+    if (!m_vkd->hasMaintenance5) {
+      // Without maintenance5, create a temporary image to query the layout
+      VkImage image = VK_NULL_HANDLE;
+      VkResult vr = m_vkd->vkCreateImage(m_vkd->device(), &info, nullptr, &image);
+
+      if (vr != VK_SUCCESS)
+        throw DxvkError(str::format("Failed to create temporary image: ", vr));
+
+      VkSubresourceLayout legacyLayout = { };
+      m_vkd->vkGetImageSubresourceLayout(m_vkd->device(), image, &subresource, &legacyLayout);
+      m_vkd->vkDestroyImage(m_vkd->device(), image, nullptr);
+      return legacyLayout;
+    }
+
     VkImageSubresource2KHR subresourceInfo = { VK_STRUCTURE_TYPE_IMAGE_SUBRESOURCE_2_KHR };
     subresourceInfo.imageSubresource = subresource;
 
@@ -316,10 +330,28 @@ namespace dxvk {
     stageInfo.pName = "main";
     stageInfo.pSpecializationInfo = stage.spec;
 
+    // Without maintenance5, we need an actual shader module
+    VkShaderModule legacyModule = VK_NULL_HANDLE;
+
+    if (!m_vkd->hasMaintenance5) {
+      VkResult mr = m_vkd->vkCreateShaderModule(m_vkd->device(), &moduleInfo, nullptr, &legacyModule);
+
+      if (mr)
+        throw DxvkError(str::format("Failed to create built-in shader module: ", mr));
+
+      stageInfo.pNext = nullptr;
+      stageInfo.module = legacyModule;
+    }
+
     VkPipeline pipeline = VK_NULL_HANDLE;
+
+    m_vkd->lowerPipelineFlags(pipelineInfo);
 
     VkResult vr = m_vkd->vkCreateComputePipelines(m_vkd->device(),
       VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline);
+
+    if (legacyModule)
+      m_vkd->vkDestroyShaderModule(m_vkd->device(), legacyModule, nullptr);
 
     if (vr)
       throw DxvkError(str::format("Failed to create built-in compute pipeline: ", vr));
@@ -363,6 +395,27 @@ namespace dxvk {
       info.stage = stages[i].first;
       info.pName = "main";
       info.pSpecializationInfo = stages[i].second.spec;
+    }
+
+    // Without maintenance5, we need actual shader modules
+    small_vector<VkShaderModule, MaxStages> legacyModules;
+
+    if (!m_vkd->hasMaintenance5) {
+      for (size_t i = 0; i < stageInfos.size(); i++) {
+        VkShaderModule module = VK_NULL_HANDLE;
+        VkResult mr = m_vkd->vkCreateShaderModule(m_vkd->device(), &moduleInfos[i], nullptr, &module);
+
+        if (mr) {
+          for (size_t j = 0; j < legacyModules.size(); j++)
+            m_vkd->vkDestroyShaderModule(m_vkd->device(), legacyModules[j], nullptr);
+
+          throw DxvkError(str::format("Failed to create built-in shader module: ", mr));
+        }
+
+        legacyModules.push_back(module);
+        stageInfos[i].pNext = nullptr;
+        stageInfos[i].module = module;
+      }
     }
 
     // Attachment format infos, useful to set up state
@@ -491,8 +544,13 @@ namespace dxvk {
 
     VkPipeline pipeline = VK_NULL_HANDLE;
 
+    m_vkd->lowerPipelineFlags(pipelineInfo);
+
     VkResult vr = m_vkd->vkCreateGraphicsPipelines(m_vkd->device(),
       VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline);
+
+    for (size_t i = 0; i < legacyModules.size(); i++)
+      m_vkd->vkDestroyShaderModule(m_vkd->device(), legacyModules[i], nullptr);
 
     if (vr)
       throw DxvkError(str::format("Failed to create built-in graphics pipeline: ", vr));

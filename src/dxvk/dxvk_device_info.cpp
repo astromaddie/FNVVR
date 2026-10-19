@@ -385,6 +385,21 @@ namespace dxvk {
           f.extensionSupported->specVersion = std::max(1u, iter->specVersion);
       }
     }
+
+    // VK_EXT_load_store_op_none is the original version of what later became
+    // VK_KHR_load_store_op_none. Both add the same load and store ops, so if
+    // only the EXT version is available, use that instead. Some drivers, e.g.
+    // AMD's final driver for Polaris GPUs, never gained the KHR version.
+    if (!m_extensionsSupported.khrLoadStoreOpNone.specVersion) {
+      auto legacyExt = vk::makeExtension(VK_EXT_LOAD_STORE_OP_NONE_EXTENSION_NAME);
+      auto iter = std::lower_bound(extensions.begin(), extensions.end(), legacyExt, vk::SortExtension());
+
+      if (iter != extensions.end() && !vk::SortExtension()(legacyExt, *iter)) {
+        m_extensionsSupported.khrLoadStoreOpNone = *iter;
+        m_extensionsSupported.khrLoadStoreOpNone.specVersion = std::max(1u, iter->specVersion);
+        m_extensionsEnabled.khrLoadStoreOpNone = legacyExt;
+      }
+    }
   }
 
 
@@ -786,8 +801,16 @@ namespace dxvk {
       }
     }
 
-    if (!m_featuresEnabled.extDescriptorHeap.descriptorHeap && m_properties.core.properties.limits.maxPushConstantsSize < MaxTotalPushDataSize)
-      return str::format("Device does not support ", MaxTotalPushDataSize, " of push data");
+    // Independent pipeline layouts, which are only used with graphics pipeline
+    // libraries, reserve the maximum amount of push data for every stage. All
+    // other layouts pack the push data blocks that shaders actually use, so
+    // devices without graphics pipeline libraries only need the 128 bytes of
+    // push constants that every Vulkan device is required to support.
+    uint32_t requiredPushDataSize = m_featuresEnabled.extGraphicsPipelineLibrary.graphicsPipelineLibrary
+      ? uint32_t(MaxTotalPushDataSize) : 128u;
+
+    if (!m_featuresEnabled.extDescriptorHeap.descriptorHeap && m_properties.core.properties.limits.maxPushConstantsSize < requiredPushDataSize)
+      return str::format("Device does not support ", requiredPushDataSize, " of push data");
 
     return std::nullopt;
   }
@@ -1059,8 +1082,8 @@ namespace dxvk {
       ENABLE_EXT(khrLoadStoreOpNone, true),
 
       /* Maintenance features, relied on in various parts of the code */
-      ENABLE_EXT_FEATURE(khrMaintenance5, maintenance5, true),
-      ENABLE_EXT_FEATURE(khrMaintenance6, maintenance6, true),
+      ENABLE_EXT_FEATURE(khrMaintenance5, maintenance5, false),
+      ENABLE_EXT_FEATURE(khrMaintenance6, maintenance6, false),
       ENABLE_EXT_FEATURE(khrMaintenance7, maintenance7, false),
       ENABLE_EXT_FEATURE(khrMaintenance8, maintenance8, false),
       ENABLE_EXT_FEATURE(khrMaintenance9, maintenance9, false),

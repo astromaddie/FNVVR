@@ -112,7 +112,8 @@ namespace dxvk {
         VkBufferUsageFlags2CreateInfoKHR flags = { VK_STRUCTURE_TYPE_BUFFER_USAGE_FLAGS_2_CREATE_INFO_KHR };
         flags.usage = key.usage;
 
-        VkBufferViewCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO, &flags };
+        VkBufferViewCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO,
+          vk->hasMaintenance5 ? static_cast<const void*>(&flags) : nullptr };
         info.buffer = m_buffer;
         info.format = key.format;
         info.offset = key.offset + baseOffset;

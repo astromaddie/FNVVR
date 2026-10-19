@@ -251,6 +251,8 @@ namespace dxvk {
     info.pDynamicState        = &dyInfo;
     info.basePipelineIndex    = -1;
 
+    vk->lowerPipelineFlags(info);
+
     VkResult vr = vk->vkCreateGraphicsPipelines(vk->device(),
       VK_NULL_HANDLE, 1, &info, nullptr, &m_pipeline);
 
@@ -546,6 +548,8 @@ namespace dxvk {
     info.pMultisampleState    = &msInfo;
     info.pDynamicState        = &dyInfo;
     info.basePipelineIndex    = -1;
+
+    vk->lowerPipelineFlags(info);
 
     VkResult vr = vk->vkCreateGraphicsPipelines(vk->device(),
       VK_NULL_HANDLE, 1, &info, nullptr, &m_pipeline);
@@ -1404,6 +1408,8 @@ namespace dxvk {
       flags.pNext = std::exchange(info.pNext, &flags);
 
     VkPipeline pipeline = VK_NULL_HANDLE;
+    vk->lowerPipelineFlags(info);
+
     VkResult vr = vk->vkCreateGraphicsPipelines(vk->device(), VK_NULL_HANDLE, 1, &info, nullptr, &pipeline);
 
     if (vr && vr != VK_PIPELINE_COMPILE_REQUIRED_EXT)
@@ -1509,6 +1515,8 @@ namespace dxvk {
       flags.pNext = std::exchange(info.pNext, &flags);
 
     VkPipeline pipeline = VK_NULL_HANDLE;
+    vk->lowerPipelineFlags(info);
+
     VkResult vr = vk->vkCreateGraphicsPipelines(vk->device(), VK_NULL_HANDLE, 1, &info, nullptr, &pipeline);
 
     if (vr != VK_SUCCESS) {

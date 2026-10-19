@@ -120,6 +120,8 @@ namespace dxvk {
       flags.pNext = std::exchange(info.pNext, &flags);
 
     VkPipeline pipeline = VK_NULL_HANDLE;
+    vk->lowerPipelineFlags(info);
+
     VkResult vr = vk->vkCreateComputePipelines(vk->device(),
           VK_NULL_HANDLE, 1, &info, nullptr, &pipeline);
 

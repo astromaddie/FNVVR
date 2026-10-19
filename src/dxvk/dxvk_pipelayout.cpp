@@ -728,6 +728,15 @@ namespace dxvk {
       }
     }
 
+    if (!device->canUseDescriptorHeap()) {
+      uint32_t maxPushData = device->properties().core.properties.limits.maxPushConstantsSize;
+
+      if (pushDataSize > maxPushData) {
+        Logger::err(str::format("Pipeline layout needs ", pushDataSize,
+          " bytes of push data, but the device only supports ", maxPushData));
+      }
+    }
+
     for (auto i : bit::BitMask(builder.getPushDataMask()))
       layout.bindingMap.addPushData(builder.getPushDataBlock(i), pushDataBlocks[i].getOffset());
 

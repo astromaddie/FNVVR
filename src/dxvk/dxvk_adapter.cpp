@@ -296,6 +296,8 @@ namespace dxvk {
     }
 
     Rc<vk::DeviceFn> vkd = new vk::DeviceFn(vk, true, device);
+    vkd->hasMaintenance5 = caps.getFeatures().khrMaintenance5.maintenance5;
+    vkd->hasMaintenance6 = caps.getFeatures().khrMaintenance6.maintenance6;
 
     DxvkDeviceQueueSet deviceQueues = { };
     deviceQueues.graphics = getDeviceQueue(vkd, caps, queueMapping.graphics);
@@ -330,6 +332,8 @@ namespace dxvk {
     DxvkDeviceQueueMapping queueMapping = importCaps.getQueueMapping();
 
     Rc<vk::DeviceFn> vkd = new vk::DeviceFn(m_instance->vki(), false, args.device);
+    vkd->hasMaintenance5 = importCaps.getFeatures().khrMaintenance5.maintenance5;
+    vkd->hasMaintenance6 = importCaps.getFeatures().khrMaintenance6.maintenance6;
 
     DxvkDeviceQueueSet deviceQueues = { };
     deviceQueues.graphics = getDeviceQueue(vkd, importCaps, queueMapping.graphics);
