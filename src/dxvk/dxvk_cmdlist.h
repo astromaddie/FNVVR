@@ -622,14 +622,45 @@ namespace dxvk {
     void cmdBindDescriptorSets(
             DxvkCmdBuffer             cmdBuffer,
       const VkBindDescriptorSetsInfo* info) {
-      m_vkd->vkCmdBindDescriptorSets2KHR(getCmdBuffer(cmdBuffer), info);
+      if (likely(m_vkd->hasMaintenance6)) {
+        m_vkd->vkCmdBindDescriptorSets2KHR(getCmdBuffer(cmdBuffer), info);
+      } else if (info->layout && info->descriptorSetCount) {
+        // Fall back to the original entry point without maintenance6
+        VkCommandBuffer cmd = getCmdBuffer(cmdBuffer);
+
+        if (info->stageFlags & VK_SHADER_STAGE_ALL_GRAPHICS) {
+          m_vkd->vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+            info->layout, info->firstSet, info->descriptorSetCount, info->pDescriptorSets,
+            info->dynamicOffsetCount, info->pDynamicOffsets);
+        }
+
+        if (info->stageFlags & VK_SHADER_STAGE_COMPUTE_BIT) {
+          m_vkd->vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+            info->layout, info->firstSet, info->descriptorSetCount, info->pDescriptorSets,
+            info->dynamicOffsetCount, info->pDynamicOffsets);
+        }
+      }
     }
 
 
     void cmdSetDescriptorBufferOffsetsEXT(
             DxvkCmdBuffer             cmdBuffer,
       const VkSetDescriptorBufferOffsetsInfoEXT* info) {
-      m_vkd->vkCmdSetDescriptorBufferOffsets2EXT(getCmdBuffer(cmdBuffer), info);
+      if (likely(m_vkd->hasMaintenance6)) {
+        m_vkd->vkCmdSetDescriptorBufferOffsets2EXT(getCmdBuffer(cmdBuffer), info);
+      } else {
+        VkCommandBuffer cmd = getCmdBuffer(cmdBuffer);
+
+        if (info->stageFlags & VK_SHADER_STAGE_ALL_GRAPHICS) {
+          m_vkd->vkCmdSetDescriptorBufferOffsetsEXT(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+            info->layout, info->firstSet, info->setCount, info->pBufferIndices, info->pOffsets);
+        }
+
+        if (info->stageFlags & VK_SHADER_STAGE_COMPUTE_BIT) {
+          m_vkd->vkCmdSetDescriptorBufferOffsetsEXT(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+            info->layout, info->firstSet, info->setCount, info->pBufferIndices, info->pOffsets);
+        }
+      }
     }
 
 
@@ -638,8 +669,15 @@ namespace dxvk {
             VkDeviceSize            offset,
             VkDeviceSize            size,
             VkIndexType             indexType) {
-      m_vkd->vkCmdBindIndexBuffer2KHR(getCmdBuffer(),
-        buffer, offset, size, indexType);
+      if (likely(m_vkd->hasMaintenance5)) {
+        m_vkd->vkCmdBindIndexBuffer2KHR(getCmdBuffer(),
+          buffer, offset, size, indexType);
+      } else {
+        // The size is not available here. Binding a null buffer is
+        // allowed since robustness2.nullDescriptor is required.
+        m_vkd->vkCmdBindIndexBuffer(getCmdBuffer(),
+          buffer, buffer ? offset : 0u, indexType);
+      }
     }
 
 
@@ -1027,7 +1065,12 @@ namespace dxvk {
     void cmdPushConstants(
             DxvkCmdBuffer           cmdBuffer,
       const VkPushConstantsInfo*    info) {
-      m_vkd->vkCmdPushConstants2KHR(getCmdBuffer(cmdBuffer), info);
+      if (likely(m_vkd->hasMaintenance6)) {
+        m_vkd->vkCmdPushConstants2KHR(getCmdBuffer(cmdBuffer), info);
+      } else {
+        m_vkd->vkCmdPushConstants(getCmdBuffer(cmdBuffer),
+          info->layout, info->stageFlags, info->offset, info->size, info->pValues);
+      }
     }
 
 

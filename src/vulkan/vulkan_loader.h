@@ -191,6 +191,47 @@ namespace dxvk::vk {
   struct DeviceFn : DeviceLoader {
     DeviceFn(const Rc<InstanceLoader>& library, bool owned, VkDevice device);
     ~DeviceFn();
+
+    /**
+     * \brief Whether VK_KHR_maintenance5 and VK_KHR_maintenance6 are enabled
+     *
+     * Set by the adapter after device creation. Code that would normally
+     * require these extensions checks the flags and uses the older Vulkan
+     * entry points if they are not available, e.g. on AMD Polaris GPUs.
+     */
+    bool hasMaintenance5 = true;
+    bool hasMaintenance6 = true;
+
+    /**
+     * \brief Converts pipeline create flags 2 to legacy create flags
+     *
+     * Without maintenance5, VkPipelineCreateFlags2CreateInfo cannot be used.
+     * This moves its flags into the legacy flags field of the given pipeline
+     * create info and removes the structure from the pNext chain. The first
+     * 32 bits of both flag types are identical. No-op if maintenance5 is
+     * enabled.
+     * \param [in,out] info Graphics or compute pipeline create info
+     */
+    template<typename T>
+    void lowerPipelineFlags(T& info) const {
+      if (hasMaintenance5)
+        return;
+
+      auto* prev = reinterpret_cast<VkBaseOutStructure*>(&info);
+
+      while (prev->pNext) {
+        auto* cur = prev->pNext;
+
+        if (cur->sType == VK_STRUCTURE_TYPE_PIPELINE_CREATE_FLAGS_2_CREATE_INFO) {
+          auto* flags2 = reinterpret_cast<const VkPipelineCreateFlags2CreateInfo*>(cur);
+          info.flags |= VkPipelineCreateFlags(flags2->flags);
+          prev->pNext = cur->pNext;
+          return;
+        }
+
+        prev = cur;
+      }
+    }
     
     VULKAN_FN(vkDestroyDevice);
     VULKAN_FN(vkGetDeviceQueue);

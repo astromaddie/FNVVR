@@ -105,6 +105,20 @@ namespace dxvk {
     stageInfo.pName = "main";
     stageInfo.pSpecializationInfo = specInfo;
 
+    // Without maintenance5, we have to create an actual shader module
+    auto vk = m_device->vkd();
+
+    if (unlikely(!vk->hasMaintenance5)) {
+      VkResult vr = vk->vkCreateShaderModule(vk->device(),
+        &moduleInfo, nullptr, &m_legacyModules[m_stageCount]);
+
+      if (vr != VK_SUCCESS)
+        throw DxvkError(str::format("Failed to create shader module: ", vr));
+
+      stageInfo.pNext = nullptr;
+      stageInfo.module = m_legacyModules[m_stageCount];
+    }
+
     m_stageCount++;
   }
   
@@ -135,7 +149,12 @@ namespace dxvk {
 
 
   DxvkShaderStageInfo::~DxvkShaderStageInfo() {
+    auto vk = m_device->vkd();
 
+    for (size_t i = 0; i < m_legacyModules.size(); i++) {
+      if (m_legacyModules[i])
+        vk->vkDestroyShaderModule(vk->device(), m_legacyModules[i], nullptr);
+    }
   }
 
 
@@ -432,6 +451,8 @@ namespace dxvk {
     info.basePipelineIndex    = -1;
 
     VkPipeline pipeline = VK_NULL_HANDLE;
+    vk->lowerPipelineFlags(info);
+
     VkResult vr = vk->vkCreateGraphicsPipelines(vk->device(), VK_NULL_HANDLE, 1, &info, nullptr, &pipeline);
 
     if (vr && vr != VK_PIPELINE_COMPILE_REQUIRED_EXT)
@@ -536,6 +557,8 @@ namespace dxvk {
       info.pMultisampleState  = &msInfo;
 
     VkPipeline pipeline = VK_NULL_HANDLE;
+    vk->lowerPipelineFlags(info);
+
     VkResult vr = vk->vkCreateGraphicsPipelines(vk->device(), VK_NULL_HANDLE, 1, &info, nullptr, &pipeline);
 
     if (vr && !(flags & VK_PIPELINE_CREATE_2_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT))
@@ -569,6 +592,8 @@ namespace dxvk {
       flagsInfo.pNext = std::exchange(info.pNext, &flagsInfo);
 
     VkPipeline pipeline = VK_NULL_HANDLE;
+    vk->lowerPipelineFlags(info);
+
     VkResult vr = vk->vkCreateComputePipelines(vk->device(), VK_NULL_HANDLE, 1, &info, nullptr, &pipeline);
 
     if (vr && vr != VK_PIPELINE_COMPILE_REQUIRED_EXT)
