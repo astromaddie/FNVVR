@@ -672,12 +672,15 @@ namespace dxvk {
       if (likely(m_vkd->hasMaintenance5)) {
         m_vkd->vkCmdBindIndexBuffer2KHR(getCmdBuffer(),
           buffer, offset, size, indexType);
-      } else {
-        // The size is not available here. Binding a null buffer is
-        // allowed since robustness2.nullDescriptor is required.
+      } else if (buffer) {
+        // The legacy entry point takes no size, so the binding
+        // extends to the end of the buffer.
         m_vkd->vkCmdBindIndexBuffer(getCmdBuffer(),
-          buffer, buffer ? offset : 0u, indexType);
+          buffer, offset, indexType);
       }
+      // Without maintenance6 a null index buffer cannot be bound, so the
+      // previous binding is kept; indexed draws without an index buffer
+      // are undefined in D3D9 anyway.
     }
 
 
