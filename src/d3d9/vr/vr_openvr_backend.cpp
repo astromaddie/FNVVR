@@ -4,6 +4,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <iomanip>
 #include <limits>
 #include <sstream>
@@ -110,14 +111,24 @@ namespace dxvk {
      */
     vr::HmdMatrix34_t getEyeToHeadTransform(vr::IVRSystem* system, vr::EVREye eye) {
 #if defined(__i386__) && !defined(_MSC_VER)
-      // Slot of GetEyeToHeadTransform in the IVRSystem_019 vtable
-      constexpr size_t EyeToHeadTransformSlot = 4;
+      // The method's slot comes from the header's own vtable: in the
+      // Itanium ABI a pointer to a virtual method holds its vtable offset
+      // plus one
+      struct VirtualMethodPointer {
+        ptrdiff_t offset;
+        ptrdiff_t adjust;
+      };
+
+      auto method = &vr::IVRSystem::GetEyeToHeadTransform;
+      VirtualMethodPointer pointer;
+      std::memcpy(&pointer, &method, sizeof(pointer));
+      size_t slot = size_t(pointer.offset - 1) / sizeof(void*);
 
       using Fn = void (__thiscall*)(vr::IVRSystem*, vr::HmdMatrix34_t*, vr::EVREye);
 
       vr::HmdMatrix34_t result = { };
       auto vtable = *reinterpret_cast<void* const* const*>(system);
-      reinterpret_cast<Fn>(vtable[EyeToHeadTransformSlot])(system, &result, eye);
+      reinterpret_cast<Fn>(vtable[slot])(system, &result, eye);
       return result;
 #else
       return system->GetEyeToHeadTransform(eye);
