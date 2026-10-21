@@ -943,6 +943,9 @@ namespace dxvk {
     BreakAction,
     /// A revolver whose cylinder swings out
     Cylinder,
+    /// A flamer or incinerator, loaded with the left hand held at a point
+    /// of the weapon
+    Fuel,
   };
 
   /**

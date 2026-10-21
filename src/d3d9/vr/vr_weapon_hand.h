@@ -408,6 +408,38 @@ namespace dxvk {
       return m_hasMagazine && m_hasReloadAnimation ? &m_reloadAnimation : nullptr;
     }
 
+    /**
+     * \brief Where the left hand loads a weapon with no part to take out
+     *
+     * A flamer or an incinerator: where the game's reload animation puts
+     * the left hand on the weapon, for the left controller's hand bone
+     * (see fuelHeld), in the right hand's frame (see vrPointFromHand),
+     * measured each time the model is drawn.
+     *
+     * \returns The point, or \c nullptr if the weapon in the hand is not
+     *    loaded that way
+     */
+    const VrVector3* fuelPort() const {
+      return m_hasFuelPort ? &m_fuelPort : nullptr;
+    }
+
+    /**
+     * \brief Where the left hand bone is in the left controller's frame
+     *
+     * The point brought to fuelPort.
+     */
+    VrVector3 fuelHeld() const;
+
+    /**
+     * \brief Where the reload animation loads a weapon with no part to take
+     *    out, and its sounds
+     *
+     * \returns The animation, or \c nullptr without a fuelPort
+     */
+    const VrFuelAnimation* fuelAnimation() const {
+      return m_hasFuelPort ? &m_fuelAnimation : nullptr;
+    }
+
   private:
 
     /**
@@ -611,6 +643,16 @@ namespace dxvk {
     const uint8_t*   m_reloadForm = nullptr;
     uint32_t         m_reloadTries = 0;
     uint32_t         m_reloadWait = 0;
+
+    // The same for a weapon loaded at a point with no part (a flamer), and
+    // that point in the right hand's frame
+    VrFuelAnimation  m_fuelAnimation;
+    bool             m_hasFuelAnimation = false;
+    const uint8_t*   m_fuelForm = nullptr;
+    uint32_t         m_fuelTries = 0;
+    uint32_t         m_fuelWait = 0;
+    VrVector3        m_fuelPort;
+    bool             m_hasFuelPort = false;
 
     // Set while the game creates a projectile aimed with the hand, so that
     // its auto-aim leaves it alone
@@ -846,6 +888,17 @@ namespace dxvk {
             uint8_t*              weapon,
       const VrGameCameraPose&     hand,
             VrGameTransform&      pose);
+
+    /**
+     * \brief Finds where the left hand loads a heavy weapon with no part
+     *    to take out or put in
+     */
+    void placeFuelPort(
+            uint8_t*              root,
+            uint8_t*              weapon,
+      const uint8_t*              form,
+            uint8_t*              leftHand,
+      const VrGameCameraPose&     hand);
 
     /**
      * \brief Draws a part of the weapon at a pose for this update only

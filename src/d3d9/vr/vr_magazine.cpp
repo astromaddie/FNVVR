@@ -738,6 +738,7 @@ namespace dxvk {
         break;
 
       case VrReloadKind::Cylinder:
+      case VrReloadKind::Fuel:
       case VrReloadKind::None:
         break;
     }

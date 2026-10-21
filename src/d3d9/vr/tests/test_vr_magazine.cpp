@@ -990,6 +990,22 @@ TEST_CASE(loading_places_one_round_per_loop) {
   CHECK(loader.time() < Loop.length);
 }
 
+TEST_CASE(loading_held_until_the_place_time_places_once) {
+  // A flamer: the hand is held at the loading point for 0.5 s, in a loop
+  // twice that long so that it never starts again by itself
+  const VrRoundLoopTiming hold = { 1.0f, 0.5f };
+
+  VrRoundLoader loader;
+  loader.update(handfulInput(false, Pouch), hold);
+  CHECK(loader.update(handfulInput(true, Pouch), hold) == VrRoundEvent::Taken);
+  CHECK(loader.update(handfulInput(true, nearPort(0.03f)), hold) == VrRoundEvent::Started);
+
+  for (uint32_t i = 0; i < 4; i++)
+    CHECK(loader.update(handfulInput(true, nearPort(0.03f)), hold) == VrRoundEvent::None);
+
+  CHECK(loader.update(handfulInput(true, nearPort(0.03f)), hold) == VrRoundEvent::Placed);
+}
+
 TEST_CASE(loading_stops_when_the_hand_leaves_the_port) {
   VrRoundLoader loader;
   startLoading(loader);

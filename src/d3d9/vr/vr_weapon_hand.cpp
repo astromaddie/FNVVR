@@ -69,6 +69,7 @@ namespace dxvk {
     constexpr int8_t WeaponTypePistol       = 3;
     constexpr int8_t WeaponTypePistolEnergy = 4;
     constexpr int8_t WeaponTypeRifle        = 5;
+    constexpr int8_t WeaponTypeHandle       = 8;
     constexpr int8_t WeaponTypeLauncher     = 9;
 
     // How long the magazine takes to move between the hand and its well
@@ -720,6 +721,7 @@ namespace dxvk {
     m_hasHinge     = false;
     m_swingAction  = false;
     m_hasRoundPort = false;
+    m_hasFuelPort  = false;
 
     if (m_mode == VrFirstPersonMode::Hidden) {
       m_hasAim    = false;
@@ -888,6 +890,8 @@ namespace dxvk {
 
     VrGameTransform rackPose;
     uint8_t* rack = placeRack(weapon, hand, rackPose);
+
+    placeFuelPort(root, weapon, form, otherHand, hand);
 
     if (handPlaced) {
       HeldPart held = { };
@@ -1966,6 +1970,75 @@ namespace dxvk {
     }
 
     return magazine;
+  }
+
+
+  VrVector3 VrWeaponHand::fuelHeld() const {
+    return FreeHandPose.translate;
+  }
+
+
+  void VrWeaponHand::placeFuelPort(
+          uint8_t*              root,
+          uint8_t*              weapon,
+    const uint8_t*              form,
+          uint8_t*              leftHand,
+    const VrGameCameraPose&     hand) {
+    int8_t type = form ? readField<int8_t>(form, VrGame::WeaponAnimationType) : WeaponTypeNone;
+
+    if (m_hasMagazine || !leftHand || (type != WeaponTypeHandle && type != WeaponTypeLauncher)
+     || readField<uint8_t>(form, VrGame::WeaponLoopingReload))
+      return;
+
+    // By name: a weapon with a part to take out or put in is loaded with
+    // it, even while that part is culled and has no bound
+    bool part = false;
+
+    vrVisitGameObjects(reinterpret_cast<uintptr_t>(weapon), MaxModelDepth,
+      [&part] (uintptr_t object, uint32_t) {
+        switch (vrClassifyWeaponPart(field<const char*>(reinterpret_cast<uint8_t*>(object), VrGame::ObjectName))) {
+          case VrWeaponPartKind::Magazine:
+          case VrWeaponPartKind::Round:
+          case VrWeaponPartKind::Loader:
+          case VrWeaponPartKind::Projectile:
+            part = true;
+            break;
+
+          default:
+            break;
+        }
+      });
+
+    if (part)
+      return;
+
+    if (form != m_fuelForm) {
+      m_fuelForm         = form;
+      m_hasFuelAnimation = false;
+      m_fuelTries        = 0;
+      m_fuelWait         = 0;
+    }
+
+    if (!m_hasFuelAnimation && m_fuelTries < ReloadAnimationTries) {
+      if (m_fuelWait) {
+        m_fuelWait -= 1;
+      } else {
+        m_fuelTries += 1;
+        m_fuelWait   = ReloadAnimationRetryDraws;
+        m_hasFuelAnimation = vrReadFuelAnimation(player(), root, weapon, leftHand, m_fuelAnimation);
+      }
+    }
+
+    float scale = field<float>(weapon, VrGame::ObjectWorldScale);
+
+    if (!m_hasFuelAnimation || scale <= 0.0f)
+      return;
+
+    VrVector3 port = readVector(weapon, VrGame::ObjectWorldTranslation)
+      + readRotation(weapon, VrGame::ObjectWorldRotation) * m_fuelAnimation.hand * scale;
+
+    m_fuelPort    = vrPointToHand(hand, port);
+    m_hasFuelPort = true;
   }
 
 

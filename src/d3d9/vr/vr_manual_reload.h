@@ -52,6 +52,15 @@ namespace dxvk {
     /// its place, in the right hand's frame (VrWeaponHand::roundPort), or
     /// \c nullptr if the weapon is not loaded round by round
     const VrVector3*        port = nullptr;
+    /// Where the left controller's hand bone loads a weapon with no part to
+    /// take out, in the right hand's frame (VrWeaponHand::fuelPort), or
+    /// \c nullptr if the weapon is not loaded that way
+    const VrVector3*        fuel = nullptr;
+    /// Where the hand bone is in the left controller's frame
+    /// (VrWeaponHand::fuelHeld), valid with the fuel port
+    VrVector3               fuelHeld;
+    /// The animation's sounds for it, valid with the fuel port
+    const VrFuelAnimation*  fuelAnimation = nullptr;
     /// Axis a revolver is flicked open about, in the right hand's frame
     /// (VrWeaponHand::actionRoll), or \c nullptr if the weapon is not a
     /// revolver
@@ -141,7 +150,10 @@ namespace dxvk {
    * boxes, cells and canisters are magazines. A launcher's magazine is the
    * round it fires: once it is fired the tube is empty, and a new missile or
    * mini-nuke taken behind the back is pushed into it as a magazine is.
-   * Nothing is taken out of a launcher, and its jams are the game's.
+   * Nothing is taken out of a launcher, and its jams are the game's. A
+   * flamer or an incinerator has no part to take out: fuel is taken behind
+   * the back, and the left hand held a moment where the game's reload
+   * animation puts it on the weapon loads it, see VrRoundLoader.
    *
    * The reloads may be started from the game's other threads, so the clip
    * left to watch is shared under a lock, and the weapon reloaded by hand
@@ -338,6 +350,8 @@ namespace dxvk {
       bool active, bool closed);
 
     bool loadRound(uint8_t* player, uint8_t* weapon);
+
+    VrRoundEvent updateFuel(const VrManualReloadInput& input, uint8_t* player, uint8_t* weapon, bool active);
 
     void playLoopSounds(const VrRoundLoop& loop, const VrVector3& port) const;
 

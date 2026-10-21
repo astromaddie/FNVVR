@@ -862,6 +862,105 @@ namespace dxvk {
   }
 
 
+  bool vrReadFuelAnimation(
+          uint8_t*              player,
+          uint8_t*              root,
+          uint8_t*              weapon,
+          uint8_t*              leftHand,
+          VrFuelAnimation&      animation) {
+    const uint8_t* sequence = findReloadSequence(player);
+
+    if (!sequence) {
+      Logger::info("VR: The weapon has no first-person reload animation");
+      return false;
+    }
+
+    auto sequenceName = readField<const char*>(sequence, VrGame::ObjectName);
+    float begin = readField<float>(sequence, VrGame::SequenceBeginKeyTime);
+    float end   = readField<float>(sequence, VrGame::SequenceEndKeyTime);
+
+    SequenceTracks tracks(sequence);
+
+    // The left hand bone in the weapon node's frame, furthest from where
+    // it starts: the hand at the tank or the valves
+    VrVector3 first;
+    float farthest = -1.0f;
+
+    for (uint32_t i = 0; begin + float(i) / SamplesPerSecond <= end; i++) {
+      float time = begin + float(i) / SamplesPerSecond;
+      Pose hand, held;
+
+      if (!tracks.toAncestor(leftHand, root, time, hand) || !tracks.toAncestor(weapon, root, time, held)
+       || held.scale <= 0.0f)
+        return false;
+
+      VrVector3 point = vrTranspose(held.rotate) * (hand.translate - held.translate) * (1.0f / held.scale);
+
+      if (!i)
+        first = point;
+
+      float distance = vrLength(point - first);
+
+      if (distance > farthest) {
+        farthest         = distance;
+        animation.hand   = point;
+        animation.time   = time;
+      }
+    }
+
+    if (farthest < 0.0f)
+      return false;
+
+    // The first sound as the hand gets there, the last one once it is done
+    animation.start  = VrReloadSound();
+    animation.loaded = VrReloadSound();
+
+    auto group = readField<const uint8_t*>(sequence, VrGame::AnimSequenceGroup);
+    uint32_t count = group ? readField<uint32_t>(group, VrGame::AnimGroupSoundCount) : 0;
+    auto sounds    = group ? readField<const uint8_t*>(group, VrGame::AnimGroupSounds) : nullptr;
+
+    const uint8_t* firstEntry = nullptr;
+    const uint8_t* lastEntry  = nullptr;
+
+    for (uint32_t i = 0; sounds && i < count; i++) {
+      const uint8_t* entry = sounds + i * VrGame::AnimGroupSoundSize;
+
+      if (!readField<const uint8_t*>(entry, VrGame::AnimGroupSoundForm))
+        continue;
+
+      float time = readField<float>(entry, 0);
+
+      if (!firstEntry || time < readField<float>(firstEntry, 0))
+        firstEntry = entry;
+
+      if (!lastEntry || time > readField<float>(lastEntry, 0))
+        lastEntry = entry;
+    }
+
+    auto toSound = [] (const uint8_t* entry) {
+      VrReloadSound sound;
+      sound.sound  = readField<const uint8_t*>(entry, VrGame::AnimGroupSoundForm);
+      sound.volume = float(readField<uint8_t>(entry, VrGame::AnimGroupSoundVolume)) / 255.0f;
+      sound.pitch  = readField<float>(entry, VrGame::AnimGroupSoundPitch);
+      return sound;
+    };
+
+    if (firstEntry)
+      animation.start = toSound(firstEntry);
+
+    if (lastEntry && lastEntry != firstEntry)
+      animation.loaded = toSound(lastEntry);
+
+    Logger::info(str::format("VR: Reload animation '", sequenceName ? sequenceName : "", "' from ", begin, " to ", end,
+      " s puts the left hand ", farthest / VrGameUnitsPerMetre * 100.0f, " cm from where it starts, at ",
+      animation.hand.x, ", ", animation.hand.y, ", ", animation.hand.z, " units in the weapon, at ", animation.time,
+      " s; the weapon is loaded there",
+      firstEntry ? str::format(", with '", vrGameSoundFile(animation.start.sound), "'") : std::string(", with no sound"),
+      lastEntry && lastEntry != firstEntry ? str::format(" then '", vrGameSoundFile(animation.loaded.sound), "'") : std::string()));
+    return true;
+  }
+
+
   void vrPlayReloadSound(
     const VrReloadSound&        sound,
     const VrVector3&            position) {

@@ -924,6 +924,9 @@ namespace dxvk {
       hands.barrel     = m_weaponHand->actionBarrel();
       hands.roll       = m_weaponHand->actionRoll();
       hands.port       = m_weaponHand->roundPort();
+      hands.fuel       = m_weaponHand->fuelPort();
+      hands.fuelHeld   = m_weaponHand->fuelHeld();
+      hands.fuelAnimation = m_weaponHand->fuelAnimation();
     }
 
     VrReloadEvents events = m_manualReload->updateHands(hands);
