@@ -927,6 +927,10 @@ namespace dxvk {
       hands.fuel       = m_weaponHand->fuelPort();
       hands.fuelHeld   = m_weaponHand->fuelHeld();
       hands.fuelAnimation = m_weaponHand->fuelAnimation();
+      hands.lock       = m_weaponHand->lockPivot();
+      hands.lockAxis   = m_weaponHand->lockAxis();
+      hands.lockArm    = m_weaponHand->lockArm();
+      hands.lockAngle  = m_weaponHand->lockAngle();
     }
 
     VrReloadEvents events = m_manualReload->updateHands(hands);
@@ -1000,6 +1004,20 @@ namespace dxvk {
         break;
     }
 
+    switch (events.lock) {
+      case VrLockEvent::Grabbed:
+        m_backend.applyHaptic(VrHand::Left, MagazineFaintHaptic, MagazineHapticDuration);
+        break;
+
+      case VrLockEvent::Opened:
+      case VrLockEvent::Shut:
+        m_backend.applyHaptic(VrHand::Left, MagazineInsertedHaptic, MagazineHapticDuration);
+        break;
+
+      case VrLockEvent::None:
+        break;
+    }
+
     if (events.jammed)
       m_backend.applyHaptic(VrHand::Right, MagazineInsertedHaptic, MagazineHapticDuration);
 
@@ -1007,6 +1025,7 @@ namespace dxvk {
       m_weaponHand->setMagazine(m_manualReload->magazineState(), m_manualReload->magazineSeat());
       m_weaponHand->setRack(m_manualReload->rackHeld(), m_manualReload->rackPull(), m_manualReload->rackRest());
       m_weaponHand->setActionOpen(m_manualReload->actionOpen());
+      m_weaponHand->setLock(m_manualReload->lockTurn());
       m_weaponHand->setRoundLoop(m_manualReload->roundState(), m_manualReload->roundTime());
       m_weaponHand->setHighlight(vrPartsToWork(m_manualReload->situation()));
     }

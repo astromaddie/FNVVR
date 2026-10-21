@@ -40,6 +40,9 @@ namespace dxvk {
     /// A launcher's missile or mini-nuke (##NifRound), loaded alone into
     /// the tube, which leaves the weapon when it is fired
     Projectile,
+    /// A lock over a magazine, turned open before the magazine comes out
+    /// (the minigun's and the grenade machineguns' ##MinigunAmmoLock)
+    Lock,
   };
 
   /**
@@ -48,7 +51,8 @@ namespace dxvk {
    * A magazine is a part whose name contains "clip", "magazine", "drum",
    * "cell", "battery", "ammo" or "canister", in any case, unless it also
    * names something next to the magazine (its release, latch, lock or bay)
-   * or a magazine that is not detachable (a revolver's moon clip). A rack part is one whose name
+   * or a magazine that is not detachable (a revolver's moon clip); one that
+   * names a lock is the lock over the magazine. A rack part is one whose name
    * contains "slide", "bolt", "charginghandle", "lever" or "bar", unless it
    * also names a barrel, a lock, a pin, a release or a trigger. A round is
    * one whose name contains "shell", "bullet" or "round", unless it is a
@@ -684,6 +688,116 @@ namespace dxvk {
   };
 
   /**
+   * \brief What the left hand did with the lock over the magazine in a frame
+   */
+  enum class VrLockEvent {
+    None,
+    /// The hand took the lock
+    Grabbed,
+    /// The hand turned it open
+    Opened,
+    /// The hand turned it shut
+    Shut,
+  };
+
+  /**
+   * \brief What the lock logic sees in a frame
+   *
+   * Positions in the game world, in game units.
+   */
+  struct VrLockInput {
+    /// The weapon in the right hand has a lock over its magazine, and the
+    /// left hand is tracked and free (not on the weapon)
+    bool      active = false;
+    /// The magazine action (the left trigger) is held
+    bool      grip = false;
+    /// A press of the trigger does not take the lock: the hand holds a
+    /// magazine, the weapon has none, or the magazine is nearer
+    bool      blocked = false;
+    /// Left hand: the middle of the grip
+    VrVector3 hand;
+    /// Where the lock turns about
+    VrVector3 pivot;
+    /// Axis it turns about to open, unit
+    VrVector3 axis;
+    /// From the pivot to the middle of the lock, shut
+    VrVector3 arm;
+    /// How far it turns open, in radians
+    float     angle = 0.0f;
+  };
+
+  /**
+   * \brief Distances and shares of the lock gesture
+   */
+  struct VrLockReach {
+    /// How close the hand must be to the lock to take it, in metres
+    float grab  = 0.08f;
+    /// Share of its turn past which it is open
+    float open  = 0.8f;
+    /// Share of its turn below which an open lock is shut
+    float shut  = 0.2f;
+  };
+
+  /**
+   * \brief Follows the lock over the magazine of the weapon in the right
+   *    hand
+   *
+   * The left trigger pressed near the lock, from its pivot to twice the
+   * distance to its middle, takes it: it turns with the hand about its axis,
+   * up to the angle of the game's reload animation. Turned most of the way it
+   * is open, and back most of the way it is shut again. Let go of, it
+   * stays open or shut, see findings/reload.md §8.12.
+   */
+  class VrLockHand {
+
+  public:
+
+    explicit VrLockHand(const VrLockReach& reach = VrLockReach())
+    : m_reach(reach) { }
+
+    /**
+     * \brief Takes the frame's input
+     * \returns What happened in this frame
+     */
+    VrLockEvent update(const VrLockInput& input);
+
+    /**
+     * \brief Shuts the lock, when the weapon changes or the game reloads it
+     */
+    void reset();
+
+    /**
+     * \brief How far the hand is from where a press of the trigger takes the
+     *    lock, in metres
+     */
+    float grabDistance(const VrLockInput& input) const;
+
+    bool held() const {
+      return m_held;
+    }
+
+    bool open() const {
+      return m_open;
+    }
+
+    /**
+     * \brief How far the lock is turned, from 0 (shut) to 1 (open)
+     */
+    float turn() const {
+      return m_turn;
+    }
+
+  private:
+
+    VrLockReach m_reach;
+    bool        m_gripDown = false;
+    bool        m_held     = false;
+    bool        m_open     = false;
+    float       m_turn     = 0.0f;
+
+  };
+
+  /**
    * \brief How fast a hand turns about an axis
    *
    * From the hand's frame at two times: each of its axes turns from the
@@ -971,6 +1085,10 @@ namespace dxvk {
     bool             unchambered = false;
     /// The action (a break action) is open
     bool             actionOpen = false;
+    /// The weapon has a lock over its magazine
+    bool             hasLock = false;
+    /// It is open
+    bool             lockOpen = false;
   };
 
   /**
@@ -987,9 +1105,11 @@ namespace dxvk {
     bool hinge    = false;
     /// The loading port or gate, where the rounds in the hand go
     bool port     = false;
+    /// The lock over the magazine, to open or shut
+    bool lock     = false;
 
     bool any() const {
-      return magazine || rack || hinge || port;
+      return magazine || rack || hinge || port || lock;
     }
   };
 
@@ -1002,7 +1122,9 @@ namespace dxvk {
    * and a loaded one closed, and the port takes the rounds in the hand
    * until the weapon is full. A hand that holds a magazine, shells or
    * rounds is not asked to rack, and a cylinder that swings out is worked
-   * with the right wrist, so nothing of it glows.
+   * with the right wrist, so nothing of it glows. A lock over the magazine
+   * is opened before the magazine is taken out, and shut once a loaded one
+   * is in.
    */
   VrReloadParts vrPartsToWork(const VrReloadSituation& situation);
 

@@ -601,7 +601,7 @@ namespace dxvk {
 
 
     void readSounds(const uint8_t* sequence, const VrMagazineTiming& timing, float rackFrom, float rackTo,
-        float hingeFrom, float hingeTo, float begin, VrReloadAnimation& animation) {
+        float hingeFrom, float hingeTo, float lockFrom, float lockTo, float begin, VrReloadAnimation& animation) {
       auto group = readField<const uint8_t*>(sequence, VrGame::AnimSequenceGroup);
 
       if (!group)
@@ -660,6 +660,14 @@ namespace dxvk {
         ? vrFindNearestSound(others.data(), others.size(), hingeTo, SoundWindow, opening)
         : -1;
 
+      // The lock over the magazine opening and shutting
+      int32_t unlocking = animation.hasLock
+        ? vrFindNearestSound(others.data(), others.size(), lockFrom, SoundWindow, -1)
+        : -1;
+      int32_t locking = animation.hasLock && lockTo >= 0.0f
+        ? vrFindNearestSound(others.data(), others.size(), lockTo, SoundWindow, unlocking)
+        : -1;
+
       animation.out = toSound(out);
       animation.in  = toSound(in);
 
@@ -669,6 +677,11 @@ namespace dxvk {
       if (animation.hasHinge) {
         animation.hinge.openSound  = toSound(opening);
         animation.hinge.closeSound = toSound(closing);
+      }
+
+      if (animation.hasLock) {
+        animation.lock.openSound  = toSound(unlocking);
+        animation.lock.closeSound = toSound(locking);
       }
 
       // Every sound of the loop plays in each loop, as the game plays them
@@ -692,6 +705,8 @@ namespace dxvk {
           int32_t(i) == rack ? ", the weapon chambering" : "",
           int32_t(i) == opening ? ", the action opening" : "",
           int32_t(i) == closing ? ", the action closing" : "",
+          int32_t(i) == unlocking ? ", the lock opening" : "",
+          int32_t(i) == locking ? ", the lock shutting" : "",
           animation.hasLoop && times[i] - begin < animation.loop.timing.length ? ", in each loop" : ""));
       }
     }
@@ -709,6 +724,7 @@ namespace dxvk {
           uint8_t*              rack,
           uint8_t*              hinge,
           bool                  swing,
+          uint8_t*              lock,
           uint8_t*              leftHand,
           VrReloadAnimation&    animation) {
     const uint8_t* sequence = findReloadSequence(player);
@@ -753,10 +769,12 @@ namespace dxvk {
       return false;
     }
 
-    if (round) {
-      animation.place.rotate    = poses[place].rotate;
-      animation.place.translate = poses[place].translate;
-    }
+    // A magazine is left in its place at the end
+    if (!round)
+      place = poses.size() - 1;
+
+    animation.place.rotate    = poses[place].rotate;
+    animation.place.translate = poses[place].translate;
 
     // The centre of the magazine's meshes in its own frame
     VrVector3 centre = meshCentre(magazine);
@@ -810,6 +828,8 @@ namespace dxvk {
     VrGameRotation toHand = vrTranspose(hand.rotate);
     animation.magazineInHand.rotate    = toHand * held.rotate;
     animation.magazineInHand.translate = (toHand * (held.translate - hand.translate)) * (1.0f / hand.scale);
+    animation.handDistance = vrLength(held.translate + held.rotate * centre * held.scale - hand.translate)
+      * (1.0f / VrGameUnitsPerMetre);
     animation.axis = timing.axis;
 
     // The fingers the animation moves
@@ -845,19 +865,34 @@ namespace dxvk {
         hinge ? partName(hinge) : "any part holding the round", "'"));
     }
 
+    float lockFrom   = 0.0f;
+    float lockTo     = -1.0f;
+    float lockWidest = 0.0f;
+    animation.hasLock = lock && readHinge(tracks, weapon, lock, begin, end, timing.in, animation.lock, lockWidest, lockFrom, lockTo);
+
+    if (animation.hasLock) {
+      Logger::info(str::format("VR: Reload animation turns the lock '", animation.lock.part, "' open by ",
+        animation.lock.angle * 57.2957795f, " degrees about ", animation.lock.axis.x, ", ", animation.lock.axis.y, ", ",
+        animation.lock.axis.z, " in the weapon, from ", lockFrom, " s",
+        lockTo >= 0.0f ? str::format(", shut again at ", lockTo, " s") : std::string(", open to the end")));
+    } else if (lock) {
+      Logger::info(str::format("VR: The reload animation does not turn the lock '", partName(lock), "'"));
+    }
+
     animation.hasLoop = round && looping;
 
     if (animation.hasLoop)
       readLoop(sequence, begin, end, timing.in, animation.loop);
 
-    readSounds(sequence, timing, rackFrom, rackTo, hingeFrom, hingeTo, begin, animation);
+    readSounds(sequence, timing, rackFrom, rackTo, hingeFrom, hingeTo, lockFrom, lockTo, begin, animation);
 
     Logger::info(str::format("VR: Reload animation '", sequenceName ? sequenceName : "", "' from ", begin, " to ", end,
       round ? " s: the round is carried in from " : " s: the magazine goes out at ", timing.out, " s and in at ", timing.in, " s, along ",
       timing.axis.x, ", ", timing.axis.y, ", ", timing.axis.z, " in the weapon; the left hand holds it at ", timing.grip,
       carried < inHand.size() ? " s, where it carries it" : " s, before it goes in (the hand never carries it)",
       ", ", animation.magazineInHand.translate.x, ", ", animation.magazineInHand.translate.y, ", ",
-      animation.magazineInHand.translate.z, " units from the hand bone, with ", animation.fingers.size(), " finger bone(s)"));
+      animation.magazineInHand.translate.z, " units from the hand bone (its centre ", animation.handDistance * 100.0f,
+      " cm away), with ", animation.fingers.size(), " finger bone(s)"));
     return true;
   }
 

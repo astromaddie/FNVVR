@@ -227,6 +227,7 @@ namespace dxvk {
       m_rack.reset();
       m_action.reset();
       m_flick.reset();
+      m_lock.reset();
       m_pendingFill = false;
       m_fillFrames  = 0;
       m_jammed      = false;
@@ -265,6 +266,7 @@ namespace dxvk {
 
     m_loadsRounds = looping || fueled;
     m_hasRackPart = handled && input.rack;
+    m_hasLockPart = handled && input.lock;
     m_kind        = !handled ? VrReloadKind::None
       : looping ? VrReloadKind::Rounds
       : hinged  ? VrReloadKind::BreakAction
@@ -278,6 +280,7 @@ namespace dxvk {
       m_rack.reset();
       m_action.reset();
       m_flick.reset();
+      m_lock.reset();
       m_actionOpen  = false;
       m_pendingFill = false;
       m_lockedBack  = false;
@@ -299,6 +302,7 @@ namespace dxvk {
       m_magazine.reset();
       m_action.reset();
       m_flick.reset();
+      m_lock.reset();
       m_pendingFill = false;
       clearJam(weapon, "the game reloaded it");
     }
@@ -343,15 +347,37 @@ namespace dxvk {
       rack.travel = input.rackTravel;
     }
 
-    // A press takes the nearer of the magazine and the rack part
-    float toEject = magazine.active && !looping && m_magazine.state() == VrMagazineState::InWeapon
+    // The lock over the magazine is turned by a hand that holds nothing,
+    // with a magazine in the weapon: without one it stays open
+    VrLockInput lock;
+    lock.active = magazine.active && input.lock && !looping;
+    lock.grip   = input.grip;
+
+    if (lock.active) {
+      const VrGameCameraPose& right = *input.rightHand;
+
+      lock.hand  = input.leftHand->position;
+      lock.pivot = vrPointFromHand(right, *input.lock);
+      lock.axis  = right.forward * input.lockAxis.x + right.up * input.lockAxis.y + right.right * input.lockAxis.z;
+      lock.arm   = right.forward * input.lockArm.x + right.up * input.lockArm.y + right.right * input.lockArm.z;
+      lock.angle = input.lockAngle;
+    }
+
+    bool locked = input.lock && !m_lock.open();
+
+    // A press takes the nearest of the magazine, the rack part and the lock
+    float toEject = magazine.active && !looping && !locked && m_magazine.state() == VrMagazineState::InWeapon
       ? m_magazine.ejectDistance(magazine) : FLT_MAX;
     float toRack  = rack.active ? m_rack.grabDistance(rack) : FLT_MAX;
+    float toLock  = lock.active ? m_lock.grabDistance(lock) : FLT_MAX;
 
     // Nothing is taken out of a break action or a revolver: opening it
-    // empties it
-    magazine.blocked = opening || input.fired || toRack < toEject;
-    rack.blocked     = !magazine.blocked;
+    // empties it. Nothing goes out or in under a shut lock.
+    bool rackNearer  = toRack < toEject;
+    magazine.blocked = opening || input.fired || rackNearer || locked || toLock < toEject;
+    magazine.closed  = magazine.closed || locked;
+    rack.blocked     = !(opening || input.fired || rackNearer);
+    lock.blocked     = m_magazine.state() != VrMagazineState::InWeapon || toEject <= toLock;
 
     VrBreakInput action;
     action.active  = magazine.active && hinged;
@@ -425,7 +451,30 @@ namespace dxvk {
         break;
     }
 
-    m_actionOpen = actionOpen();
+    events.lock = m_lock.update(lock);
+
+    switch (events.lock) {
+      case VrLockEvent::Opened:
+      case VrLockEvent::Shut: {
+        bool open = events.lock == VrLockEvent::Opened;
+
+        if (input.animation)
+          vrPlayReloadSound(open ? input.animation->lock.openSound : input.animation->lock.closeSound, lock.pivot);
+
+        Logger::info(str::format("VR: The lock over the magazine of '", weaponName(weapon),
+          open ? "' is open" : "' is shut", ", clip ", clipCount(character)));
+      } break;
+
+      case VrLockEvent::Grabbed:
+      case VrLockEvent::None:
+        break;
+    }
+
+    m_actionOpen = actionOpen() || (input.lock && m_lock.open());
+
+    // The hand on the lock does nothing with magazines
+    if (m_lock.held() || events.lock != VrLockEvent::None)
+      magazine.active = false;
 
     // The hand on the rack part does nothing with magazines
     if (m_rack.held() || events.rack != VrRackEvent::None)
@@ -553,6 +602,8 @@ namespace dxvk {
     situation.jammed      = m_jammed;
     situation.unchambered = m_unchambered;
     situation.actionOpen  = actionOpen();
+    situation.hasLock     = m_hasLockPart;
+    situation.lockOpen    = m_lock.open();
     return situation;
   }
 

@@ -38,7 +38,10 @@ Weapons are now reloaded with the hands instead of the reload button. It is on b
   hand is. Outside V.A.T.S. only; V.A.T.S. keeps its own highlight.
 - **Heavy weapons**: the ammunition boxes of the minigun, CZ57 Avenger, K9000 and grenade machineguns, the shoulder
   mounted machine gun's box, the Red Glare's canister and the Tesla cannon's cell are taken out and put in like
-  magazines (the Gatling laser and plasma casters already were).
+  magazines (the Gatling laser and plasma casters already were). The box of the minigun family and of the grenade
+  machineguns sits under a lock, turned open with the left hand before the box comes out and shut once a new one is
+  in; the weapon does not fire while it is open. A cell the game's animation never puts in the left hand (the
+  Gatling laser's) is held between the fingers.
 - **Launchers** (missile launcher, Annabelle, Fat Man, Esther): after the shot the tube is empty; a missile or mini-nuke
   taken behind the shoulder is pushed into the tube.
 - **Flamers and incinerators**: fuel is taken behind the shoulder and the left hand held half a second where the game's

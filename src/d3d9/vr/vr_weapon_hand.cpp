@@ -83,6 +83,12 @@ namespace dxvk {
     constexpr char PinchThumbBone[] = "Bip01 L Thumb12";
     constexpr char PinchIndexBone[] = "Bip01 L Finger12";
 
+    // How far from the left hand bone, in metres, the reload animation may
+    // hold the new magazine's centre and still carry it: the Gatling
+    // laser's never comes within 50 cm of the hand, the minigun's box is
+    // under 20 cm away
+    constexpr float MagazineHandReach = 0.3f;
+
     // How far out along its way in a round enters the loading port, in
     // metres, and the part of the time to its place it takes to get there
     // from the fingers
@@ -722,6 +728,7 @@ namespace dxvk {
     m_swingAction  = false;
     m_hasRoundPort = false;
     m_hasFuelPort  = false;
+    m_hasLock      = false;
 
     if (m_mode == VrFirstPersonMode::Hidden) {
       m_hasAim    = false;
@@ -893,6 +900,8 @@ namespace dxvk {
 
     placeFuelPort(root, weapon, form, otherHand, hand);
 
+    uint8_t* lock = placeLock(weapon, hand, updateData);
+
     if (handPlaced) {
       HeldPart held = { };
 
@@ -932,7 +941,7 @@ namespace dxvk {
     if (rack)
       drawPart(rack, rackPose, updateData);
 
-    findHighlight(root, weapon, hinge, action == ActionKind::Swing);
+    findHighlight(root, weapon, hinge, lock, action == ActionKind::Swing);
 
     uint8_t* muzzle = findObject(weapon, VrGame::ProjectileNodeName);
 
@@ -993,7 +1002,7 @@ namespace dxvk {
   }
 
 
-  void VrWeaponHand::findHighlight(uint8_t* root, uint8_t* weapon, uint8_t* hinge, bool swing) {
+  void VrWeaponHand::findHighlight(uint8_t* root, uint8_t* weapon, uint8_t* hinge, uint8_t* lock, bool swing) {
     if (!m_highlight.any())
       return;
 
@@ -1007,6 +1016,9 @@ namespace dxvk {
 
     if (m_highlight.rack && !m_hasHinge)
       add(vrFindWeaponPart(weapon, VrWeaponPartKind::Rack));
+
+    if (m_highlight.lock)
+      add(lock);
 
     // A break action's barrel turns down about the breech
     if (m_highlight.hinge && m_hasHinge && !swing)
@@ -1693,10 +1705,6 @@ namespace dxvk {
     VrWeaponPartKind kind = action == ActionKind::Swing && !looping ? VrWeaponPartKind::Loader
       : (round ? VrWeaponPartKind::Round : VrWeaponPartKind::Magazine);
 
-    // The reload animations never hold their rounds well in the hand: they
-    // are held between the fingers instead
-    m_pinched = kind == VrWeaponPartKind::Round;
-
     uint8_t* magazine = hiddenFound ? m_hiddenMagazine : vrFindWeaponPart(weapon, kind);
 
     // A launcher is loaded with the round it fires
@@ -1735,7 +1743,9 @@ namespace dxvk {
       m_hasMagazineCentre = false;
       m_hasMagazineGrip   = false;
       m_hasPinch          = false;
+      m_hasLockCentre     = false;
       m_loggedMagazine    = false;
+      m_loggedLock        = false;
     }
 
     // The game's reload animation, once the weapon's model is in the hand
@@ -1756,9 +1766,17 @@ namespace dxvk {
         // named as a lever
         m_hasReloadAnimation = vrReadReloadAnimation(player(), root, weapon, magazine, round, looping,
           action == ActionKind::None ? vrFindWeaponPart(weapon, VrWeaponPartKind::Rack) : nullptr,
-          hinge, action == ActionKind::Swing, leftHand, m_reloadAnimation);
+          hinge, action == ActionKind::Swing,
+          action == ActionKind::None ? vrFindWeaponPart(weapon, VrWeaponPartKind::Lock) : nullptr,
+          leftHand, m_reloadAnimation);
       }
     }
+
+    // The reload animations never hold their rounds well in the hand, and
+    // some never carry their magazine: they are held between the fingers
+    // instead
+    m_pinched = kind == VrWeaponPartKind::Round
+      || (m_hasReloadAnimation && m_reloadAnimation.handDistance > MagazineHandReach);
 
     // An action that opens is reloaded by hand only once its reload
     // animation tells how it opens
@@ -1787,7 +1805,9 @@ namespace dxvk {
       m_hasMagazineCentre = true;
     }
 
-    if (round && m_hasReloadAnimation && m_reloadAnimation.round) {
+    // A launcher's round is put where its reload animation leaves it: the
+    // shot carried it away from its place
+    if (m_hasReloadAnimation && (fired || (round && m_reloadAnimation.round))) {
       VrGameRotation weaponRotation = readRotation(weapon, VrGame::ObjectWorldRotation);
 
       rotation = weaponRotation * m_reloadAnimation.place.rotate;
@@ -1892,13 +1912,17 @@ namespace dxvk {
     }
 
     if (m_magazineState == VrMagazineState::InWeapon) {
-      // The game hides a launcher's round when the weapon is drawn empty,
-      // and only shows it again when it is drawn loaded: it is shown once
-      // a round is pushed into the tube
-      if (fired)
-        field<uint32_t>(magazine, VrGame::ObjectFlags) &= ~VrGame::ObjectFlagAppCulled;
+      // The game hides a launcher's round when it fires it, or when the
+      // weapon is drawn empty, until it plays its reload animation or the
+      // weapon is drawn loaded: it is shown in its place once a round is
+      // pushed into the tube
+      if (!fired)
+        return nullptr;
 
-      return nullptr;
+      field<uint32_t>(magazine, VrGame::ObjectFlags) &= ~VrGame::ObjectFlagAppCulled;
+      pose.rotate    = rotation;
+      pose.translate = position;
+      return magazine;
     }
 
     if (loop && m_roundState == VrRoundState::Loading) {
@@ -1964,12 +1988,72 @@ namespace dxvk {
 
     uint32_t& flags = field<uint32_t>(magazine, VrGame::ObjectFlags);
 
-    if (round && (flags & VrGame::ObjectFlagAppCulled)) {
+    if ((round || fired) && (flags & VrGame::ObjectFlagAppCulled)) {
       flags &= ~VrGame::ObjectFlagAppCulled;
       m_shownRound = magazine;
     }
 
     return magazine;
+  }
+
+
+  uint8_t* VrWeaponHand::placeLock(
+          uint8_t*              weapon,
+    const VrGameCameraPose&     hand,
+          void*                 updateData) {
+    // Only over a magazine reloaded by hand, whose reload animation turns it
+    uint8_t* lock = m_hasMagazine && !m_hasHinge && m_hasReloadAnimation && m_reloadAnimation.hasLock
+      ? findObject(weapon, m_reloadAnimation.lock.part.c_str()) : nullptr;
+
+    if (!lock)
+      return nullptr;
+
+    VrGameRotation weaponRotation = readRotation(weapon, VrGame::ObjectWorldRotation);
+    VrGameRotation lockRotation   = readRotation(lock, VrGame::ObjectWorldRotation);
+    VrVector3 pivot               = readVector(lock, VrGame::ObjectWorldTranslation);
+    float scale                   = field<float>(lock, VrGame::ObjectWorldScale);
+
+    // Its middle, read while the game draws it shut
+    auto bound = field<uint8_t*>(lock, VrGame::ObjectWorldBound);
+
+    if (m_lockTurn <= 0.0f && bound && scale > 0.0f && field<float>(bound, sizeof(VrVector3)) > 0.0f) {
+      m_lockCentre    = vrTranspose(lockRotation) * (readVector(bound, 0) - pivot) * (1.0f / scale);
+      m_hasLockCentre = true;
+    }
+
+    if (!m_hasLockCentre)
+      return nullptr;
+
+    const VrHingeAnimation& animation = m_reloadAnimation.lock;
+    VrVector3 axis = weaponRotation * animation.axis;
+    VrVector3 arm  = lockRotation * m_lockCentre * scale;
+
+    m_lockPivot = vrPointToHand(hand, pivot);
+    m_lockAxis  = { vrDot(axis, hand.forward), vrDot(axis, hand.up), vrDot(axis, hand.right) };
+    m_lockArm   = { vrDot(arm, hand.forward), vrDot(arm, hand.up), vrDot(arm, hand.right) };
+    m_hasLock   = true;
+
+    if (!m_loggedLock) {
+      Logger::info(str::format("VR: The weapon's magazine is under the lock '", animation.part, "', turned open by ",
+        animation.angle * 57.2957795f, " degrees, its middle ", vrLength(arm) / VrGameUnitsPerMetre * 100.0f,
+        " cm from its pivot"));
+      m_loggedLock = true;
+    }
+
+    if (m_lockTurn <= 0.0f)
+      return lock;
+
+    // Turned about its pivot, from shut as the game draws it to open as the
+    // animation has it
+    VrGameRotation shut = vrTranspose(weaponRotation) * lockRotation;
+
+    VrGameTransform pose;
+    pose.rotate    = weaponRotation * vrGameRotationFromQuaternion(vrSlerp(
+      vrQuaternionFromGameRotation(shut), vrQuaternionFromGameRotation(animation.open.rotate), m_lockTurn));
+    pose.translate = pivot;
+
+    drawPart(lock, pose, updateData);
+    return lock;
   }
 
 

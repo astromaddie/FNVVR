@@ -334,6 +334,54 @@ namespace dxvk {
     }
 
     /**
+     * \brief Sets how far the lock over the magazine is turned open
+     *
+     * Applied when the model is next drawn, from 0 (shut, as the game draws
+     * it) to 1 (as open as the game's reload animation turns it).
+     */
+    void setLock(float turn) {
+      m_lockTurn = turn;
+    }
+
+    /**
+     * \brief Where the lock over the magazine turns about
+     *
+     * In the right hand's frame (see vrPointFromHand), measured each time
+     * the model is drawn.
+     *
+     * \returns The point, or \c nullptr if the weapon in the hand is not
+     *    reloaded by hand or has no lock its reload animation turns
+     */
+    const VrVector3* lockPivot() const {
+      return m_hasLock ? &m_lockPivot : nullptr;
+    }
+
+    /**
+     * \brief Axis the lock turns about to open
+     *
+     * A unit vector in the right hand's frame, valid with lockPivot.
+     */
+    const VrVector3& lockAxis() const {
+      return m_lockAxis;
+    }
+
+    /**
+     * \brief From the lock's pivot to its middle, shut
+     *
+     * In the right hand's frame, in game units, valid with lockPivot.
+     */
+    const VrVector3& lockArm() const {
+      return m_lockArm;
+    }
+
+    /**
+     * \brief How far the lock turns open, in radians
+     */
+    float lockAngle() const {
+      return m_reloadAnimation.lock.angle;
+    }
+
+    /**
      * \brief Opens or closes the action of the weapon in the hand
      *
      * From the next frame on, the barrel of a break action swings down
@@ -654,6 +702,18 @@ namespace dxvk {
     VrVector3        m_fuelPort;
     bool             m_hasFuelPort = false;
 
+    // Lock over the magazine: how far it is to be turned open, its middle
+    // in its own frame (read while the game draws it shut), and where it
+    // turns about, its axis and its arm in the right hand's frame
+    float            m_lockTurn = 0.0f;
+    VrVector3        m_lockCentre;
+    bool             m_hasLockCentre = false;
+    VrVector3        m_lockPivot;
+    VrVector3        m_lockAxis;
+    VrVector3        m_lockArm;
+    bool             m_hasLock = false;
+    bool             m_loggedLock = false;
+
     // Set while the game creates a projectile aimed with the hand, so that
     // its auto-aim leaves it alone
     bool             m_handAimedShot = false;
@@ -738,7 +798,7 @@ namespace dxvk {
 
     void measureBlade(const uint8_t* weapon, const VrGameCameraPose& hand);
 
-    void findHighlight(uint8_t* root, uint8_t* weapon, uint8_t* hinge, bool swing);
+    void findHighlight(uint8_t* root, uint8_t* weapon, uint8_t* hinge, uint8_t* lock, bool swing);
 
     /**
      * \brief A part of the weapon the left hand holds as the reload
@@ -899,6 +959,18 @@ namespace dxvk {
       const uint8_t*              form,
             uint8_t*              leftHand,
       const VrGameCameraPose&     hand);
+
+    /**
+     * \brief Finds the lock over the weapon's magazine and draws it as far
+     *    open as it is turned
+     *
+     * \returns The lock, or \c nullptr if the weapon has none to turn by
+     *    hand
+     */
+    uint8_t* placeLock(
+            uint8_t*              weapon,
+      const VrGameCameraPose&     hand,
+            void*                 updateData);
 
     /**
      * \brief Draws a part of the weapon at a pose for this update only
