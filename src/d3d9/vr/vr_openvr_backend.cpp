@@ -833,7 +833,7 @@ namespace dxvk {
 
       vr::InputDigitalActionData_t data = { };
 
-      if (vrInput->GetDigitalActionData(m_actions.digital[i], &data, sizeof(data)) == vr::VRInputError_None)
+      if (vrInput->GetDigitalActionData(m_actions.digital[i], &data, sizeof(data), vr::k_ulInvalidInputValueHandle) == vr::VRInputError_None)
         input.actions.setPressed(VrAction(i), data.bActive && data.bState);
     }
 
@@ -841,7 +841,7 @@ namespace dxvk {
       vr::InputAnalogActionData_t data = { };
       VrVector2 result;
 
-      if (vrInput->GetAnalogActionData(handle, &data, sizeof(data)) == vr::VRInputError_None && data.bActive)
+      if (vrInput->GetAnalogActionData(handle, &data, sizeof(data), vr::k_ulInvalidInputValueHandle) == vr::VRInputError_None && data.bActive)
         result = { data.x, data.y };
 
       return result;
@@ -859,8 +859,8 @@ namespace dxvk {
       vr::InputPoseActionData_t data = { };
 
       if (controller.isActive
-       && vrInput->GetPoseActionData(m_actions.aim[i], vr::TrackingUniverseStanding, predictedSeconds,
-            &data, sizeof(data)) == vr::VRInputError_None
+       && vrInput->GetPoseActionDataRelativeToNow(m_actions.aim[i], vr::TrackingUniverseStanding, predictedSeconds,
+            &data, sizeof(data), vr::k_ulInvalidInputValueHandle) == vr::VRInputError_None
        && data.bActive && data.pose.bPoseIsValid)
         controller.aimPose = poseFromOpenVr(data.pose.mDeviceToAbsoluteTracking);
     }
@@ -1206,7 +1206,8 @@ namespace dxvk {
     float strength = std::max(0.0f, std::min(1.0f, amplitude));
 
     if (seconds > 0.0f && strength > 0.0f)
-      m_runtime->input->TriggerHapticVibrationAction(m_actions.haptic[uint32_t(hand)], 0.0f, seconds, FrequencyHz, strength);
+      m_runtime->input->TriggerHapticVibrationAction(m_actions.haptic[uint32_t(hand)], 0.0f, seconds, FrequencyHz, strength,
+        vr::k_ulInvalidInputValueHandle);
   }
 
 }
