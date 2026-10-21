@@ -36,8 +36,14 @@ Weapons are now reloaded with the hands instead of the reload button. It is on b
 - **Highlighted parts**: the part that needs working next (the empty or jammed magazine or cell, the rack part, a break
   action's barrel, the loading port while rounds are held) glows the way V.A.T.S. highlights a limb, wherever the
   hand is. Outside V.A.T.S. only; V.A.T.S. keeps its own highlight.
-- **Not yet covered**: heavy weapons, launchers and weapons whose model has no recognised magazine part keep the
-  game's reload (the X button) for now.
+- **Heavy weapons**: the ammunition boxes of the minigun, CZ57 Avenger, K9000 and grenade machineguns, the shoulder
+  mounted machine gun's box, the Red Glare's canister and the Tesla cannon's cell are taken out and put in like
+  magazines (the Gatling laser and plasma casters already were).
+- **Launchers** (missile launcher, Annabelle, Fat Man, Esther): after the shot the tube is empty; a missile or mini-nuke
+  taken behind the shoulder is pushed into the tube.
+- **Flamers and incinerators**: fuel is taken behind the shoulder and the left hand held half a second where the game's
+  reload animation puts it on the weapon.
+- **Not yet covered**: weapons whose model has no recognised part keep the game's reload (the X button).
 
 **Bindings**: a new SteamVR action, "Take out, take and insert a magazine (left hand)", is bound to the left trigger,
 and the two-handed grip moved from the left trigger to the left grip. Players with custom bindings need to bind the
