@@ -62,6 +62,7 @@ namespace dxvk {
 
     // Animation types of the game's weapons, see findings/weapon.md
     constexpr int8_t WeaponTypeNone         = -1;
+    constexpr int8_t WeaponTypeHandToHand   = 0;
     constexpr int8_t WeaponTypeOneHandMelee = 1;
     constexpr int8_t WeaponTypeTwoHandMelee = 2;
     constexpr int8_t WeaponTypePistol       = 3;
@@ -825,9 +826,31 @@ namespace dxvk {
 
     bool held = melee && m_heldSettle.settled();
 
+    // Without a weapon, or with one worn on the fist, the weapon node is
+    // not where the hand is: the right hand bone takes the free hand's
+    // pose around its controller, mirrored
+    int8_t type = form ? readField<int8_t>(form, VrGame::WeaponAnimationType) : WeaponTypeNone;
+    uint8_t* fist = (type == WeaponTypeNone || type == WeaponTypeHandToHand)
+      ? findObject(root, VrGame::RightHandNodeName) : nullptr;
+
     VrGameTransform rig = held
       ? vrComputeRigHoldingWeapon(weaponRotation, drawnWeapon, m_heldSettle.rotation(), hand)
       : vrComputeRigToHand(m_gameCamera, drawnWeapon, hand);
+
+    if (fist) {
+      VrGameTransform target = vrComputeHeldTransform(hand, vrMirrorHandPose(FreeHandPose));
+      VrGameRotation drawnRotation = readRotation(fist, VrGame::ObjectWorldRotation);
+      VrVector3 drawnFist = readVector(fist, VrGame::ObjectWorldTranslation);
+
+      rig.rotate    = target.rotate * vrTranspose(drawnRotation);
+      rig.translate = target.translate - rig.rotate * drawnFist;
+
+      if (!m_loggedFist) {
+        Logger::info(str::format("VR: The right hand takes the free pose around its controller, the weapon node is ",
+          vrLength(drawnWeapon - drawnFist) / VrGameUnitsPerMetre, " m from the hand"));
+        m_loggedFist = true;
+      }
+    }
 
     // With both hands on a gun, it points along the line between them. A
     // two-handed melee weapon is swung by the right hand, the left hand

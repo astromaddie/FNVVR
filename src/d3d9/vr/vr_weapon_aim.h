@@ -212,6 +212,27 @@ namespace dxvk {
   VrGameTransform vrInverse(const VrGameTransform& t);
 
   /**
+   * \brief Mirror image of a bone rotation for the other hand
+   *
+   * The game's left and right hand bones, fingers included, are mirror
+   * images whose local z axis is flipped: a right bone's local rotation is
+   * its left counterpart's with z negated on both sides, C * r * C with
+   * C = diag(1, 1, -1) (findings/fingers.md). The same holds for a hand
+   * bone's rotation in its controller's frame, mirrored across the
+   * controller's forward-up plane.
+   */
+  VrGameRotation vrMirrorHandRotation(const VrGameRotation& r);
+
+  /**
+   * \brief Mirror image of a hand bone's pose in its controller's frame
+   *
+   * \param [in] pose Hand bone's transform in its controller's frame, axes
+   *    forward, up and right as in vrCameraRotation
+   * \returns The other hand's bone transform in its own controller's frame
+   */
+  VrGameTransform vrMirrorHandPose(const VrGameTransform& pose);
+
+  /**
    * \brief Places a transform given relative to a controller
    *
    * \param [in] controller Pose of the controller

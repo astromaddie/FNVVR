@@ -604,6 +604,7 @@ namespace dxvk {
     bool             m_loggedSnapAim = false;
     bool             m_loggedPipBoy = false;
     bool             m_loggedRightHand = false;
+    bool             m_loggedFist = false;
     bool             m_loggedScreen = false;
     bool             m_loggedPipBoyScale = false;
     bool             m_loggedAutoAim = false;
