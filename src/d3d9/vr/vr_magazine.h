@@ -43,9 +43,9 @@ namespace dxvk {
    * \brief Tells what a part of a weapon's model is from its name
    *
    * A magazine is a part whose name contains "clip", "magazine", "drum",
-   * "cell" or "battery", in any case, unless it also names something next to the
-   * magazine (its release, latch or bay) or a magazine that is not
-   * detachable (a revolver's moon clip). A rack part is one whose name
+   * "cell", "battery", "ammo" or "canister", in any case, unless it also
+   * names something next to the magazine (its release, latch, lock or bay)
+   * or a magazine that is not detachable (a revolver's moon clip). A rack part is one whose name
    * contains "slide", "bolt", "charginghandle", "lever" or "bar", unless it
    * also names a barrel, a lock, a pin, a release or a trigger. A round is
    * one whose name contains "shell", "bullet" or "round", unless it is a

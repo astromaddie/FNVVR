@@ -96,6 +96,10 @@ TEST_CASE(magazine_parts_are_found_by_keyword) {
   CHECK(vrClassifyWeaponPart("##PPEnergyCell") == VrWeaponPartKind::Magazine);
   CHECK(vrClassifyWeaponPart("##PLRBattery") == VrWeaponPartKind::Magazine);
   CHECK(vrClassifyWeaponPart("##CSDrum") == VrWeaponPartKind::Magazine);
+  CHECK(vrClassifyWeaponPart("##MinigunAmmo:1") == VrWeaponPartKind::Magazine);
+  CHECK(vrClassifyWeaponPart("##SMMG_Ammobox") == VrWeaponPartKind::Magazine);
+  CHECK(vrClassifyWeaponPart("##RGCanister") == VrWeaponPartKind::Magazine);
+  CHECK(vrClassifyWeaponPart("##TCECCell") == VrWeaponPartKind::Magazine);
 }
 
 
@@ -108,7 +112,8 @@ TEST_CASE(parts_next_to_the_magazine_are_not_magazines) {
   CHECK(vrClassifyWeaponPart("##PowerCellAssembly") == VrWeaponPartKind::None);
   CHECK(vrClassifyWeaponPart("##MoonClip") == VrWeaponPartKind::None);
   CHECK(vrClassifyWeaponPart("##SRClipHigh") == VrWeaponPartKind::None);
-  CHECK(vrClassifyWeaponPart("##TCECCell") == VrWeaponPartKind::None);
+  CHECK(vrClassifyWeaponPart("##TCClip") == VrWeaponPartKind::None);
+  CHECK(vrClassifyWeaponPart("##MinigunAmmoLock") == VrWeaponPartKind::None);
 }
 
 

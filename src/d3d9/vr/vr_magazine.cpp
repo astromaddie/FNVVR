@@ -21,14 +21,17 @@ namespace dxvk {
     const PartException PartExceptions[] = {
       // The sniper rifle's second magazine model, for its other clip size
       { "srcliphigh",  VrWeaponPartKind::None },
-      // The Tesla cannon's cell, not its magazine (##TCClip)
-      { "tceccell",    VrWeaponPartKind::None },
+      // The clamp over the Tesla cannon's cell (##TCECCell), which its
+      // reload animation carries in
+      { "tcclip",      VrWeaponPartKind::None },
     };
 
-    const char* const MagazineWords[] = { "clip", "magazine", "drum", "cell", "battery" };
+    // Also the ammunition boxes of the heavy weapons and the Red Glare's
+    // rocket canister
+    const char* const MagazineWords[] = { "clip", "magazine", "drum", "cell", "battery", "ammo", "canister" };
 
     // Parts next to the magazine, or magazines that do not come out
-    const char* const NotMagazineWords[] = { "release", "latch", "spring", "peg", "bay", "assembly", "moon" };
+    const char* const NotMagazineWords[] = { "release", "latch", "lock", "spring", "peg", "bay", "assembly", "moon" };
 
     const char* const RackWords[] = { "slide", "bolt", "charginghandle", "lever", "bar" };
 
