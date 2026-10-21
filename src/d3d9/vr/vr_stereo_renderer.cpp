@@ -916,6 +916,7 @@ namespace dxvk {
       hands.well       = m_weaponHand->magazineWell();
       hands.axis       = m_weaponHand->magazineAxis();
       hands.held       = m_weaponHand->magazineHeld();
+      hands.fired      = m_weaponHand->magazineFired();
       hands.animation  = m_weaponHand->reloadAnimation();
       hands.rack       = m_weaponHand->rackPart();
       hands.rackAxis   = m_weaponHand->rackAxis();

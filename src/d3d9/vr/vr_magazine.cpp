@@ -24,6 +24,8 @@ namespace dxvk {
       // The clamp over the Tesla cannon's cell (##TCECCell), which its
       // reload animation carries in
       { "tcclip",      VrWeaponPartKind::None },
+      // The missile or mini-nuke in a launcher's tube
+      { "nifround",    VrWeaponPartKind::Projectile },
     };
 
     // Also the ammunition boxes of the heavy weapons and the Red Glare's

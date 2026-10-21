@@ -117,6 +117,13 @@ TEST_CASE(parts_next_to_the_magazine_are_not_magazines) {
 }
 
 
+TEST_CASE(a_launchers_round_is_a_projectile) {
+  CHECK(vrClassifyWeaponPart("##NifRound") == VrWeaponPartKind::Projectile);
+  CHECK(vrClassifyWeaponPart("##NifRound:0") == VrWeaponPartKind::Projectile);
+  CHECK(!vrIsCartridgePart("##NifRound"));
+}
+
+
 TEST_CASE(other_parts_are_not_magazines) {
   CHECK(vrClassifyWeaponPart("##Cover") == VrWeaponPartKind::None);
   CHECK(vrClassifyWeaponPart("##Cylinder") == VrWeaponPartKind::None);
@@ -632,7 +639,6 @@ TEST_CASE(rounds_are_found_by_keyword) {
   CHECK(vrClassifyWeaponPart("##Shells") == VrWeaponPartKind::Round);
   CHECK(vrClassifyWeaponPart("##ShellFull") == VrWeaponPartKind::Round);
   CHECK(vrClassifyWeaponPart("##Bullet1") == VrWeaponPartKind::Round);
-  CHECK(vrClassifyWeaponPart("##NifRound") == VrWeaponPartKind::Round);
   CHECK(vrClassifyWeaponPart("##ShellEmpty") == VrWeaponPartKind::None);
   CHECK(vrClassifyWeaponPart("##swmCasing") == VrWeaponPartKind::None);
 }

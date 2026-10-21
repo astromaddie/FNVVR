@@ -202,7 +202,7 @@ namespace dxvk {
   void VrManualReload::setEnabled(bool enabled) {
     if (enabled != m_enabled) {
       Logger::info(enabled
-        ? "VR: Weapons with a detachable magazine, those loaded round by round, break actions and revolvers are reloaded with the hands"
+        ? "VR: Weapons with a detachable magazine, those loaded round by round, break actions, revolvers and launchers are reloaded with the hands"
         : "VR: The weapons are reloaded as in the game");
     }
 
@@ -247,7 +247,7 @@ namespace dxvk {
 
     // A jam is cleared by racking, or by taking the magazine out: a weapon
     // loaded round by round with nothing to rack keeps the game's jam
-    m_holdsJam = handled && (input.rack || !looping);
+    m_holdsJam = handled && (input.rack || !looping) && !input.fired;
 
     // How fast the right hand turns comes from its last frame
     VrGameCameraPose lastRight = m_lastRight;
@@ -296,6 +296,12 @@ namespace dxvk {
       clearJam(weapon, "the game reloaded it");
     }
 
+    // A launcher's round left with the shot: its tube is empty
+    if (input.fired && clip == 0 && m_magazine.state() == VrMagazineState::InWeapon) {
+      m_magazine.empty();
+      Logger::info(str::format("VR: The tube of '", weaponName(weapon), "' is empty"));
+    }
+
     VrMagazineInput magazine;
     magazine.active = input.head && input.rightHand && input.leftHand && input.well && !input.leftOnWeapon;
     magazine.grip   = input.grip;
@@ -337,7 +343,7 @@ namespace dxvk {
 
     // Nothing is taken out of a break action or a revolver: opening it
     // empties it
-    magazine.blocked = opening || toRack < toEject;
+    magazine.blocked = opening || input.fired || toRack < toEject;
     rack.blocked     = !magazine.blocked;
 
     VrBreakInput action;
@@ -426,7 +432,7 @@ namespace dxvk {
       events.magazine = m_magazine.update(magazine);
 
     // What the hand loads the weapon with
-    const char* load = hinged ? "shells" : (swung ? "speed loader" : "magazine");
+    const char* load = hinged ? "shells" : (swung ? "speed loader" : (input.fired ? "round" : "magazine"));
 
     switch (events.magazine) {
       case VrMagazineEvent::Ejected:
@@ -445,12 +451,14 @@ namespace dxvk {
 
       case VrMagazineEvent::Cleared:
         Logger::info(str::format("VR: The ", load, " of '", weaponName(weapon),
-          hinged ? "' are out of the breech" : (swung ? "' is out of the cylinder" : "' is out of its well")));
+          hinged ? "' are out of the breech" : (swung ? "' is out of the cylinder"
+            : (input.fired ? "' is out of the tube" : "' is out of its well"))));
         break;
 
       case VrMagazineEvent::Engaged:
         Logger::info(str::format(hinged ? "VR: Shells enter the breech of '"
-          : (swung ? "VR: A speed loader enters the cylinder of '" : "VR: A magazine enters the well of '"),
+          : (swung ? "VR: A speed loader enters the cylinder of '"
+            : (input.fired ? "VR: A round enters the tube of '" : "VR: A magazine enters the well of '")),
           weaponName(weapon), "'"));
         break;
 

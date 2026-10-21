@@ -282,6 +282,16 @@ namespace dxvk {
     }
 
     /**
+     * \brief Whether the magazine is the round the weapon fires
+     *
+     * A launcher's missile or mini-nuke, valid with magazineWell: it is
+     * never taken out, and leaves the weapon when it is fired.
+     */
+    bool magazineFired() const {
+      return m_magazineFired;
+    }
+
+    /**
      * \brief Sets where the rack part of the weapon in the hand is drawn
      *
      * Applied when the model is next drawn.
@@ -514,6 +524,7 @@ namespace dxvk {
     VrVector3        m_magazineAxis;
     VrVector3        m_magazineHeld;
     bool             m_hasMagazine = false;
+    bool             m_magazineFired = false;
     VrVector3        m_magazineCentre;
     bool             m_hasMagazineCentre = false;
     const uint8_t*   m_magazineForm = nullptr;

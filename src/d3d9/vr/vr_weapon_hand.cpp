@@ -1695,6 +1695,13 @@ namespace dxvk {
 
     uint8_t* magazine = hiddenFound ? m_hiddenMagazine : vrFindWeaponPart(weapon, kind);
 
+    // A launcher is loaded with the round it fires
+    if (!magazine && kind == VrWeaponPartKind::Magazine)
+      magazine = vrFindWeaponPart(weapon, VrWeaponPartKind::Projectile);
+
+    bool fired = magazine
+      && vrClassifyWeaponPart(field<const char*>(magazine, VrGame::ObjectName)) == VrWeaponPartKind::Projectile;
+
     if (m_hiddenMagazine && (!hiddenFound || m_magazineState != VrMagazineState::Out)) {
       if (hiddenFound)
         field<uint32_t>(m_hiddenMagazine, VrGame::ObjectFlags) &= ~VrGame::ObjectFlagAppCulled;
@@ -1787,8 +1794,9 @@ namespace dxvk {
     VrVector3 centre = m_hasMagazineCentre ? m_magazineCentre : VrVector3();
     VrVector3 well   = position + rotation * centre * scale;
 
-    m_magazineWell = vrPointToHand(hand, well);
-    m_hasMagazine  = true;
+    m_magazineWell  = vrPointToHand(hand, well);
+    m_hasMagazine   = true;
+    m_magazineFired = fired;
     m_hasHinge     = action != ActionKind::None;
     m_swingAction  = action == ActionKind::Swing;
 
@@ -1879,8 +1887,15 @@ namespace dxvk {
       return nullptr;
     }
 
-    if (m_magazineState == VrMagazineState::InWeapon)
+    if (m_magazineState == VrMagazineState::InWeapon) {
+      // The game hides a launcher's round when the weapon is drawn empty,
+      // and only shows it again when it is drawn loaded: it is shown once
+      // a round is pushed into the tube
+      if (fired)
+        field<uint32_t>(magazine, VrGame::ObjectFlags) &= ~VrGame::ObjectFlagAppCulled;
+
       return nullptr;
+    }
 
     if (loop && m_roundState == VrRoundState::Loading) {
       // From between the fingers to the port, then along the way in to its

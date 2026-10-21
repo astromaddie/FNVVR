@@ -34,6 +34,9 @@ namespace dxvk {
     /// Where a magazine held by the left hand has its centre, in the left
     /// hand's frame (VrWeaponHand::magazineHeld), valid with the well
     VrVector3               held;
+    /// The magazine is the round the weapon fires, a launcher's missile or
+    /// mini-nuke (VrWeaponHand::magazineFired), valid with the well
+    bool                    fired = false;
     /// Where the rack part's centre is home, in the right hand's frame
     /// (VrWeaponHand::rackPart), or \c nullptr without one
     const VrVector3*        rack = nullptr;
@@ -133,6 +136,12 @@ namespace dxvk {
    * a magazine is. A revolver loaded round by round opens its loading gate
    * instead, which empties nothing: its rounds only go in while it is
    * open.
+   *
+   * Phase 5d (findings/reload.md §8.12): the heavy weapons' ammunition
+   * boxes, cells and canisters are magazines. A launcher's magazine is the
+   * round it fires: once it is fired the tube is empty, and a new missile or
+   * mini-nuke taken behind the back is pushed into it as a magazine is.
+   * Nothing is taken out of a launcher, and its jams are the game's.
    *
    * The reloads may be started from the game's other threads, so the clip
    * left to watch is shared under a lock, and the weapon reloaded by hand

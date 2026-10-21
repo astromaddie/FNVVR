@@ -37,6 +37,9 @@ namespace dxvk {
     /// The loading gate of a revolver loaded round by round, or the cap
     /// over the loading port of a rifle loaded round by round
     Gate,
+    /// A launcher's missile or mini-nuke (##NifRound), loaded alone into
+    /// the tube, which leaves the weapon when it is fired
+    Projectile,
   };
 
   /**
@@ -52,7 +55,8 @@ namespace dxvk {
    * spent case ("empty", "casing"). A hinge is one whose name contains
    * "stock". A speed loader is one whose name contains "speedloader",
    * whatever else it names, and a loading gate one whose name contains
-   * "gate". A table of exceptions comes first. The ":n" suffix of a
+   * "gate". A launcher's round, ##NifRound, is a projectile. A table of
+   * exceptions comes first. The ":n" suffix of a
    * part's geometry is ignored.
    *
    * \param [in] name Name of the object, with its "##" prefix
