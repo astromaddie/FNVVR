@@ -113,6 +113,23 @@ namespace dxvk {
             float                 dt);
 
     /**
+     * \brief Sets how far the fingers of a hand are curled
+     *
+     * Only a free hand follows them: the left hand away from the weapon and
+     * the Pip-Boy forearm, the right hand with no weapon at all. Without
+     * them the left hand stays open and the right hand keeps the game's
+     * fist.
+     *
+     * \param [in] hand The hand
+     * \param [in] curls The fingers' curls, or \c nullptr if they are not
+     *    tracked
+     */
+    void setFingers(VrHand hand, const VrFingerCurls* curls) {
+      m_hasFingers[uint32_t(hand)]  = curls != nullptr;
+      m_fingerCurls[uint32_t(hand)] = curls ? *curls : VrFingerCurls();
+    }
+
+    /**
      * \brief Called before the game places the first-person camera for an eye
      *
      * \param [in] main The game's Main object
@@ -421,6 +438,9 @@ namespace dxvk {
     bool             m_hasHand = false;
     VrGameCameraPose m_otherHand;
     bool             m_hasOtherHand = false;
+
+    std::array<VrFingerCurls, VrHandCount> m_fingerCurls = { };
+    std::array<bool, VrHandCount>          m_hasFingers  = { };
     bool             m_grip = false;
     VrFirstPersonMode m_mode = VrFirstPersonMode::Hands;
 
