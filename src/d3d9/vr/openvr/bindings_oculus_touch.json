@@ -229,6 +229,16 @@
           "output": "/actions/hands/in/aim_right",
           "path": "/user/hand/right/pose/tip"
         }
+      ],
+      "skeleton": [
+        {
+          "output": "/actions/hands/in/skeleton_left",
+          "path": "/user/hand/left/input/skeleton/left"
+        },
+        {
+          "output": "/actions/hands/in/skeleton_right",
+          "path": "/user/hand/right/input/skeleton/right"
+        }
       ]
     }
   }

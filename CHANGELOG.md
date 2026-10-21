@@ -57,6 +57,15 @@ new action and move the grip.
 - While the console is shown, the menu panel is hidden, the lasers no longer drive the game's cursor and the gamepad
   is at rest. A flat keyboard panel remains as a fallback.
 
+### Finger tracking
+
+- The fingers of a free hand follow the player's fingers, read from SteamVR's hand skeleton: each finger bends from
+  the relaxed open hand to the game's fist. This covers the left hand with one-handed weapons, both hands with no
+  weapon and the Pip-Boy forearm; a hand on a weapon keeps its grip, and a hand holding a magazine or rounds keeps the
+  reload grip.
+- With no weapon, the right hand now sits at its controller; it orbited around it before.
+- SteamVR may need to reload the default bindings once for the new hand skeleton actions.
+
 ### Camera
 
 - The view is kept in first person: a save made in third person, an Alt+Tab or the POV control no longer leave the

@@ -306,6 +306,35 @@ TEST_CASE(inverse_undoes_a_transform) {
 }
 
 
+TEST_CASE(mirrored_hand_pose_is_a_reflection_across_the_controller) {
+  // A left hand a little forward and to the right of its controller, turned
+  // about the controller's forward axis
+  VrGameTransform left;
+  left.rotate    = {{ { 1.0f, 0.0f,  0.0f },
+                      { 0.0f, 0.0f, -1.0f },
+                      { 0.0f, 1.0f,  0.0f } }};
+  left.translate = { 2.0f, -1.0f, 3.0f };
+
+  VrGameTransform right = vrMirrorHandPose(left);
+  checkVector(right.translate, 2.0f, -1.0f, -3.0f);
+
+  // Each bone axis is reflected across the controller's forward-up plane,
+  // then the bone's own z axis is flipped
+  for (uint32_t i = 0; i < 3; i++) {
+    for (uint32_t j = 0; j < 3; j++) {
+      float sign = ((i == 2) != (j == 2)) ? -1.0f : 1.0f;
+      CHECK_NEAR(right.rotate.m[i][j], sign * left.rotate.m[i][j], 1e-6);
+    }
+  }
+
+  // Mirroring twice gives the pose back, and the result is a rotation
+  VrGameTransform back = vrMirrorHandPose(right);
+  checkVector(back.translate, 2.0f, -1.0f, 3.0f);
+  checkVector(right.rotate * VrVector3 { 0.0f, 0.0f, 1.0f },
+    0.0f, 1.0f, 0.0f);
+}
+
+
 TEST_CASE(barrel_direction_gives_the_node_heading_and_pitch) {
   // The game's FromEulerAnglesZXY, whose inverse it uses to fire from a
   // third-person weapon's projectile node

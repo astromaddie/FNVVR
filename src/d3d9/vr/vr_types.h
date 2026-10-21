@@ -64,6 +64,22 @@ namespace dxvk {
   constexpr uint32_t VrEyeCount  = 2;
   constexpr uint32_t VrHandCount = 2;
 
+  enum class VrFinger : uint32_t {
+    Thumb  = 0,
+    Index  = 1,
+    Middle = 2,
+    Ring   = 3,
+    Little = 4,
+  };
+
+  constexpr uint32_t VrFingerCount = 5;
+
+  /**
+   * \brief How far each finger of a hand is curled, from 0 (straight) to 1
+   *    (closed into a fist), indexed by VrFinger
+   */
+  using VrFingerCurls = std::array<float, VrFingerCount>;
+
   /**
    * \brief Pose and field of view of one eye
    */
@@ -103,12 +119,15 @@ namespace dxvk {
   /**
    * \brief Pose of one hand controller
    *
-   * Poses are only meaningful while isActive is true.
+   * Poses are only meaningful while isActive is true, and the finger
+   * curls while hasFingers is true too.
    */
   struct VrControllerState {
-    bool      isActive = false;
-    VrPose    gripPose;
-    VrPose    aimPose;
+    bool          isActive   = false;
+    VrPose        gripPose;
+    VrPose        aimPose;
+    bool          hasFingers = false;
+    VrFingerCurls fingerCurl = { };
   };
 
   /**

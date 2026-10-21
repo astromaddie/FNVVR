@@ -9,6 +9,7 @@
 #include "vr_game_addresses.h"
 #include "vr_game_memory.h"
 #include "vr_game_nodes.h"
+#include "vr_hand_fingers.h"
 #include "vr_melee.h"
 #include "vr_weapon_hand.h"
 #include "vr_weapon_parts.h"
@@ -62,6 +63,7 @@ namespace dxvk {
 
     // Animation types of the game's weapons, see findings/weapon.md
     constexpr int8_t WeaponTypeNone         = -1;
+    constexpr int8_t WeaponTypeHandToHand   = 0;
     constexpr int8_t WeaponTypeOneHandMelee = 1;
     constexpr int8_t WeaponTypeTwoHandMelee = 2;
     constexpr int8_t WeaponTypePistol       = 3;
@@ -303,8 +305,9 @@ namespace dxvk {
      * Measured in game with the 9mm pistol (2026-10-11), on the hand the
      * VR layer then held as the mirror image of the right hand: the hand
      * bone's rotation and offset in the left controller's frame (forward,
-     * up and right, as in vrCameraRotation, in game units), and the local
-     * rotations of the bones below it. Every weapon gets this pose: some,
+     * up and right, as in vrCameraRotation, in game units). The fingers'
+     * open pose, measured with it, is in vr_hand_fingers.cpp. Every weapon
+     * gets this pose: some,
      * such as the Fat Man, hold the weapon with an unusual grip that a
      * mirror of the right hand would copy.
      *
@@ -337,63 +340,6 @@ namespace dxvk {
     const FreeHandBone FreeHandBones[] = {
       { VrGame::LeftHandNodeName, FreeHandWrist },
       { VrGame::LeftForeTwistNodeName, FreeHandTwist },
-      { "Bip01 L Thumb1", {{ {  0.818252f,  0.384053f,  0.427746f },
-                             {  0.366491f,  0.224751f, -0.902869f },
-                             { -0.442886f,  0.895539f, 0.0431507f } }} },
-      { "Bip01 L Thumb11", {{ {  0.967436f, -0.253117f,       0.0f },
-                              {  0.253117f,  0.967436f,       0.0f },
-                              {       0.0f,       0.0f,       1.0f } }} },
-      { "Bip01 L Thumb12", {{ {  0.994304f, -0.106582f,       0.0f },
-                              {  0.106582f,  0.994304f,       0.0f },
-                              {       0.0f,       0.0f,       1.0f } }} },
-      { "Bip01 L Hand01", {{ {  0.991822f, 0.0157553f,  0.126654f },
-                             { -0.0121424f,  0.999498f, -0.0292477f },
-                             { -0.127052f, 0.0274707f,  0.991516f } }} },
-      { "Bip01 L Finger1", {{ {  0.997184f, 0.00861518f, -0.074502f },
-                              { -0.0105104f,   0.99963f, -0.0250837f },
-                              { 0.0742583f, 0.0257961f,  0.996905f } }} },
-      { "Bip01 L Finger11", {{ {  0.985859f,  -0.16757f, -0.00119342f },
-                               {  0.167571f,   0.98586f, 0.000681602f },
-                               { 0.00106233f, -0.000871946f,  0.999999f } }} },
-      { "Bip01 L Finger12", {{ {  0.999859f, 0.0156992f, 0.0060174f },
-                               { -0.0157025f,  0.999877f, 0.000501849f },
-                               { -0.00600878f, -0.000596266f,  0.999982f } }} },
-      { "Bip01 L Hand02", {{ {  0.994522f,  0.104404f, 0.00510071f },
-                             { -0.104171f,  0.985903f,  0.130934f },
-                             { 0.00864123f, -0.130748f,  0.991378f } }} },
-      { "Bip01 L Finger2", {{ {  0.988127f, -0.153207f, -0.0114936f },
-                              {  0.152233f,  0.986443f, -0.0612823f },
-                              { 0.0207266f, 0.0588051f,  0.998054f } }} },
-      { "Bip01 L Finger21", {{ {   0.99929f, -0.0376753f, 0.000116667f },
-                               { 0.0376753f,   0.99929f,       0.0f },
-                               { -0.000116585f,       0.0f,       1.0f } }} },
-      { "Bip01 L Finger22", {{ {  0.999258f, 0.0385054f,       0.0f },
-                               { -0.0385054f,  0.999258f,       0.0f },
-                               {       0.0f,       0.0f,       1.0f } }} },
-      { "Bip01 L Hand03", {{ {  0.991125f, 0.0600862f,  -0.11858f },
-                             { -0.0447177f,  0.990733f,  0.128255f },
-                             {  0.125188f, -0.121814f,  0.984627f } }} },
-      { "Bip01 L Finger3", {{ {  0.992671f, -0.120352f, 0.0109717f },
-                              {  0.120378f,  0.992727f, -0.00169364f },
-                              { -0.0106881f, 0.00300198f,  0.999938f } }} },
-      { "Bip01 L Finger31", {{ {  0.998236f, -0.0586457f, 0.0092844f },
-                               { 0.0586366f,  0.998279f, 0.00125062f },
-                               { -0.00934176f, -0.000704007f,  0.999956f } }} },
-      { "Bip01 L Finger32", {{ {  0.991462f,  0.130393f,       0.0f },
-                               { -0.130393f,  0.991462f,       0.0f },
-                               {       0.0f,       0.0f,       1.0f } }} },
-      { "Bip01 L Hand04", {{ {  0.973566f, 0.0902254f, -0.209831f },
-                             { -0.0499923f,  0.980572f,  0.189685f },
-                             {  0.222868f, -0.174181f,  0.959162f } }} },
-      { "Bip01 L Finger4", {{ {  0.992131f, -0.120628f, 0.0335495f },
-                              {   0.12138f,  0.992377f, -0.0213405f },
-                              { -0.0307195f, 0.0252448f,  0.999209f } }} },
-      { "Bip01 L Finger41", {{ {  0.990757f, -0.135646f, -0.000347379f },
-                               {  0.135646f,  0.990757f, 0.00097353f },
-                               { 0.000212113f, -0.00101165f,  0.999999f } }} },
-      { "Bip01 L Finger42", {{ {  0.999922f, -0.012493f, -6.19373e-05f },
-                               {  0.012493f,  0.999922f,       0.0f },
-                               { 6.22444e-05f,       0.0f,       1.0f } }} },
     };
 
     /**
@@ -401,21 +347,43 @@ namespace dxvk {
      *    forearm
      *
      * \param [in] grip The fingers' rotations on a held part, or \c nullptr
-     * \returns \c nullptr if the bone keeps the game's rotation
+     * \param [in] curls Curl of the fingers the grip does not pose
+     * \param [out] rotate The bone's rotation
+     * \returns \c false if the bone keeps the game's rotation
      */
-    const VrGameRotation* freeHandRotation(const char* name, const std::vector<VrBonePose>* grip) {
+    bool freeHandRotation(const char* name, const std::vector<VrBonePose>* grip,
+        const VrFingerCurls& curls, VrGameRotation& rotate) {
       for (size_t i = 0; grip && i < grip->size(); i++) {
-        if ((*grip)[i].name == name)
-          return &(*grip)[i].rotate;
+        if ((*grip)[i].name == name) {
+          rotate = (*grip)[i].rotate;
+          return true;
+        }
       }
 
       for (const FreeHandBone& bone : FreeHandBones) {
-        if (!std::strcmp(name, bone.name))
-          return &bone.rotate;
+        if (!std::strcmp(name, bone.name)) {
+          rotate = bone.rotate;
+          return true;
+        }
       }
 
-      return nullptr;
+      VrHand hand;
+      uint32_t index;
+
+      if (!vrFindFingerBone(name, hand, index) || hand != VrHand::Left)
+        return false;
+
+      rotate = vrPoseFingerBone(index, hand, curls);
+      return true;
     }
+
+    /**
+     * \brief A bone's local rotation, kept to be written back
+     */
+    struct SavedBone {
+      uint8_t*       bone;
+      VrGameRotation rotate;
+    };
 
     /**
      * \brief Where a bone below the left hand is in the hand bone's frame
@@ -428,8 +396,10 @@ namespace dxvk {
 
       for (; bone && bone != hand; bone = field<uint8_t*>(bone, VrGame::ObjectParent)) {
         auto name = field<const char*>(bone, VrGame::ObjectName);
-        const VrGameRotation* posed = name ? freeHandRotation(name, grip) : nullptr;
-        VrGameRotation rotate = posed ? *posed : readRotation(bone, VrGame::ObjectLocalRotation);
+        VrGameRotation rotate;
+
+        if (!name || !freeHandRotation(name, grip, VrFingerCurls(), rotate))
+          rotate = readRotation(bone, VrGame::ObjectLocalRotation);
 
         point = readVector(bone, VrGame::NodeLocalTranslate)
           + rotate * point * field<float>(bone, VrGame::ObjectLocalScale);
@@ -825,9 +795,31 @@ namespace dxvk {
 
     bool held = melee && m_heldSettle.settled();
 
+    // Without a weapon, or with one worn on the fist, the weapon node is
+    // not where the hand is: the right hand bone takes the free hand's
+    // pose around its controller, mirrored
+    int8_t type = form ? readField<int8_t>(form, VrGame::WeaponAnimationType) : WeaponTypeNone;
+    uint8_t* fist = (type == WeaponTypeNone || type == WeaponTypeHandToHand)
+      ? findObject(root, VrGame::RightHandNodeName) : nullptr;
+
     VrGameTransform rig = held
       ? vrComputeRigHoldingWeapon(weaponRotation, drawnWeapon, m_heldSettle.rotation(), hand)
       : vrComputeRigToHand(m_gameCamera, drawnWeapon, hand);
+
+    if (fist) {
+      VrGameTransform target = vrComputeHeldTransform(hand, vrMirrorHandPose(FreeHandPose));
+      VrGameRotation drawnRotation = readRotation(fist, VrGame::ObjectWorldRotation);
+      VrVector3 drawnFist = readVector(fist, VrGame::ObjectWorldTranslation);
+
+      rig.rotate    = target.rotate * vrTranspose(drawnRotation);
+      rig.translate = target.translate - rig.rotate * drawnFist;
+
+      if (!m_loggedFist) {
+        Logger::info(str::format("VR: The right hand takes the free pose around its controller, the weapon node is ",
+          vrLength(drawnWeapon - drawnFist) / VrGameUnitsPerMetre, " m from the hand"));
+        m_loggedFist = true;
+      }
+    }
 
     // With both hands on a gun, it points along the line between them. A
     // two-handed melee weapon is swung by the right hand, the left hand
@@ -848,13 +840,38 @@ namespace dxvk {
     VrGameRotation rotation = readRotation(root, VrGame::ObjectLocalRotation);
     VrVector3 translation   = readVector(root, VrGame::NodeLocalTranslate);
 
+    // With no weapon at all, the right fingers curl as the player's do
+    // between the free hand's open pose and the game's fist
+    std::array<SavedBone, VrFingerBoneCount> fingers;
+    uint32_t fingerCount = 0;
+
+    if (fist && !form && m_hasFingers[uint32_t(VrHand::Right)]) {
+      const VrFingerCurls& curls = m_fingerCurls[uint32_t(VrHand::Right)];
+
+      forEachObject(fist, MaxModelDepth, [&curls, &fingers, &fingerCount] (uint8_t* object) {
+        auto name = field<const char*>(object, VrGame::ObjectName);
+        VrHand side;
+        uint32_t index;
+
+        if (!name || fingerCount == fingers.size() || !vrFindFingerBone(name, side, index) || side != VrHand::Right)
+          return;
+
+        fingers[fingerCount++] = { object, readRotation(object, VrGame::ObjectLocalRotation) };
+        writeRotation(object, VrGame::ObjectLocalRotation, vrPoseFingerBone(index, side, curls));
+      });
+    }
+
     writeRotation(root, VrGame::ObjectLocalRotation, vrTranspose(parent.rotate) * worldRotation);
     writeVector(root, VrGame::NodeLocalTranslate, parent.toLocal(worldTranslation));
     updateObject(root, updateData);
 
-    // PlaceCamera restores the translation itself
+    // PlaceCamera restores the translation itself, the next eye's update
+    // starts from the game's fingers
     writeRotation(root, VrGame::ObjectLocalRotation, rotation);
     writeVector(root, VrGame::NodeLocalTranslate, translation);
+
+    for (uint32_t i = 0; i < fingerCount; i++)
+      writeRotation(fingers[i].bone, VrGame::ObjectLocalRotation, fingers[i].rotate);
 
     bool handPlaced = forearm && m_hasOtherHand && !m_twoHanded && !m_braced;
 
@@ -1254,30 +1271,22 @@ namespace dxvk {
 
     // The wrist, the twist bone and the fingers take the pose too. A hand
     // holding a part closes its fingers on it as the game's reload
-    // animation does.
-    struct SavedBone {
-      uint8_t*       bone;
-      VrGameRotation rotate;
-    };
-
+    // animation does, a free hand curls them as the player does.
     const std::vector<VrBonePose>* grip = held ? held->fingers : nullptr;
+    VrFingerCurls curls = held ? VrFingerCurls() : m_fingerCurls[uint32_t(VrHand::Left)];
 
     std::array<SavedBone, MaxPosedBones> saved;
     uint32_t savedCount = 0;
 
-    forEachObject(forearm, MaxModelDepth, [grip, &saved, &savedCount] (uint8_t* object) {
+    forEachObject(forearm, MaxModelDepth, [grip, &curls, &saved, &savedCount] (uint8_t* object) {
       auto name = field<const char*>(object, VrGame::ObjectName);
+      VrGameRotation pose;
 
-      if (!name || savedCount == saved.size())
-        return;
-
-      const VrGameRotation* pose = freeHandRotation(name, grip);
-
-      if (!pose)
+      if (!name || savedCount == saved.size() || !freeHandRotation(name, grip, curls, pose))
         return;
 
       saved[savedCount++] = { object, readRotation(object, VrGame::ObjectLocalRotation) };
-      writeRotation(object, VrGame::ObjectLocalRotation, *pose);
+      writeRotation(object, VrGame::ObjectLocalRotation, pose);
     });
 
     updateObject(forearm, updateData);

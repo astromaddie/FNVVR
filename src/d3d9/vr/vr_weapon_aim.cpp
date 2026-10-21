@@ -226,6 +226,26 @@ namespace dxvk {
   }
 
 
+  VrGameRotation vrMirrorHandRotation(const VrGameRotation& r) {
+    VrGameRotation result = r;
+
+    for (uint32_t i = 0; i < 2; i++) {
+      result.m[i][2] = -r.m[i][2];
+      result.m[2][i] = -r.m[2][i];
+    }
+
+    return result;
+  }
+
+
+  VrGameTransform vrMirrorHandPose(const VrGameTransform& pose) {
+    VrGameTransform result;
+    result.rotate    = vrMirrorHandRotation(pose.rotate);
+    result.translate = { pose.translate.x, pose.translate.y, -pose.translate.z };
+    return result;
+  }
+
+
   VrGameTransform vrComputeHeldTransform(
     const VrGameCameraPose&     controller,
     const VrGameTransform&      local) {

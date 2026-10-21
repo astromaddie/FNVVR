@@ -4,6 +4,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <iomanip>
 #include <limits>
 #include <sstream>
@@ -110,14 +111,24 @@ namespace dxvk {
      */
     vr::HmdMatrix34_t getEyeToHeadTransform(vr::IVRSystem* system, vr::EVREye eye) {
 #if defined(__i386__) && !defined(_MSC_VER)
-      // Slot of GetEyeToHeadTransform in the IVRSystem_019 vtable
-      constexpr size_t EyeToHeadTransformSlot = 4;
+      // The method's slot comes from the header's own vtable: in the
+      // Itanium ABI a pointer to a virtual method holds its vtable offset
+      // plus one
+      struct VirtualMethodPointer {
+        ptrdiff_t offset;
+        ptrdiff_t adjust;
+      };
+
+      auto method = &vr::IVRSystem::GetEyeToHeadTransform;
+      VirtualMethodPointer pointer;
+      std::memcpy(&pointer, &method, sizeof(pointer));
+      size_t slot = size_t(pointer.offset - 1) / sizeof(void*);
 
       using Fn = void (__thiscall*)(vr::IVRSystem*, vr::HmdMatrix34_t*, vr::EVREye);
 
       vr::HmdMatrix34_t result = { };
       auto vtable = *reinterpret_cast<void* const* const*>(system);
-      reinterpret_cast<Fn>(vtable[EyeToHeadTransformSlot])(system, &result, eye);
+      reinterpret_cast<Fn>(vtable[slot])(system, &result, eye);
       return result;
 #else
       return system->GetEyeToHeadTransform(eye);
@@ -554,8 +565,10 @@ namespace dxvk {
       found = false;
     }
 
-    for (uint32_t i = 0; i < VrHandCount; i++)
+    for (uint32_t i = 0; i < VrHandCount; i++) {
       action(vrOpenVrAimPath(VrHand(i)), m_actions.aim[i]);
+      action(vrOpenVrSkeletonPath(VrHand(i)), m_actions.skeleton[i]);
+    }
 
     if (found)
       Logger::info(str::format("VR: Controller actions loaded from ", manifest));
@@ -833,7 +846,7 @@ namespace dxvk {
 
       vr::InputDigitalActionData_t data = { };
 
-      if (vrInput->GetDigitalActionData(m_actions.digital[i], &data, sizeof(data)) == vr::VRInputError_None)
+      if (vrInput->GetDigitalActionData(m_actions.digital[i], &data, sizeof(data), vr::k_ulInvalidInputValueHandle) == vr::VRInputError_None)
         input.actions.setPressed(VrAction(i), data.bActive && data.bState);
     }
 
@@ -841,7 +854,7 @@ namespace dxvk {
       vr::InputAnalogActionData_t data = { };
       VrVector2 result;
 
-      if (vrInput->GetAnalogActionData(handle, &data, sizeof(data)) == vr::VRInputError_None && data.bActive)
+      if (vrInput->GetAnalogActionData(handle, &data, sizeof(data), vr::k_ulInvalidInputValueHandle) == vr::VRInputError_None && data.bActive)
         result = { data.x, data.y };
 
       return result;
@@ -859,10 +872,31 @@ namespace dxvk {
       vr::InputPoseActionData_t data = { };
 
       if (controller.isActive
-       && vrInput->GetPoseActionData(m_actions.aim[i], vr::TrackingUniverseStanding, predictedSeconds,
-            &data, sizeof(data)) == vr::VRInputError_None
+       && vrInput->GetPoseActionDataRelativeToNow(m_actions.aim[i], vr::TrackingUniverseStanding, predictedSeconds,
+            &data, sizeof(data), vr::k_ulInvalidInputValueHandle) == vr::VRInputError_None
        && data.bActive && data.pose.bPoseIsValid)
         controller.aimPose = poseFromOpenVr(data.pose.mDeviceToAbsoluteTracking);
+    }
+
+    // The runtime's hand animation smooths the controller's finger sensors
+    for (uint32_t i = 0; i < VrHandCount; i++) {
+      VrControllerState& controller = input.controllers[i];
+      vr::InputSkeletalActionData_t skeleton = { };
+      vr::VRSkeletalSummaryData_t summary = { };
+
+      controller.hasFingers = controller.isActive
+        && vrInput->GetSkeletalActionData(m_actions.skeleton[i], &skeleton, sizeof(skeleton)) == vr::VRInputError_None
+        && skeleton.bActive
+        && vrInput->GetSkeletalSummaryData(m_actions.skeleton[i], vr::VRSummaryType_FromAnimation, &summary) == vr::VRInputError_None;
+
+      for (uint32_t f = 0; controller.hasFingers && f < VrFingerCount; f++)
+        controller.fingerCurl[f] = std::max(0.0f, std::min(1.0f, summary.flFingerCurl[f]));
+
+      if (controller.hasFingers && !m_loggedFingers[i]) {
+        Logger::info(str::format("VR: The ", i == uint32_t(VrHand::Left) ? "left" : "right",
+          " hand's finger curls are read from SteamVR's hand skeleton"));
+        m_loggedFingers[i] = true;
+      }
     }
   }
 
@@ -1206,7 +1240,8 @@ namespace dxvk {
     float strength = std::max(0.0f, std::min(1.0f, amplitude));
 
     if (seconds > 0.0f && strength > 0.0f)
-      m_runtime->input->TriggerHapticVibrationAction(m_actions.haptic[uint32_t(hand)], 0.0f, seconds, FrequencyHz, strength);
+      m_runtime->input->TriggerHapticVibrationAction(m_actions.haptic[uint32_t(hand)], 0.0f, seconds, FrequencyHz, strength,
+        vr::k_ulInvalidInputValueHandle);
   }
 
 }

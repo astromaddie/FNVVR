@@ -847,6 +847,11 @@ namespace dxvk {
     const VrControllerState& right = input.controllers[uint32_t(VrHand::Right)];
     const VrControllerState& left  = input.controllers[uint32_t(VrHand::Left)];
 
+    for (uint32_t i = 0; i < VrHandCount; i++) {
+      const VrControllerState& controller = input.controllers[i];
+      m_weaponHand->setFingers(VrHand(i), controller.isActive && controller.hasFingers ? &controller.fingerCurl : nullptr);
+    }
+
     if (state == VrGameStateKind::PipBoy && m_hasReference && left.isActive) {
       VrGameCameraPose otherHand = handInGame(left);
       m_weaponHand->beginFrame(gameCamera, nullptr, &otherHand, false, VrFirstPersonMode::PipBoy, dt);

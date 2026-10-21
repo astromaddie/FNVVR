@@ -169,7 +169,7 @@ TEST_CASE(beam_runs_along_the_laser_and_faces_the_eye) {
 }
 
 
-TEST_CASE(manifest_declares_the_hand_poses) {
+TEST_CASE(manifest_declares_the_hand_poses_and_skeletons) {
   std::ifstream file(VR_OPENVR_DIR "/actions.json");
   std::stringstream stream;
   stream << file.rdbuf();
@@ -178,4 +178,6 @@ TEST_CASE(manifest_declares_the_hand_poses) {
   CHECK(manifest.find(std::string("\"") + VrOpenVrHandsActionSet + "\"") != std::string::npos);
   CHECK(manifest.find(std::string("\"") + vrOpenVrAimPath(VrHand::Left) + "\"") != std::string::npos);
   CHECK(manifest.find(std::string("\"") + vrOpenVrAimPath(VrHand::Right) + "\"") != std::string::npos);
+  CHECK(manifest.find(std::string("\"") + vrOpenVrSkeletonPath(VrHand::Left) + "\"") != std::string::npos);
+  CHECK(manifest.find(std::string("\"") + vrOpenVrSkeletonPath(VrHand::Right) + "\"") != std::string::npos);
 }

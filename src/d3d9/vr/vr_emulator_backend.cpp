@@ -113,8 +113,14 @@ namespace dxvk {
     state.isHeadTracked = true;
     state.headPose      = m_rig.headPose();
 
-    for (uint32_t i = 0; i < VrHandCount; i++)
+    for (uint32_t i = 0; i < VrHandCount; i++) {
       state.controllers[i] = m_rig.controllerState(VrHand(i));
+
+      // A held trigger closes the hand's fingers into a fist
+      bool trigger = VrHand(i) == VrHand::Left ? m_pendingInput.leftTrigger : m_pendingInput.rightTrigger;
+      state.controllers[i].hasFingers = true;
+      state.controllers[i].fingerCurl.fill(trigger ? 1.0f : 0.0f);
+    }
 
     const bool inMenu = m_context == VrInputContext::Menu;
 

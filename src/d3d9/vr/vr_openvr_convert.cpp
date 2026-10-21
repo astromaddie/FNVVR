@@ -139,6 +139,13 @@ namespace dxvk {
   }
 
 
+  const char* vrOpenVrSkeletonPath(VrHand hand) {
+    return hand == VrHand::Left
+      ? "/actions/hands/in/skeleton_left"
+      : "/actions/hands/in/skeleton_right";
+  }
+
+
   void vrComputeBeamTransform(const VrPose& origin, float length, const VrVector3& eye, float m[3][4]) {
     auto cross = [] (const VrVector3& a, const VrVector3& b) {
       return VrVector3 { a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x };
