@@ -248,12 +248,14 @@ namespace dxvk {
       uint64_t haptic[VrHandCount]     = { };
       uint64_t hands                   = 0;
       uint64_t aim[VrHandCount]        = { };
+      uint64_t skeleton[VrHandCount]   = { };
     };
 
     Actions                           m_actions;
     bool                              m_inputReady = false;
     VrInputContext                    m_context    = VrInputContext::Game;
     bool                              m_loggedInputError = false;
+    bool                              m_loggedFingers[VrHandCount] = { };
 
     // One overlay per panel, created when the panel is first shown
     std::array<Panel, VrPanelCount>   m_panels;

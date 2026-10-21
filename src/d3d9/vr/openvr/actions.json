@@ -31,6 +31,18 @@
       "requirement": "suggested"
     },
     {
+      "name": "/actions/hands/in/skeleton_left",
+      "type": "skeleton",
+      "skeleton": "/skeleton/hand/left",
+      "requirement": "optional"
+    },
+    {
+      "name": "/actions/hands/in/skeleton_right",
+      "type": "skeleton",
+      "skeleton": "/skeleton/hand/right",
+      "requirement": "optional"
+    },
+    {
       "name": "/actions/game/in/move",
       "type": "vector2",
       "requirement": "suggested"
@@ -169,6 +181,8 @@
       "/actions/hands": "Hands",
       "/actions/hands/in/aim_left": "Left hand pointer",
       "/actions/hands/in/aim_right": "Right hand pointer",
+      "/actions/hands/in/skeleton_left": "Left hand fingers",
+      "/actions/hands/in/skeleton_right": "Right hand fingers",
       "/actions/game/in/move": "Move",
       "/actions/game/in/turn": "Turn",
       "/actions/game/in/attack": "Attack",

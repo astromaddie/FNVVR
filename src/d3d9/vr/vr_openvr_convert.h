@@ -83,6 +83,11 @@ namespace dxvk {
   const char* vrOpenVrAimPath(VrHand hand);
 
   /**
+   * \brief Path of the skeleton action a hand's fingers are read from
+   */
+  const char* vrOpenVrSkeletonPath(VrHand hand);
+
+  /**
    * \brief Places a laser's overlay so that it faces the eye
    *
    * An overlay is a flat quad, so the laser is a narrow quad whose height

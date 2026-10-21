@@ -554,8 +554,10 @@ namespace dxvk {
       found = false;
     }
 
-    for (uint32_t i = 0; i < VrHandCount; i++)
+    for (uint32_t i = 0; i < VrHandCount; i++) {
       action(vrOpenVrAimPath(VrHand(i)), m_actions.aim[i]);
+      action(vrOpenVrSkeletonPath(VrHand(i)), m_actions.skeleton[i]);
+    }
 
     if (found)
       Logger::info(str::format("VR: Controller actions loaded from ", manifest));
@@ -863,6 +865,27 @@ namespace dxvk {
             &data, sizeof(data), vr::k_ulInvalidInputValueHandle) == vr::VRInputError_None
        && data.bActive && data.pose.bPoseIsValid)
         controller.aimPose = poseFromOpenVr(data.pose.mDeviceToAbsoluteTracking);
+    }
+
+    // The runtime's hand animation smooths the controller's finger sensors
+    for (uint32_t i = 0; i < VrHandCount; i++) {
+      VrControllerState& controller = input.controllers[i];
+      vr::InputSkeletalActionData_t skeleton = { };
+      vr::VRSkeletalSummaryData_t summary = { };
+
+      controller.hasFingers = controller.isActive
+        && vrInput->GetSkeletalActionData(m_actions.skeleton[i], &skeleton, sizeof(skeleton)) == vr::VRInputError_None
+        && skeleton.bActive
+        && vrInput->GetSkeletalSummaryData(m_actions.skeleton[i], vr::VRSummaryType_FromAnimation, &summary) == vr::VRInputError_None;
+
+      for (uint32_t f = 0; controller.hasFingers && f < VrFingerCount; f++)
+        controller.fingerCurl[f] = std::max(0.0f, std::min(1.0f, summary.flFingerCurl[f]));
+
+      if (controller.hasFingers && !m_loggedFingers[i]) {
+        Logger::info(str::format("VR: The ", i == uint32_t(VrHand::Left) ? "left" : "right",
+          " hand's finger curls are read from SteamVR's hand skeleton"));
+        m_loggedFingers[i] = true;
+      }
     }
   }
 
