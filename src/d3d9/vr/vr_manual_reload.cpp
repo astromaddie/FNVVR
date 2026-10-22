@@ -60,6 +60,16 @@ namespace dxvk {
     // so that it ends there
     constexpr float FuelLoadTime = 0.5f;
 
+    // A flamer's loading point is read from the hand bone of its reload
+    // animation, a point on the weapon the player cannot see: the hand is
+    // taken there from further than a round to its port
+    VrRoundReach fuelReach() {
+      VrRoundReach reach;
+      reach.capture = 0.12f;
+      reach.leave   = 0.2f;
+      return reach;
+    }
+
     VrManualReload* g_manualReload = nullptr;
 
     // StartAttack's clip reads were redirected: jams can be held
@@ -265,6 +275,7 @@ namespace dxvk {
       m_lastRight = *input.rightHand;
 
     m_loadsRounds = looping || fueled;
+    m_rounds.setReach(fueled ? fuelReach() : VrRoundReach());
     m_hasRackPart = handled && input.rack;
     m_hasLockPart = handled && input.lock;
     m_kind        = !handled ? VrReloadKind::None

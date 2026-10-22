@@ -822,6 +822,8 @@ namespace dxvk {
 
     void findHighlight(uint8_t* root, uint8_t* weapon, uint8_t* hinge, uint8_t* lock, bool swing);
 
+    uint8_t* findFuelPart(uint8_t* weapon) const;
+
     /**
      * \brief A part of the weapon the left hand holds as the reload
      *    animation does

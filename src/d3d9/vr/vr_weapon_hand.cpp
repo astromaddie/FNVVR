@@ -1028,12 +1028,57 @@ namespace dxvk {
     if (m_highlight.port)
       add(swing ? hinge : vrFindWeaponPart(weapon, VrWeaponPartKind::Gate));
 
+    if (m_highlight.fuel && m_hasFuelPort)
+      add(findFuelPart(weapon));
+
     // Every part is placed by now: the game draws the model as it is, then
     // updates it again where it animates it, long before the highlight
     if (!m_highlightParts.empty()) {
       m_highlightRoot = root;
       m_highlightDrawn.capture(reinterpret_cast<uintptr_t>(root));
     }
+  }
+
+
+  uint8_t* VrWeaponHand::findFuelPart(uint8_t* weapon) const {
+    // Within this of a part's bound, the loading point is at that part
+    constexpr float AtPart = 0.05f * VrGameUnitsPerMetre;
+
+    float scale = field<float>(weapon, VrGame::ObjectWorldScale);
+    VrVector3 port = readVector(weapon, VrGame::ObjectWorldTranslation)
+      + readRotation(weapon, VrGame::ObjectWorldRotation) * m_fuelAnimation.hand * scale;
+
+    // The smallest shape at the loading point (the incinerator's valve, a
+    // tank), or the nearest one: the whole weapon when it is one shape
+    uint8_t* found = nullptr;
+    float foundDistance = 0.0f;
+    float foundRadius   = 0.0f;
+
+    vrVisitGameObjects(reinterpret_cast<uintptr_t>(weapon), MaxModelDepth,
+      [&] (uintptr_t object, uint32_t) {
+        auto part  = reinterpret_cast<uint8_t*>(object);
+        auto bound = field<uint8_t*>(part, VrGame::ObjectWorldBound);
+
+        if (vrGameAsNode(object) || !bound || (field<uint32_t>(part, VrGame::ObjectFlags) & VrGame::ObjectFlagAppCulled))
+          return;
+
+        float radius   = field<float>(bound, sizeof(VrVector3));
+        float distance = std::max(vrLength(port - readVector(bound, 0)) - radius, 0.0f);
+
+        if (radius <= 0.0f)
+          return;
+
+        bool better = !found
+          || (distance <= AtPart ? foundDistance > AtPart || radius < foundRadius : distance < foundDistance);
+
+        if (better) {
+          found         = part;
+          foundDistance = distance;
+          foundRadius   = radius;
+        }
+      });
+
+    return found;
   }
 
 

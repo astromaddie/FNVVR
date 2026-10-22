@@ -819,8 +819,11 @@ namespace dxvk {
           : !handBusy && (empty || situation.jammed);
         break;
 
-      case VrReloadKind::Cylinder:
       case VrReloadKind::Fuel:
+        parts.fuel = situation.rounds == VrRoundState::Empty ? empty : !situation.full;
+        break;
+
+      case VrReloadKind::Cylinder:
       case VrReloadKind::None:
         break;
     }

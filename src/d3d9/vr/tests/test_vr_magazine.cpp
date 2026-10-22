@@ -1174,6 +1174,20 @@ TEST_CASE(nothing_glows_on_a_loaded_magazine_weapon) {
 }
 
 
+TEST_CASE(empty_flamer_glows_where_its_fuel_goes) {
+  VrReloadSituation s = situation(VrReloadKind::Fuel, 0);
+  CHECK(vrPartsToWork(s).fuel);
+
+  // Loaded, it glows again only while the hand holds fuel for it
+  s.clip = 30;
+  CHECK(!vrPartsToWork(s).any());
+  s.rounds = VrRoundState::Holding;
+  CHECK(vrPartsToWork(s).fuel);
+  s.full = true;
+  CHECK(!vrPartsToWork(s).any());
+}
+
+
 TEST_CASE(empty_magazine_glows) {
   VrReloadSituation s = situation(VrReloadKind::Magazine, 0);
   s.hasRack = true;
