@@ -722,6 +722,7 @@ namespace dxvk {
     VrFuelAnimation  m_fuelAnimation;
     bool             m_hasFuelAnimation = false;
     const uint8_t*   m_fuelForm = nullptr;
+    const uint8_t*   m_flameForm = nullptr;
     uint32_t         m_fuelTries = 0;
     uint32_t         m_fuelWait = 0;
     VrVector3        m_fuelPort;

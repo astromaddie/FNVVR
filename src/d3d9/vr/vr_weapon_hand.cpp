@@ -138,6 +138,13 @@ namespace dxvk {
       return *reinterpret_cast<uint8_t* const*>(VrGame::Player);
     }
 
+    bool firesFlames(const uint8_t* form) {
+      auto projectile = readField<const uint8_t*>(form, VrGame::WeaponProjectile);
+
+      return projectile && (readField<uint32_t>(projectile, VrGame::ProjectileDataFlags)
+        & VrGame::ProjectileMotionTypeMask) == VrGame::ProjectileMotionFlame;
+    }
+
     VrVector3 readVector(const uint8_t* object, uintptr_t offset) {
       VrVector3 v;
       std::memcpy(&v, object + offset, sizeof(v));
@@ -2245,6 +2252,17 @@ namespace dxvk {
 
     if (part)
       return;
+
+    // A flamer keeps the game's reload: it has no part to show where its
+    // fuel goes in
+    if (firesFlames(form)) {
+      if (form != m_flameForm) {
+        const char* name = readField<const char*>(form, VrGame::WeaponFullName);
+        Logger::info(str::format("VR: '", name ? name : "", "' fires flames, the game reloads it"));
+        m_flameForm = form;
+      }
+      return;
+    }
 
     if (form != m_fuelForm) {
       m_fuelForm         = form;

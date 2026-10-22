@@ -204,6 +204,17 @@ namespace dxvk {
     constexpr uintptr_t RefProjectileNodeSlot = 0x20C;
 
     /**
+     * Weapon's projectile (TESObjectWEAP::Data::pProjectile) and the
+     * projectile's motion type, BGSProjectile::GetMotionType (0x004FD4F0):
+     * its data flags masked with 0x1F0000; 0x80000 makes a FlameProjectile
+     * (BGSProjectile::GetProjectileRefFormType 0x004FE1D0, form type 64).
+     */
+    constexpr uintptr_t WeaponProjectile         = 0x118;
+    constexpr uintptr_t ProjectileDataFlags      = 0x60;
+    constexpr uint32_t  ProjectileMotionTypeMask = 0x1F0000;
+    constexpr uint32_t  ProjectileMotionFlame    = 0x80000;
+
+    /**
      * Player fields: first-person root (NiNode*) and whether the first-person
      * model is used (0) or the third-person one, as Fire reads it (0x00524D10).
      * Actor process (+0x68) and its virtual function telling whether the
