@@ -1117,21 +1117,28 @@ namespace dxvk {
 
     const VrControllerState& left = input.controllers[uint32_t(VrHand::Left)];
     const VrVector3* offset = m_weaponHand->pipBoyScreen();
+    const VrVector3* facing = m_weaponHand->pipBoyScreenNormal();
 
     VrVector3 screen;
+    VrVector3 normal;
 
-    if (left.isActive && offset)
+    if (left.isActive && offset && facing) {
       screen = vrComputeControllerPoint(left, *offset);
+      normal = vrComputeControllerDirection(left, *facing);
+    }
 
-    // The left hand holding the weapon is not where the screen would be
+    // The left hand holding the weapon is not where the screen would be,
+    // nor is one bringing a magazine, a round or fuel to it
     bool gripped = input.hasActions && input.actions.isPressed(VrAction::TwoHandGrip);
+    bool loading = m_manualReload && m_manualReload->leftHandBusy();
 
     VrPipBoyGazeInput gaze;
     gaze.head     = input.isHeadTracked ? &input.headPose : nullptr;
-    gaze.screen   = left.isActive && offset ? &screen : nullptr;
+    gaze.screen   = left.isActive && offset && facing ? &screen : nullptr;
+    gaze.normal   = left.isActive && offset && facing ? &normal : nullptr;
     gaze.state    = m_pipBoyControl.state();
     // The right hand at the Pip-Boy reaches for its light, not its screen
-    gaze.canOpen  = state == VrGameStateKind::InGame && !gripped
+    gaze.canOpen  = state == VrGameStateKind::InGame && !gripped && !loading
                  && !m_rightHandAtPipBoy && !m_controls.switchesPipBoyLight();
     gaze.canClose = state == VrGameStateKind::PipBoy && !m_menuOverPipBoy;
     gaze.dt       = dt;

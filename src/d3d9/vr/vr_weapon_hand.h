@@ -165,6 +165,20 @@ namespace dxvk {
     }
 
     /**
+     * \brief Which way the Pip-Boy's screen faces relative to the left
+     *    controller
+     *
+     * Away from the forearm's axis, through the screen's centre, measured
+     * with pipBoyScreen.
+     *
+     * \returns The unit direction along the controller's forward, up and
+     *    right axes, or \c nullptr if the screen was not found
+     */
+    const VrVector3* pipBoyScreenNormal() const {
+      return m_hasPipBoyScreen ? &m_pipBoyScreenNormal : nullptr;
+    }
+
+    /**
      * \brief Sets the size of the Pip-Boy on the left forearm
      *
      * The Pip-Boy grows about the point of the forearm's axis below the
@@ -560,8 +574,10 @@ namespace dxvk {
     VrVector3        m_pipBoyShift;
     bool             m_pipBoyPlaced = false;
 
-    // Centre of the Pip-Boy's screen in the left controller's frame
+    // Centre of the Pip-Boy's screen and the way it faces in the left
+    // controller's frame
     VrVector3        m_pipBoyScreen;
+    VrVector3        m_pipBoyScreenNormal;
     bool             m_hasPipBoyScreen = false;
 
     // Size asked for the Pip-Boy, and the model it was applied to with the

@@ -24,6 +24,8 @@ namespace {
     VrPipBoyState state    = VrPipBoyState::Closed;
     bool          canOpen  = true;
     bool          canClose = true;
+    // Way the screen faces, unknown by default
+    const VrVector3* normal = nullptr;
 
     // Runs frames for a duration and returns the last request
     VrPipBoyRequest run(const VrVector3& screen, float duration) {
@@ -33,6 +35,7 @@ namespace {
         VrPipBoyGazeInput input;
         input.head     = &Head;
         input.screen   = &screen;
+        input.normal   = normal;
         input.state    = state;
         input.canOpen  = canOpen;
         input.canClose = canClose;
@@ -162,6 +165,43 @@ TEST_CASE(closing_with_a_button_does_not_reopen) {
 
   g.run(Away, Frame);
   CHECK(g.run(Watched, 1.0f) == VrPipBoyRequest::Open);
+}
+
+
+TEST_CASE(facing_needs_the_surface_turned_to_the_head) {
+  // Turned back up and towards the head, then straight up, then away
+  CHECK(vrIsFacing(Head, Watched, VrVector3 { 0.0f, 0.330350f, 0.943858f }, VrPipBoyGaze::MaxFacingAngle));
+  CHECK(vrIsFacing(Head, Watched, { 0.0f, 1.0f, 0.0f }, VrPipBoyGaze::MaxFacingAngle));
+  CHECK(!vrIsFacing(Head, Watched, { 0.0f, 0.0f, -1.0f }, VrPipBoyGaze::MaxFacingAngle));
+  CHECK(!vrIsFacing(Head, Watched, { 1.0f, 0.0f, 0.0f }, VrPipBoyGaze::MaxFacingAngle));
+}
+
+
+TEST_CASE(screen_turned_away_is_not_looked_at) {
+  // The forearm in front of the face, its screen facing forward
+  const VrVector3 away = { 0.0f, 0.0f, -1.0f };
+  const VrVector3 back = VrVector3 { 0.0f, 0.330350f, 0.943858f };
+
+  Gaze g;
+  g.normal = &away;
+  g.run(Away, 0.1f);
+  CHECK(g.run(Watched, 1.0f) == VrPipBoyRequest::None);
+
+  g.normal = &back;
+  CHECK(g.run(Watched, 1.0f) == VrPipBoyRequest::Open);
+}
+
+
+TEST_CASE(controller_direction_has_no_position) {
+  VrControllerState controller;
+  controller.isActive = true;
+  controller.gripPose.position = { 1.0f, 1.0f, 1.0f };
+  controller.aimPose.orientation = vrQuaternionFromAxisAngle({ 0.0f, 1.0f, 0.0f }, 1.5707963f);
+
+  VrVector3 d = vrComputeControllerDirection(controller, { 0.1f, 0.2f, 0.3f });
+  CHECK_NEAR(d.x, -0.1f, 1e-4);
+  CHECK_NEAR(d.y,  0.2f, 1e-4);
+  CHECK_NEAR(d.z, -0.3f, 1e-4);
 }
 
 

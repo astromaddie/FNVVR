@@ -32,6 +32,8 @@ namespace dxvk {
   struct VrPipBoyGazeInput {
     const VrPose*     head     = nullptr;
     const VrVector3*  screen   = nullptr;
+    /// Unit direction the screen faces, or \c nullptr if it is not known
+    const VrVector3*  normal   = nullptr;
     VrPipBoyState     state    = VrPipBoyState::Closed;
     /// The player is in game and the hand carrying the Pip-Boy is free
     bool              canOpen  = false;
@@ -55,6 +57,21 @@ namespace dxvk {
           float                 maxDistance);
 
   /**
+   * \brief Whether a surface faces the head
+   *
+   * \param [in] head Head pose
+   * \param [in] point Point of the surface
+   * \param [in] normal Unit direction the surface faces
+   * \param [in] maxAngle Largest angle between the normal and the way to
+   *    the head, in radians
+   */
+  bool vrIsFacing(
+    const VrPose&               head,
+    const VrVector3&            point,
+    const VrVector3&            normal,
+          float                 maxAngle);
+
+  /**
    * \brief Places a point given in a controller's frame in tracking space
    *
    * The frame is the one the hands are drawn with: the grip's position and
@@ -67,6 +84,14 @@ namespace dxvk {
   VrVector3 vrComputeControllerPoint(
     const VrControllerState&    controller,
     const VrVector3&            offset);
+
+  /**
+   * \brief Turns a direction given in a controller's frame into tracking
+   *    space, as vrComputeControllerPoint
+   */
+  VrVector3 vrComputeControllerDirection(
+    const VrControllerState&    controller,
+    const VrVector3&            direction);
 
   /// Largest distance between a hand's grip and the Pip-Boy screen for the hand to be at the Pip-Boy, in metres
   constexpr float VrPipBoyHandReach = 0.20f;
@@ -84,8 +109,9 @@ namespace dxvk {
   /**
    * \brief Opens the Pip-Boy when the player looks at it
    *
-   * The Pip-Boy opens once its screen has stayed in the middle of the view
-   * for \ref OpenDelay, and closes once the player has looked away for
+   * The Pip-Boy opens once its screen has stayed in the middle of the view,
+   * turned towards the head (a forearm in front of the face with its
+   * screen turned away is not looked at), for \ref OpenDelay, and closes once the player has looked away for
    * \ref CloseDelay. After the Pip-Boy was open, the player must look away
    * before the gaze opens it again, so that closing it with a menu button
    * while still looking at the wrist does not reopen it. A request is
@@ -100,6 +126,9 @@ namespace dxvk {
     constexpr static float MaxAngle    = 0.436332f;
     /// Largest distance between the head and the screen, in metres
     constexpr static float MaxDistance = 0.7f;
+    /// Largest angle between the way the screen faces and the way to the head, in radians (75 degrees):
+    /// a screen turned up, below the eyes, faces the head; one turned aside or away does not
+    constexpr static float MaxFacingAngle = 1.308997f;
     /// How long the screen is looked at before the Pip-Boy opens, in seconds
     constexpr static float OpenDelay   = 0.3f;
     /// How long the player looks away before the Pip-Boy closes, in seconds

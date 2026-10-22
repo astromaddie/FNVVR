@@ -21,12 +21,29 @@ namespace dxvk {
   }
 
 
+  bool vrIsFacing(
+    const VrPose&               head,
+    const VrVector3&            point,
+    const VrVector3&            normal,
+          float                 maxAngle) {
+    VrVector3 toHead = head.position - point;
+    return vrDot(normal, toHead) >= std::cos(maxAngle) * vrLength(toHead);
+  }
+
+
   VrVector3 vrComputeControllerPoint(
     const VrControllerState&    controller,
     const VrVector3&            offset) {
+    return controller.gripPose.position + vrComputeControllerDirection(controller, offset);
+  }
+
+
+  VrVector3 vrComputeControllerDirection(
+    const VrControllerState&    controller,
+    const VrVector3&            direction) {
     // Forward is -Z, up +Y and right +X
-    VrVector3 local = { offset.z, offset.y, -offset.x };
-    return controller.gripPose.position + vrRotate(controller.aimPose.orientation, local);
+    VrVector3 local = { direction.z, direction.y, -direction.x };
+    return vrRotate(controller.aimPose.orientation, local);
   }
 
 
@@ -39,7 +56,8 @@ namespace dxvk {
 
   VrPipBoyRequest VrPipBoyGaze::update(const VrPipBoyGazeInput& input) {
     m_looking = input.head && input.screen
-      && vrIsLookingAt(*input.head, *input.screen, MaxAngle, MaxDistance);
+      && vrIsLookingAt(*input.head, *input.screen, MaxAngle, MaxDistance)
+      && (!input.normal || vrIsFacing(*input.head, *input.screen, *input.normal, MaxFacingAngle));
 
     if (m_looking) {
       m_lookTime += input.dt;

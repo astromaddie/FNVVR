@@ -1121,11 +1121,26 @@ namespace dxvk {
 
     m_pipBoyScreen = vrComputeForearmPoint(FreeHandPose, FreeHandWrist, FreeHandTwist,
       wristOffset, twistOffset, point) * (1.0f / VrGameUnitsPerMetre);
-    m_hasPipBoyScreen = true;
+
+    // The screen lies on the forearm, facing away from its axis, which runs
+    // from the elbow (the forearm bone) to the wrist (the hand bone)
+    VrVector3 axis   = FreeHandPose.rotate * vrTranspose(FreeHandWrist) * wristOffset;
+    VrVector3 normal = m_pipBoyScreen * VrGameUnitsPerMetre - (FreeHandPose.translate - axis);
+    float axisLength = vrLength(axis);
+
+    if (axisLength > 0.0f) {
+      axis   = axis * (1.0f / axisLength);
+      normal = normal - axis * vrDot(normal, axis);
+    }
+
+    float normalLength = vrLength(normal);
+    m_pipBoyScreenNormal = normalLength > 0.0f ? normal * (1.0f / normalLength) : VrVector3();
+    m_hasPipBoyScreen = normalLength > 0.0f;
 
     if (!m_loggedScreen) {
       Logger::info(str::format("VR: The Pip-Boy screen is ", m_pipBoyScreen.x, " m forward, ",
-        m_pipBoyScreen.y, " m up and ", m_pipBoyScreen.z, " m right of the left controller"));
+        m_pipBoyScreen.y, " m up and ", m_pipBoyScreen.z, " m right of the left controller, facing ",
+        m_pipBoyScreenNormal.x, ", ", m_pipBoyScreenNormal.y, ", ", m_pipBoyScreenNormal.z));
       m_loggedScreen = true;
     }
   }

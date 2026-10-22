@@ -271,6 +271,17 @@ namespace dxvk {
     }
 
     /**
+     * \brief Whether the left hand holds a magazine, rounds or fuel, or
+     *    works the rack part or the lock
+     */
+    bool leftHandBusy() const {
+      VrMagazineState magazine = m_magazine.state();
+
+      return magazine == VrMagazineState::InHand || magazine == VrMagazineState::Seating
+          || m_rounds.state() != VrRoundState::Empty || m_rack.held() || m_lock.held();
+    }
+
+    /**
      * \brief Whether the weapon in the hand has a lock over its magazine
      *    turned by hand, see VrWeaponHand::setLock
      */
