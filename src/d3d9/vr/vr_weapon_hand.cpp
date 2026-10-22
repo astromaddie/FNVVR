@@ -28,6 +28,15 @@ namespace dxvk {
       uint32_t a9, uint32_t a10, uint32_t a11, uint32_t a12,
       float spreadHeading, float spreadPitch, uint32_t a15);
 
+    // FlameProjectile::Process3D is __thiscall without arguments
+    using FlameProcess3DFn = void (__fastcall*)(uint8_t* projectile, void* unused);
+
+    // FlameProjectile::UpdateProjectile is __thiscall with the frame time
+    using FlameUpdateFn = void (__fastcall*)(uint8_t* projectile, void* unused, float dt);
+
+    // TESObjectREFR::GetProjectileNode, __thiscall without arguments
+    using GetProjectileNodeFn = uint8_t* (__fastcall*)(uint8_t* reference, void* unused);
+
     // PlayerCharacter::ApplyAutoAimActor is __thiscall with 7 stack arguments
     using ApplyAutoAimFn = void (__fastcall*)(uint8_t* player, void* unused,
       void* projectile, void* releaseNode, float* heading, float* pitch,
@@ -449,6 +458,13 @@ namespace dxvk {
         VrGame::ProjectileCreate, reinterpret_cast<const void*>(&VrWeaponHand::createProjectileHook)))
       Logger::warn("VR: The projectile call was not found, the weapon shoots along the head");
 
+    // If these fail, flames come from in front of the head
+    if (found && !(VrGameMemory::redirectVirtual(VrGame::FlameProcess3DSlot,
+          VrGame::FlameProcess3D, reinterpret_cast<const void*>(&VrWeaponHand::flameProcess3DHook))
+        && VrGameMemory::redirectVirtual(VrGame::FlameUpdateSlot,
+          VrGame::FlameUpdate, reinterpret_cast<const void*>(&VrWeaponHand::flameUpdateHook))))
+      Logger::warn("VR: The flame projectile functions were not found, flames come from in front of the head");
+
     // If this one fails, the hand's shots still bend towards where the head looks
     if (found && !VrGameMemory::redirectCall(VrGame::AutoAimCallSite,
         VrGame::ApplyAutoAim, reinterpret_cast<const void*>(&VrWeaponHand::autoAimHook)))
@@ -579,23 +595,17 @@ namespace dxvk {
           float x, float y, float z, float heading, float pitch,
           uint32_t a9, uint32_t a10, uint32_t a11, uint32_t a12,
           float spreadHeading, float spreadPitch, uint32_t a15) {
-    uint8_t* object = player();
-    bool handAimed = false;
+    VrVector3 muzzle;
+    bool handAimed = handMuzzle(shooter, muzzle);
 
-    if (g_weaponHand && g_weaponHand->m_hasAim && object && shooter == object
-     && !*reinterpret_cast<const uint32_t*>(VrGame::VatsCameraState)) {
-      if (uint8_t* root = field<uint8_t*>(object, VrGame::PlayerFirstPersonRoot)) {
-        VrVector3 muzzle = parentFrame(root).toWorld(readVector(root, VrGame::NodeLocalTranslate))
-                         + g_weaponHand->m_muzzleOffset;
-        VrHeadAngles aim = vrComputeAimAngles(g_weaponHand->m_aimDirection);
+    if (handAimed) {
+      VrHeadAngles aim = vrComputeAimAngles(g_weaponHand->m_aimDirection);
 
-        x = muzzle.x;
-        y = muzzle.y;
-        z = muzzle.z;
-        heading = aim.yaw + spreadHeading;
-        pitch   = aim.pitch + spreadPitch;
-        handAimed = true;
-      }
+      x = muzzle.x;
+      y = muzzle.y;
+      z = muzzle.z;
+      heading = aim.yaw + spreadHeading;
+      pitch   = aim.pitch + spreadPitch;
     }
 
     // The projectile is initialised, and aimed by the auto-aim, before
@@ -611,6 +621,85 @@ namespace dxvk {
       g_weaponHand->m_handAimedShot = false;
 
     return result;
+  }
+
+
+  bool VrWeaponHand::handMuzzle(
+    const void*                 shooter,
+          VrVector3&            muzzle) {
+    uint8_t* object = player();
+
+    if (!g_weaponHand || !g_weaponHand->m_hasAim || !object || shooter != object
+     || *reinterpret_cast<const uint32_t*>(VrGame::VatsCameraState))
+      return false;
+
+    uint8_t* root = field<uint8_t*>(object, VrGame::PlayerFirstPersonRoot);
+
+    if (!root)
+      return false;
+
+    muzzle = parentFrame(root).toWorld(readVector(root, VrGame::NodeLocalTranslate))
+           + g_weaponHand->m_muzzleOffset;
+    return true;
+  }
+
+
+  template<typename Fn>
+  void VrWeaponHand::withNodeAtMuzzle(uint8_t* projectile, Fn&& call) {
+    auto shooter = field<uint8_t*>(projectile, VrGame::ProjectileShooter);
+    VrVector3 muzzle;
+
+    if (!handMuzzle(shooter, muzzle)) {
+      call();
+      return;
+    }
+
+    auto getNode = *reinterpret_cast<GetProjectileNodeFn*>(
+      field<uint8_t*>(shooter, 0) + VrGame::RefProjectileNodeSlot);
+    uint8_t* node = getNode(shooter, nullptr);
+
+    if (!node) {
+      call();
+      return;
+    }
+
+    VrGameRotation rotation    = readRotation(node, VrGame::ObjectWorldRotation);
+    VrVector3      translation = readVector(node, VrGame::ObjectWorldTranslation);
+
+    writeRotation(node, VrGame::ObjectWorldRotation, g_weaponHand->m_muzzleRotation);
+    writeVector(node, VrGame::ObjectWorldTranslation, muzzle);
+
+    call();
+
+    writeRotation(node, VrGame::ObjectWorldRotation, rotation);
+    writeVector(node, VrGame::ObjectWorldTranslation, translation);
+
+    if (g_weaponHand && !g_weaponHand->m_loggedFlame) {
+      Logger::info("VR: Flames come from the muzzle drawn in the hand");
+      g_weaponHand->m_loggedFlame = true;
+    }
+  }
+
+
+  void __fastcall VrWeaponHand::flameProcess3DHook(
+          uint8_t*              projectile,
+          void*                 unused) {
+    // The flame keeps the rotation it has to the node from here on: its
+    // spread, once the node is at the muzzle
+    withNodeAtMuzzle(projectile, [projectile] {
+      reinterpret_cast<FlameProcess3DFn>(VrGame::FlameProcess3D)(projectile, nullptr);
+    });
+  }
+
+
+  void __fastcall VrWeaponHand::flameUpdateHook(
+          uint8_t*              projectile,
+          void*                 unused,
+          float                 dt) {
+    // The flame is placed, then picks what it burns from there
+    withNodeAtMuzzle(projectile, [projectile, dt] {
+      reinterpret_cast<FlameUpdateFn>(VrGame::FlameUpdate)(projectile, nullptr, dt);
+    });
   }
 
 
@@ -951,11 +1040,12 @@ namespace dxvk {
     // Relative to the root, which the game places at the player. The shots
     // follow the barrel as it is drawn: the game animates the weapon at an
     // angle to its camera, so the barrel does not point along the hand.
-    m_muzzleOffset = readVector(muzzle ? muzzle : weapon, VrGame::ObjectWorldTranslation) - drawnRoot;
-    m_aimDirection = muzzle
-      ? vrComputeBarrelDirection(readRotation(muzzle, VrGame::ObjectWorldRotation))
+    m_muzzleOffset   = readVector(muzzle ? muzzle : weapon, VrGame::ObjectWorldTranslation) - drawnRoot;
+    m_muzzleRotation = readRotation(muzzle ? muzzle : weapon, VrGame::ObjectWorldRotation);
+    m_aimDirection   = muzzle
+      ? vrComputeBarrelDirection(m_muzzleRotation)
       : hand.forward;
-    m_hasAim       = true;
+    m_hasAim         = true;
 
     if (weapon != m_loggedBarrelWeapon) {
       VrHeadAngles barrelAngles = vrComputeAimAngles(m_aimDirection);

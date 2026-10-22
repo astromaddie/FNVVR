@@ -48,7 +48,9 @@ namespace dxvk {
    *   drawn in the hand instead, along the barrel as it is drawn, with the
    *   game's spread kept. The game's auto-aim, which would turn them
    *   towards the point under the centre of its camera, the head, leaves
-   *   them alone.
+   *   them alone. A flame stays on the shooter's projectile node every
+   *   frame: while FlameProjectile places it, that node is put at the
+   *   muzzle drawn in the hand.
    * - AnimData::MorphOrBlendToSequence starts the game's animations. When
    *   the other hand supports a pistol, the game's aim animation starts
    *   without blending from the previous pose, so the left hand is on the
@@ -590,11 +592,13 @@ namespace dxvk {
     VrNodeScale      m_pipBoyWrittenPlacement;
     float            m_pipBoyAppliedScale = 1.0f;
 
-    // Muzzle relative to the first-person root, and the direction the
-    // hand pointed, when the weapon was last drawn in the hand
+    // Muzzle relative to the first-person root, its rotation, and the
+    // direction the hand pointed, when the weapon was last drawn in the hand
     VrVector3        m_muzzleOffset;
+    VrGameRotation   m_muzzleRotation;
     VrVector3        m_aimDirection;
     bool             m_hasAim = false;
+    bool             m_loggedFlame = false;
 
     // Melee weapon held still in the hand, see placeModel: the weapon node
     // and form it was drawn with, compared but not dereferenced, and its
@@ -787,6 +791,37 @@ namespace dxvk {
             float x, float y, float z, float heading, float pitch,
             uint32_t a9, uint32_t a10, uint32_t a11, uint32_t a12,
             float spreadHeading, float spreadPitch, uint32_t a15);
+
+    static void __fastcall flameProcess3DHook(
+            uint8_t*              projectile,
+            void*                 unused);
+
+    static void __fastcall flameUpdateHook(
+            uint8_t*              projectile,
+            void*                 unused,
+            float                 dt);
+
+    /**
+     * \brief Where the player's shots start, aimed with the hand
+     *
+     * \param [in] shooter Actor firing
+     * \param [out] muzzle World position of the muzzle drawn in the hand
+     * \returns \c false unless the player fires the weapon drawn in the
+     *    hand, outside V.A.T.S.
+     */
+    static bool handMuzzle(
+      const void*                 shooter,
+            VrVector3&            muzzle);
+
+    /**
+     * \brief Calls a FlameProjectile function with the shooter's
+     *    projectile node at the muzzle drawn in the hand
+     *
+     * The node is restored afterwards: the game animates the first-person
+     * model from it.
+     */
+    template<typename Fn>
+    static void withNodeAtMuzzle(uint8_t* projectile, Fn&& call);
 
     static void __fastcall autoAimHook(
             uint8_t*              player,
