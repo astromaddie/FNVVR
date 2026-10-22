@@ -218,46 +218,6 @@ namespace dxvk {
           VrReloadAnimation&    animation);
 
   /**
-   * \brief Where the game's reload animation loads a weapon with no part to
-   *    take out
-   *
-   * Flamers and incinerators: their reload animation moves no part that
-   * comes out of the weapon, the left hand goes to the weapon and back,
-   * see findings/reload.md §8.12.
-   */
-  struct VrFuelAnimation {
-    /// Where the left hand bone is, in the weapon node's frame, when it
-    /// is furthest from where it starts
-    VrVector3     hand;
-    /// When that is, in seconds of the animation
-    float         time = 0.0f;
-    /// The animation's first and last sounds
-    VrReloadSound start;
-    VrReloadSound loaded;
-  };
-
-  /**
-   * \brief Reads where the reload animation of the weapon in the player's
-   *    hand puts the left hand on it
-   *
-   * Only called on the game's main thread, while the animation is not
-   * played.
-   *
-   * \param [in] player The PlayerCharacter
-   * \param [in] root Root of the first-person model
-   * \param [in] weapon The weapon node in it
-   * \param [in] leftHand The left hand bone
-   * \param [out] animation Where the hand goes and the sounds
-   * \returns \c false if the weapon has no first-person reload animation
-   */
-  bool vrReadFuelAnimation(
-          uint8_t*              player,
-          uint8_t*              root,
-          uint8_t*              weapon,
-          uint8_t*              leftHand,
-          VrFuelAnimation&      animation);
-
-  /**
    * \brief Plays a sound of the reload animation for the player
    *
    * As the game plays the sounds of the player's first-person animations,

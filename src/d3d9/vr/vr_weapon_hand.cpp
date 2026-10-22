@@ -78,7 +78,6 @@ namespace dxvk {
     constexpr int8_t WeaponTypePistol       = 3;
     constexpr int8_t WeaponTypePistolEnergy = 4;
     constexpr int8_t WeaponTypeRifle        = 5;
-    constexpr int8_t WeaponTypeHandle       = 8;
     constexpr int8_t WeaponTypeLauncher     = 9;
 
     // How long the magazine takes to move between the hand and its well
@@ -136,13 +135,6 @@ namespace dxvk {
 
     uint8_t* player() {
       return *reinterpret_cast<uint8_t* const*>(VrGame::Player);
-    }
-
-    bool firesFlames(const uint8_t* form) {
-      auto projectile = readField<const uint8_t*>(form, VrGame::WeaponProjectile);
-
-      return projectile && (readField<uint32_t>(projectile, VrGame::ProjectileDataFlags)
-        & VrGame::ProjectileMotionTypeMask) == VrGame::ProjectileMotionFlame;
     }
 
     VrVector3 readVector(const uint8_t* object, uintptr_t offset) {
@@ -823,7 +815,6 @@ namespace dxvk {
     m_hasHinge     = false;
     m_swingAction  = false;
     m_hasRoundPort = false;
-    m_hasFuelPort  = false;
     m_hasLock      = false;
 
     if (m_mode == VrFirstPersonMode::Hidden) {
@@ -994,8 +985,6 @@ namespace dxvk {
     VrGameTransform rackPose;
     uint8_t* rack = placeRack(weapon, hand, rackPose);
 
-    placeFuelPort(root, weapon, form, otherHand, hand);
-
     uint8_t* lock = placeLock(weapon, hand, updateData);
 
     if (handPlaced) {
@@ -1125,57 +1114,12 @@ namespace dxvk {
     if (m_highlight.port)
       add(swing ? hinge : vrFindWeaponPart(weapon, VrWeaponPartKind::Gate));
 
-    if (m_highlight.fuel && m_hasFuelPort)
-      add(findFuelPart(weapon));
-
     // Every part is placed by now: the game draws the model as it is, then
     // updates it again where it animates it, long before the highlight
     if (!m_highlightParts.empty()) {
       m_highlightRoot = root;
       m_highlightDrawn.capture(reinterpret_cast<uintptr_t>(root));
     }
-  }
-
-
-  uint8_t* VrWeaponHand::findFuelPart(uint8_t* weapon) const {
-    // Within this of a part's bound, the loading point is at that part
-    constexpr float AtPart = 0.05f * VrGameUnitsPerMetre;
-
-    float scale = field<float>(weapon, VrGame::ObjectWorldScale);
-    VrVector3 port = readVector(weapon, VrGame::ObjectWorldTranslation)
-      + readRotation(weapon, VrGame::ObjectWorldRotation) * m_fuelAnimation.hand * scale;
-
-    // The smallest shape at the loading point (the incinerator's valve, a
-    // tank), or the nearest one: the whole weapon when it is one shape
-    uint8_t* found = nullptr;
-    float foundDistance = 0.0f;
-    float foundRadius   = 0.0f;
-
-    vrVisitGameObjects(reinterpret_cast<uintptr_t>(weapon), MaxModelDepth,
-      [&] (uintptr_t object, uint32_t) {
-        auto part  = reinterpret_cast<uint8_t*>(object);
-        auto bound = field<uint8_t*>(part, VrGame::ObjectWorldBound);
-
-        if (vrGameAsNode(object) || !bound || (field<uint32_t>(part, VrGame::ObjectFlags) & VrGame::ObjectFlagAppCulled))
-          return;
-
-        float radius   = field<float>(bound, sizeof(VrVector3));
-        float distance = std::max(vrLength(port - readVector(bound, 0)) - radius, 0.0f);
-
-        if (radius <= 0.0f)
-          return;
-
-        bool better = !found
-          || (distance <= AtPart ? foundDistance > AtPart || radius < foundRadius : distance < foundDistance);
-
-        if (better) {
-          found         = part;
-          foundDistance = distance;
-          foundRadius   = radius;
-        }
-      });
-
-    return found;
   }
 
 
@@ -2211,86 +2155,6 @@ namespace dxvk {
 
     drawPart(lock, pose, updateData);
     return lock;
-  }
-
-
-  VrVector3 VrWeaponHand::fuelHeld() const {
-    return FreeHandPose.translate;
-  }
-
-
-  void VrWeaponHand::placeFuelPort(
-          uint8_t*              root,
-          uint8_t*              weapon,
-    const uint8_t*              form,
-          uint8_t*              leftHand,
-    const VrGameCameraPose&     hand) {
-    int8_t type = form ? readField<int8_t>(form, VrGame::WeaponAnimationType) : WeaponTypeNone;
-
-    if (m_hasMagazine || !leftHand || (type != WeaponTypeHandle && type != WeaponTypeLauncher)
-     || readField<uint8_t>(form, VrGame::WeaponLoopingReload))
-      return;
-
-    // By name: a weapon with a part to take out or put in is loaded with
-    // it, even while that part is culled and has no bound
-    bool part = false;
-
-    vrVisitGameObjects(reinterpret_cast<uintptr_t>(weapon), MaxModelDepth,
-      [&part] (uintptr_t object, uint32_t) {
-        switch (vrClassifyWeaponPart(field<const char*>(reinterpret_cast<uint8_t*>(object), VrGame::ObjectName))) {
-          case VrWeaponPartKind::Magazine:
-          case VrWeaponPartKind::Round:
-          case VrWeaponPartKind::Loader:
-          case VrWeaponPartKind::Projectile:
-            part = true;
-            break;
-
-          default:
-            break;
-        }
-      });
-
-    if (part)
-      return;
-
-    // A flamer keeps the game's reload: it has no part to show where its
-    // fuel goes in
-    if (firesFlames(form)) {
-      if (form != m_flameForm) {
-        const char* name = readField<const char*>(form, VrGame::WeaponFullName);
-        Logger::info(str::format("VR: '", name ? name : "", "' fires flames, the game reloads it"));
-        m_flameForm = form;
-      }
-      return;
-    }
-
-    if (form != m_fuelForm) {
-      m_fuelForm         = form;
-      m_hasFuelAnimation = false;
-      m_fuelTries        = 0;
-      m_fuelWait         = 0;
-    }
-
-    if (!m_hasFuelAnimation && m_fuelTries < ReloadAnimationTries) {
-      if (m_fuelWait) {
-        m_fuelWait -= 1;
-      } else {
-        m_fuelTries += 1;
-        m_fuelWait   = ReloadAnimationRetryDraws;
-        m_hasFuelAnimation = vrReadFuelAnimation(player(), root, weapon, leftHand, m_fuelAnimation);
-      }
-    }
-
-    float scale = field<float>(weapon, VrGame::ObjectWorldScale);
-
-    if (!m_hasFuelAnimation || scale <= 0.0f)
-      return;
-
-    VrVector3 port = readVector(weapon, VrGame::ObjectWorldTranslation)
-      + readRotation(weapon, VrGame::ObjectWorldRotation) * m_fuelAnimation.hand * scale;
-
-    m_fuelPort    = vrPointToHand(hand, port);
-    m_hasFuelPort = true;
   }
 
 

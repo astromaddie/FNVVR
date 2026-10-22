@@ -52,15 +52,6 @@ namespace dxvk {
     /// its place, in the right hand's frame (VrWeaponHand::roundPort), or
     /// \c nullptr if the weapon is not loaded round by round
     const VrVector3*        port = nullptr;
-    /// Where the left controller's hand bone loads a weapon with no part to
-    /// take out, in the right hand's frame (VrWeaponHand::fuelPort), or
-    /// \c nullptr if the weapon is not loaded that way
-    const VrVector3*        fuel = nullptr;
-    /// Where the hand bone is in the left controller's frame
-    /// (VrWeaponHand::fuelHeld), valid with the fuel port
-    VrVector3               fuelHeld;
-    /// The animation's sounds for it, valid with the fuel port
-    const VrFuelAnimation*  fuelAnimation = nullptr;
     /// Where the lock over the magazine turns about, in the right hand's
     /// frame (VrWeaponHand::lockPivot), or \c nullptr without one
     const VrVector3*        lock = nullptr;
@@ -159,10 +150,9 @@ namespace dxvk {
    * boxes, cells and canisters are magazines. A launcher's magazine is the
    * round it fires: once it is fired the tube is empty, and a new missile or
    * mini-nuke taken behind the back is pushed into it as a magazine is.
-   * Nothing is taken out of a launcher, and its jams are the game's. A
-   * flamer or an incinerator has no part to take out: fuel is taken behind
-   * the back, and the left hand held a moment where the game's reload
-   * animation puts it on the weapon loads it, see VrRoundLoader. The lock
+   * Nothing is taken out of a launcher, and its jams are the game's.
+   * Flamers and incinerators have no part to take out and keep the game's
+   * reload (user, 2026-10-22). The lock
    * over the minigun's and the grenade machineguns' box is turned open
    * before the box comes out, and shut once one is in, see VrLockHand:
    * while it is open the weapon does not fire, and while it is shut no
@@ -271,7 +261,7 @@ namespace dxvk {
     }
 
     /**
-     * \brief Whether the left hand holds a magazine, rounds or fuel, or
+     * \brief Whether the left hand holds a magazine or rounds, or
      *    works the rack part or the lock
      */
     bool leftHandBusy() const {
@@ -394,8 +384,6 @@ namespace dxvk {
       bool active, bool closed);
 
     bool loadRound(uint8_t* player, uint8_t* weapon);
-
-    VrRoundEvent updateFuel(const VrManualReloadInput& input, uint8_t* player, uint8_t* weapon, bool active);
 
     void playLoopSounds(const VrRoundLoop& loop, const VrVector3& port) const;
 

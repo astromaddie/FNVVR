@@ -55,21 +55,6 @@ namespace dxvk {
     // Part of its travel the rack part of a jammed weapon rests back by
     constexpr float JamRest = 0.3f;
 
-    // How long the left hand is held at a flamer's loading point, in
-    // seconds of its reload animation; the loader's loop is twice as long
-    // so that it ends there
-    constexpr float FuelLoadTime = 0.5f;
-
-    // A flamer's loading point is read from the hand bone of its reload
-    // animation, a point on the weapon the player cannot see: the hand is
-    // taken there from further than a round to its port
-    VrRoundReach fuelReach() {
-      VrRoundReach reach;
-      reach.capture = 0.12f;
-      reach.leave   = 0.2f;
-      return reach;
-    }
-
     VrManualReload* g_manualReload = nullptr;
 
     // StartAttack's clip reads were redirected: jams can be held
@@ -217,7 +202,7 @@ namespace dxvk {
   void VrManualReload::setEnabled(bool enabled) {
     if (enabled != m_enabled) {
       Logger::info(enabled
-        ? "VR: Weapons with a detachable magazine, those loaded round by round, break actions, revolvers, launchers and flamers are reloaded with the hands"
+        ? "VR: Weapons with a detachable magazine, those loaded round by round, break actions, revolvers and launchers are reloaded with the hands"
         : "VR: The weapons are reloaded as in the game");
     }
 
@@ -250,7 +235,7 @@ namespace dxvk {
     // A weapon is reloaded by hand once its magazine, or the round its
     // reload carries in, was found in the hand, and until another weapon
     // is equipped, even in V.A.T.S. or while it is not drawn in the hand
-    if (weapon && (input.well || input.fuel))
+    if (weapon && input.well)
       m_wellWeapon = weapon;
 
     bool handled = m_enabled && weapon && weapon == m_wellWeapon;
@@ -258,13 +243,12 @@ namespace dxvk {
     bool hinged  = handled && !looping && input.barrel;
     bool swung   = handled && input.roll;
     bool opening = hinged || swung;
-    bool fueled  = handled && !looping && !input.well && input.fuel;
 
     m_handWeapon = handled ? weapon : nullptr;
 
     // A jam is cleared by racking, or by taking the magazine out: a weapon
     // loaded round by round with nothing to rack keeps the game's jam
-    m_holdsJam = handled && (input.rack || !looping) && !input.fired && !fueled;
+    m_holdsJam = handled && (input.rack || !looping) && !input.fired;
 
     // How fast the right hand turns comes from its last frame
     VrGameCameraPose lastRight = m_lastRight;
@@ -274,15 +258,13 @@ namespace dxvk {
     if (input.rightHand)
       m_lastRight = *input.rightHand;
 
-    m_loadsRounds = looping || fueled;
-    m_rounds.setReach(fueled ? fuelReach() : VrRoundReach());
+    m_loadsRounds = looping;
     m_hasRackPart = handled && input.rack;
     m_hasLockPart = handled && input.lock;
     m_kind        = !handled ? VrReloadKind::None
       : looping ? VrReloadKind::Rounds
       : hinged  ? VrReloadKind::BreakAction
       : swung   ? VrReloadKind::Cylinder
-      : fueled  ? VrReloadKind::Fuel
       : VrReloadKind::Magazine;
 
     if (!handled) {
@@ -495,8 +477,6 @@ namespace dxvk {
     // from a handful
     if (looping)
       events.round = updateRounds(input, character, weapon, magazine.active, magazine.closed);
-    else if (fueled)
-      events.round = updateFuel(input, character, weapon, !input.leftOnWeapon);
     else
       events.magazine = m_magazine.update(magazine);
 
@@ -770,78 +750,6 @@ namespace dxvk {
 
       case VrRoundEvent::Dropped:
         Logger::info(str::format("VR: The rounds of '", weaponName(weapon), "' are let go of, clip ", clipCount(player)));
-        break;
-
-      case VrRoundEvent::Full:
-      case VrRoundEvent::None:
-        break;
-    }
-
-    return event;
-  }
-
-
-  VrRoundEvent VrManualReload::updateFuel(const VrManualReloadInput& input, uint8_t* player, uint8_t* weapon,
-      bool active) {
-    VrRoundInput fuel;
-    fuel.active = active && input.head && input.rightHand && input.leftHand && input.fuelAnimation;
-    fuel.grip   = input.grip;
-
-    if (fuel.active) {
-      fuel.hand       = input.leftHand->position;
-      fuel.round      = vrPointFromHand(*input.leftHand, input.fuelHeld);
-      fuel.port       = vrPointFromHand(*input.rightHand, *input.fuel);
-      fuel.head       = *input.head;
-      fuel.roundsHeld = holdsRounds(player, true);
-      fuel.dt         = input.frameTime * reloadSpeed(player);
-    }
-
-    VrRoundLoopTiming timing;
-    timing.length = 2.0f * FuelLoadTime;
-    timing.placed = FuelLoadTime;
-
-    VrRoundEvent event = m_rounds.update(fuel, timing);
-
-    switch (event) {
-      case VrRoundEvent::Taken:
-        Logger::info(str::format("VR: Fuel for '", weaponName(weapon), "' is taken behind the back"));
-        break;
-
-      case VrRoundEvent::NoRounds:
-        Logger::info(str::format("VR: No fuel left for '", weaponName(weapon), "' beyond what is loaded, none is taken"));
-        break;
-
-      case VrRoundEvent::Started:
-        if (input.fuelAnimation)
-          vrPlayReloadSound(input.fuelAnimation->start, fuel.port);
-
-        Logger::info(str::format("VR: The left hand reaches the loading point of '", weaponName(weapon),
-          "', clip ", clipCount(player)));
-        break;
-
-      case VrRoundEvent::Placed:
-        // The game's own reload with no animation fills the clip, and the
-        // fuel is used up
-        if (!fillClip(player, weapon)) {
-          m_rounds.refuse();
-          event = VrRoundEvent::Full;
-          Logger::info(str::format("VR: '", weaponName(weapon), "' takes no more fuel, the hand keeps it"));
-          break;
-        }
-
-        if (input.fuelAnimation)
-          vrPlayReloadSound(input.fuelAnimation->loaded, fuel.port);
-
-        m_rounds.reset();
-        break;
-
-      case VrRoundEvent::Stopped:
-        Logger::info(str::format("VR: The left hand leaves the loading point of '", weaponName(weapon),
-          "' before it is loaded, it keeps its fuel"));
-        break;
-
-      case VrRoundEvent::Dropped:
-        Logger::info(str::format("VR: The fuel for '", weaponName(weapon), "' is let go of"));
         break;
 
       case VrRoundEvent::Full:

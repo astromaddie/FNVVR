@@ -924,9 +924,6 @@ namespace dxvk {
       hands.barrel     = m_weaponHand->actionBarrel();
       hands.roll       = m_weaponHand->actionRoll();
       hands.port       = m_weaponHand->roundPort();
-      hands.fuel       = m_weaponHand->fuelPort();
-      hands.fuelHeld   = m_weaponHand->fuelHeld();
-      hands.fuelAnimation = m_weaponHand->fuelAnimation();
       hands.lock       = m_weaponHand->lockPivot();
       hands.lockAxis   = m_weaponHand->lockAxis();
       hands.lockArm    = m_weaponHand->lockArm();
@@ -1128,7 +1125,7 @@ namespace dxvk {
     }
 
     // The left hand holding the weapon is not where the screen would be,
-    // nor is one bringing a magazine, a round or fuel to it
+    // nor is one bringing a magazine or a round to it
     bool gripped = input.hasActions && input.actions.isPressed(VrAction::TwoHandGrip);
     bool loading = m_manualReload && m_manualReload->leftHandBusy();
 

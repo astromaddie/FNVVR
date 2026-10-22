@@ -428,13 +428,6 @@ namespace dxvk {
     : m_reach(reach) { }
 
     /**
-     * \brief Sets how close the hand must come, from the next frame on
-     */
-    void setReach(const VrRoundReach& reach) {
-      m_reach = reach;
-    }
-
-    /**
      * \brief Takes the frame's input
      * \returns What happened in this frame
      */
@@ -1064,9 +1057,6 @@ namespace dxvk {
     BreakAction,
     /// A revolver whose cylinder swings out
     Cylinder,
-    /// A flamer or incinerator, loaded with the left hand held at a point
-    /// of the weapon
-    Fuel,
   };
 
   /**
@@ -1114,11 +1104,9 @@ namespace dxvk {
     bool port     = false;
     /// The lock over the magazine, to open or shut
     bool lock     = false;
-    /// Where the fuel goes in
-    bool fuel     = false;
 
     bool any() const {
-      return magazine || rack || hinge || port || lock || fuel;
+      return magazine || rack || hinge || port || lock;
     }
   };
 
@@ -1133,8 +1121,7 @@ namespace dxvk {
    * rounds is not asked to rack, and a cylinder that swings out is worked
    * with the right wrist, so nothing of it glows. A lock over the magazine
    * is opened before the magazine is taken out, and shut once a loaded one
-   * is in. A flamer glows where its fuel goes in while it is empty and
-   * while the hand holds fuel it takes.
+   * is in.
    */
   VrReloadParts vrPartsToWork(const VrReloadSituation& situation);
 
