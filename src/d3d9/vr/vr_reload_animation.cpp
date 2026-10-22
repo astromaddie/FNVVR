@@ -427,8 +427,12 @@ namespace dxvk {
     /**
      * \brief Reads how the sequence opens the action about a part
      *
-     * The part turns away from where the model has it now, closed.
+     * The part turns away from where it is closed: where the model has it
+     * now, or where the sequence has it at its start. The grenade
+     * machinegun's model has its lock open, the reload animation starts
+     * with it shut.
      *
+     * \param [in] closedAtStart The part is closed at the sequence's start
      * \param [in] placed When the shells are in their place
      * \param [out] widest How far it turns at most
      * \param [out] from When the part starts turning
@@ -441,6 +445,7 @@ namespace dxvk {
             uint8_t*              hinge,
             float                 begin,
             float                 end,
+            bool                  closedAtStart,
             float                 placed,
             VrHingeAnimation&     animation,
             float&                widest,
@@ -448,7 +453,7 @@ namespace dxvk {
             float&                to) {
       Pose closed;
 
-      if (!restToAncestor(hinge, weapon, closed))
+      if (closedAtStart ? !tracks.toAncestor(hinge, weapon, begin, closed) : !restToAncestor(hinge, weapon, closed))
         return false;
 
       std::vector<float> times;
@@ -499,10 +504,12 @@ namespace dxvk {
 
       size_t open = angles[placedAt] >= 0.5f * widest ? placedAt : widestAt;
 
-      animation.part           = partName(hinge);
-      animation.open.rotate    = poses[open].rotate;
-      animation.open.translate = poses[open].translate;
-      animation.angle          = angles[open];
+      animation.part             = partName(hinge);
+      animation.closed.rotate    = closed.rotate;
+      animation.closed.translate = closed.translate;
+      animation.open.rotate      = poses[open].rotate;
+      animation.open.translate   = poses[open].translate;
+      animation.angle            = angles[open];
 
       // The axis of the turn from closed to open, the way it opens
       VrQuaternion turn = vrQuaternionFromGameRotation(poses[open].rotate * vrTranspose(closed.rotate));
@@ -539,7 +546,7 @@ namespace dxvk {
         float candidateFrom   = 0.0f;
         float candidateTo     = -1.0f;
 
-        if (!readHinge(tracks, weapon, part, begin, end, placed, candidate, candidateWidest, candidateFrom, candidateTo)
+        if (!readHinge(tracks, weapon, part, begin, end, false, placed, candidate, candidateWidest, candidateFrom, candidateTo)
          || candidateWidest <= widest)
           continue;
 
@@ -847,7 +854,7 @@ namespace dxvk {
     float hingeWidest = 0.0f;
 
     if (hinge)
-      animation.hasHinge = readHinge(tracks, weapon, hinge, begin, end, timing.in, animation.hinge, hingeWidest, hingeFrom, hingeTo);
+      animation.hasHinge = readHinge(tracks, weapon, hinge, begin, end, false, timing.in, animation.hinge, hingeWidest, hingeFrom, hingeTo);
     else if (swing)
       animation.hasHinge = readSwing(tracks, weapon, magazine, begin, end, timing.in, animation.hinge, hingeFrom, hingeTo);
     else
@@ -868,7 +875,7 @@ namespace dxvk {
     float lockFrom   = 0.0f;
     float lockTo     = -1.0f;
     float lockWidest = 0.0f;
-    animation.hasLock = lock && readHinge(tracks, weapon, lock, begin, end, timing.in, animation.lock, lockWidest, lockFrom, lockTo);
+    animation.hasLock = lock && readHinge(tracks, weapon, lock, begin, end, true, timing.in, animation.lock, lockWidest, lockFrom, lockTo);
 
     if (animation.hasLock) {
       Logger::info(str::format("VR: Reload animation turns the lock '", animation.lock.part, "' open by ",

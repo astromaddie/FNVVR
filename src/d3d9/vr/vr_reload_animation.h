@@ -67,6 +67,8 @@ namespace dxvk {
   struct VrHingeAnimation {
     /// Name of the part that turns
     std::string     part;
+    /// The part in the weapon node's frame while the action is closed
+    VrGameTransform closed;
     /// The part in the weapon node's frame while the action is open
     VrGameTransform open;
     /// How far it turns, in radians

@@ -336,11 +336,16 @@ namespace dxvk {
     /**
      * \brief Sets how far the lock over the magazine is turned open
      *
-     * Applied when the model is next drawn, from 0 (shut, as the game draws
-     * it) to 1 (as open as the game's reload animation turns it).
+     * Applied when the model is next drawn, from 0 (shut, as the game's
+     * reload animation starts with it) to 1 (as open as it turns it).
+     *
+     * \param [in] turn How far it is turned
+     * \param [in] driven The weapon is reloaded by hand: the lock is drawn
+     *    as it is turned, the game's pose of it is left as it is otherwise
      */
-    void setLock(float turn) {
-      m_lockTurn = turn;
+    void setLock(float turn, bool driven) {
+      m_lockTurn   = turn;
+      m_lockDriven = driven;
     }
 
     /**
@@ -702,10 +707,11 @@ namespace dxvk {
     VrVector3        m_fuelPort;
     bool             m_hasFuelPort = false;
 
-    // Lock over the magazine: how far it is to be turned open, its middle
-    // in its own frame (read while the game draws it shut), and where it
-    // turns about, its axis and its arm in the right hand's frame
+    // Lock over the magazine: how far it is to be turned open and whether
+    // it is drawn so, its middle in its own frame, and where it turns
+    // about, its axis and its arm (shut) in the right hand's frame
     float            m_lockTurn = 0.0f;
+    bool             m_lockDriven = false;
     VrVector3        m_lockCentre;
     bool             m_hasLockCentre = false;
     VrVector3        m_lockPivot;

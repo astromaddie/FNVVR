@@ -2013,10 +2013,10 @@ namespace dxvk {
     VrVector3 pivot               = readVector(lock, VrGame::ObjectWorldTranslation);
     float scale                   = field<float>(lock, VrGame::ObjectWorldScale);
 
-    // Its middle, read while the game draws it shut
+    // Its middle in its own frame, wherever it is drawn
     auto bound = field<uint8_t*>(lock, VrGame::ObjectWorldBound);
 
-    if (m_lockTurn <= 0.0f && bound && scale > 0.0f && field<float>(bound, sizeof(VrVector3)) > 0.0f) {
+    if (bound && scale > 0.0f && field<float>(bound, sizeof(VrVector3)) > 0.0f) {
       m_lockCentre    = vrTranspose(lockRotation) * (readVector(bound, 0) - pivot) * (1.0f / scale);
       m_hasLockCentre = true;
     }
@@ -2024,9 +2024,11 @@ namespace dxvk {
     if (!m_hasLockCentre)
       return nullptr;
 
+    // Shut as the reload animation starts with it, which is not always how
+    // the model has it: the grenade machinegun's lock is open in its model
     const VrHingeAnimation& animation = m_reloadAnimation.lock;
     VrVector3 axis = weaponRotation * animation.axis;
-    VrVector3 arm  = lockRotation * m_lockCentre * scale;
+    VrVector3 arm  = weaponRotation * animation.closed.rotate * m_lockCentre * scale;
 
     m_lockPivot = vrPointToHand(hand, pivot);
     m_lockAxis  = { vrDot(axis, hand.forward), vrDot(axis, hand.up), vrDot(axis, hand.right) };
@@ -2040,16 +2042,14 @@ namespace dxvk {
       m_loggedLock = true;
     }
 
-    if (m_lockTurn <= 0.0f)
+    // The game animates it while the weapon is not reloaded by hand
+    if (!m_lockDriven)
       return lock;
 
-    // Turned about its pivot, from shut as the game draws it to open as the
-    // animation has it
-    VrGameRotation shut = vrTranspose(weaponRotation) * lockRotation;
-
+    // Turned about its pivot, from shut to open as the animation has it
     VrGameTransform pose;
     pose.rotate    = weaponRotation * vrGameRotationFromQuaternion(vrSlerp(
-      vrQuaternionFromGameRotation(shut), vrQuaternionFromGameRotation(animation.open.rotate), m_lockTurn));
+      vrQuaternionFromGameRotation(animation.closed.rotate), vrQuaternionFromGameRotation(animation.open.rotate), m_lockTurn));
     pose.translate = pivot;
 
     drawPart(lock, pose, updateData);

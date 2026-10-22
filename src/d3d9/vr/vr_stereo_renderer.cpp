@@ -1025,7 +1025,7 @@ namespace dxvk {
       m_weaponHand->setMagazine(m_manualReload->magazineState(), m_manualReload->magazineSeat());
       m_weaponHand->setRack(m_manualReload->rackHeld(), m_manualReload->rackPull(), m_manualReload->rackRest());
       m_weaponHand->setActionOpen(m_manualReload->actionOpen());
-      m_weaponHand->setLock(m_manualReload->lockTurn());
+      m_weaponHand->setLock(m_manualReload->lockTurn(), m_manualReload->lockDriven());
       m_weaponHand->setRoundLoop(m_manualReload->roundState(), m_manualReload->roundTime());
       m_weaponHand->setHighlight(vrPartsToWork(m_manualReload->situation()));
     }

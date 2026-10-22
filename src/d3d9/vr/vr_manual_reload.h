@@ -271,6 +271,14 @@ namespace dxvk {
     }
 
     /**
+     * \brief Whether the weapon in the hand has a lock over its magazine
+     *    turned by hand, see VrWeaponHand::setLock
+     */
+    bool lockDriven() const {
+      return m_hasLockPart;
+    }
+
+    /**
      * \brief How far back the rack part rests, see VrWeaponHand::setRack
      */
     float rackRest() const {
