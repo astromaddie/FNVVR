@@ -45,7 +45,7 @@ Weapons are now reloaded with the hands instead of the reload button. It is on b
 - **Launchers** (missile launcher, Annabelle, Fat Man, Esther): after the shot the tube is empty; a missile or mini-nuke
   taken behind the shoulder is pushed into the tube.
 - **Flamers and incinerators**: fuel is taken behind the shoulder and the left hand held half a second where the game's
-  reload animation puts it on the weapon.
+  reload animation puts it on the weapon; the part of the weapon at that place glows while it is empty.
 - **Not yet covered**: weapons whose model has no recognised part keep the game's reload (the X button).
 
 **Bindings**: a new SteamVR action, "Take out, take and insert a magazine (left hand)", is bound to the left trigger,
@@ -83,3 +83,5 @@ new action and move the grip.
 ### Fixes
 
 - The Settings list is now sized for all its entries; the sixth entry was cut off.
+- The Pip-Boy no longer opens when the left forearm passes in front of the face with its screen turned away, nor while
+  the left hand holds a magazine, rounds or fuel.
