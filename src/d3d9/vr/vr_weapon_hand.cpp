@@ -28,6 +28,15 @@ namespace dxvk {
       uint32_t a9, uint32_t a10, uint32_t a11, uint32_t a12,
       float spreadHeading, float spreadPitch, uint32_t a15);
 
+    // FlameProjectile::Process3D is __thiscall without arguments
+    using FlameProcess3DFn = void (__fastcall*)(uint8_t* projectile, void* unused);
+
+    // FlameProjectile::UpdateProjectile is __thiscall with the frame time
+    using FlameUpdateFn = void (__fastcall*)(uint8_t* projectile, void* unused, float dt);
+
+    // TESObjectREFR::GetProjectileNode, __thiscall without arguments
+    using GetProjectileNodeFn = uint8_t* (__fastcall*)(uint8_t* reference, void* unused);
+
     // PlayerCharacter::ApplyAutoAimActor is __thiscall with 7 stack arguments
     using ApplyAutoAimFn = void (__fastcall*)(uint8_t* player, void* unused,
       void* projectile, void* releaseNode, float* heading, float* pitch,
@@ -81,6 +90,12 @@ namespace dxvk {
     // and of the index finger
     constexpr char PinchThumbBone[] = "Bip01 L Thumb12";
     constexpr char PinchIndexBone[] = "Bip01 L Finger12";
+
+    // How far from the left hand bone, in metres, the reload animation may
+    // hold the new magazine's centre and still carry it: the Gatling
+    // laser's never comes within 50 cm of the hand, the minigun's box is
+    // under 20 cm away
+    constexpr float MagazineHandReach = 0.3f;
 
     // How far out along its way in a round enters the loading port, in
     // metres, and the part of the time to its place it takes to get there
@@ -442,6 +457,13 @@ namespace dxvk {
         VrGame::ProjectileCreate, reinterpret_cast<const void*>(&VrWeaponHand::createProjectileHook)))
       Logger::warn("VR: The projectile call was not found, the weapon shoots along the head");
 
+    // If these fail, flames come from in front of the head
+    if (found && !(VrGameMemory::redirectVirtual(VrGame::FlameProcess3DSlot,
+          VrGame::FlameProcess3D, reinterpret_cast<const void*>(&VrWeaponHand::flameProcess3DHook))
+        && VrGameMemory::redirectVirtual(VrGame::FlameUpdateSlot,
+          VrGame::FlameUpdate, reinterpret_cast<const void*>(&VrWeaponHand::flameUpdateHook))))
+      Logger::warn("VR: The flame projectile functions were not found, flames come from in front of the head");
+
     // If this one fails, the hand's shots still bend towards where the head looks
     if (found && !VrGameMemory::redirectCall(VrGame::AutoAimCallSite,
         VrGame::ApplyAutoAim, reinterpret_cast<const void*>(&VrWeaponHand::autoAimHook)))
@@ -572,23 +594,17 @@ namespace dxvk {
           float x, float y, float z, float heading, float pitch,
           uint32_t a9, uint32_t a10, uint32_t a11, uint32_t a12,
           float spreadHeading, float spreadPitch, uint32_t a15) {
-    uint8_t* object = player();
-    bool handAimed = false;
+    VrVector3 muzzle;
+    bool handAimed = handMuzzle(shooter, muzzle);
 
-    if (g_weaponHand && g_weaponHand->m_hasAim && object && shooter == object
-     && !*reinterpret_cast<const uint32_t*>(VrGame::VatsCameraState)) {
-      if (uint8_t* root = field<uint8_t*>(object, VrGame::PlayerFirstPersonRoot)) {
-        VrVector3 muzzle = parentFrame(root).toWorld(readVector(root, VrGame::NodeLocalTranslate))
-                         + g_weaponHand->m_muzzleOffset;
-        VrHeadAngles aim = vrComputeAimAngles(g_weaponHand->m_aimDirection);
+    if (handAimed) {
+      VrHeadAngles aim = vrComputeAimAngles(g_weaponHand->m_aimDirection);
 
-        x = muzzle.x;
-        y = muzzle.y;
-        z = muzzle.z;
-        heading = aim.yaw + spreadHeading;
-        pitch   = aim.pitch + spreadPitch;
-        handAimed = true;
-      }
+      x = muzzle.x;
+      y = muzzle.y;
+      z = muzzle.z;
+      heading = aim.yaw + spreadHeading;
+      pitch   = aim.pitch + spreadPitch;
     }
 
     // The projectile is initialised, and aimed by the auto-aim, before
@@ -604,6 +620,85 @@ namespace dxvk {
       g_weaponHand->m_handAimedShot = false;
 
     return result;
+  }
+
+
+  bool VrWeaponHand::handMuzzle(
+    const void*                 shooter,
+          VrVector3&            muzzle) {
+    uint8_t* object = player();
+
+    if (!g_weaponHand || !g_weaponHand->m_hasAim || !object || shooter != object
+     || *reinterpret_cast<const uint32_t*>(VrGame::VatsCameraState))
+      return false;
+
+    uint8_t* root = field<uint8_t*>(object, VrGame::PlayerFirstPersonRoot);
+
+    if (!root)
+      return false;
+
+    muzzle = parentFrame(root).toWorld(readVector(root, VrGame::NodeLocalTranslate))
+           + g_weaponHand->m_muzzleOffset;
+    return true;
+  }
+
+
+  template<typename Fn>
+  void VrWeaponHand::withNodeAtMuzzle(uint8_t* projectile, Fn&& call) {
+    auto shooter = field<uint8_t*>(projectile, VrGame::ProjectileShooter);
+    VrVector3 muzzle;
+
+    if (!handMuzzle(shooter, muzzle)) {
+      call();
+      return;
+    }
+
+    auto getNode = *reinterpret_cast<GetProjectileNodeFn*>(
+      field<uint8_t*>(shooter, 0) + VrGame::RefProjectileNodeSlot);
+    uint8_t* node = getNode(shooter, nullptr);
+
+    if (!node) {
+      call();
+      return;
+    }
+
+    VrGameRotation rotation    = readRotation(node, VrGame::ObjectWorldRotation);
+    VrVector3      translation = readVector(node, VrGame::ObjectWorldTranslation);
+
+    writeRotation(node, VrGame::ObjectWorldRotation, g_weaponHand->m_muzzleRotation);
+    writeVector(node, VrGame::ObjectWorldTranslation, muzzle);
+
+    call();
+
+    writeRotation(node, VrGame::ObjectWorldRotation, rotation);
+    writeVector(node, VrGame::ObjectWorldTranslation, translation);
+
+    if (g_weaponHand && !g_weaponHand->m_loggedFlame) {
+      Logger::info("VR: Flames come from the muzzle drawn in the hand");
+      g_weaponHand->m_loggedFlame = true;
+    }
+  }
+
+
+  void __fastcall VrWeaponHand::flameProcess3DHook(
+          uint8_t*              projectile,
+          void*                 unused) {
+    // The flame keeps the rotation it has to the node from here on: its
+    // spread, once the node is at the muzzle
+    withNodeAtMuzzle(projectile, [projectile] {
+      reinterpret_cast<FlameProcess3DFn>(VrGame::FlameProcess3D)(projectile, nullptr);
+    });
+  }
+
+
+  void __fastcall VrWeaponHand::flameUpdateHook(
+          uint8_t*              projectile,
+          void*                 unused,
+          float                 dt) {
+    // The flame is placed, then picks what it burns from there
+    withNodeAtMuzzle(projectile, [projectile, dt] {
+      reinterpret_cast<FlameUpdateFn>(VrGame::FlameUpdate)(projectile, nullptr, dt);
+    });
   }
 
 
@@ -720,6 +815,7 @@ namespace dxvk {
     m_hasHinge     = false;
     m_swingAction  = false;
     m_hasRoundPort = false;
+    m_hasLock      = false;
 
     if (m_mode == VrFirstPersonMode::Hidden) {
       m_hasAim    = false;
@@ -889,6 +985,8 @@ namespace dxvk {
     VrGameTransform rackPose;
     uint8_t* rack = placeRack(weapon, hand, rackPose);
 
+    uint8_t* lock = placeLock(weapon, hand, updateData);
+
     if (handPlaced) {
       HeldPart held = { };
 
@@ -928,7 +1026,7 @@ namespace dxvk {
     if (rack)
       drawPart(rack, rackPose, updateData);
 
-    findHighlight(root, weapon, hinge, action == ActionKind::Swing);
+    findHighlight(root, weapon, hinge, lock, action == ActionKind::Swing);
 
     uint8_t* muzzle = findObject(weapon, VrGame::ProjectileNodeName);
 
@@ -938,11 +1036,12 @@ namespace dxvk {
     // Relative to the root, which the game places at the player. The shots
     // follow the barrel as it is drawn: the game animates the weapon at an
     // angle to its camera, so the barrel does not point along the hand.
-    m_muzzleOffset = readVector(muzzle ? muzzle : weapon, VrGame::ObjectWorldTranslation) - drawnRoot;
-    m_aimDirection = muzzle
-      ? vrComputeBarrelDirection(readRotation(muzzle, VrGame::ObjectWorldRotation))
+    m_muzzleOffset   = readVector(muzzle ? muzzle : weapon, VrGame::ObjectWorldTranslation) - drawnRoot;
+    m_muzzleRotation = readRotation(muzzle ? muzzle : weapon, VrGame::ObjectWorldRotation);
+    m_aimDirection   = muzzle
+      ? vrComputeBarrelDirection(m_muzzleRotation)
       : hand.forward;
-    m_hasAim       = true;
+    m_hasAim         = true;
 
     if (weapon != m_loggedBarrelWeapon) {
       VrHeadAngles barrelAngles = vrComputeAimAngles(m_aimDirection);
@@ -989,7 +1088,7 @@ namespace dxvk {
   }
 
 
-  void VrWeaponHand::findHighlight(uint8_t* root, uint8_t* weapon, uint8_t* hinge, bool swing) {
+  void VrWeaponHand::findHighlight(uint8_t* root, uint8_t* weapon, uint8_t* hinge, uint8_t* lock, bool swing) {
     if (!m_highlight.any())
       return;
 
@@ -1003,6 +1102,9 @@ namespace dxvk {
 
     if (m_highlight.rack && !m_hasHinge)
       add(vrFindWeaponPart(weapon, VrWeaponPartKind::Rack));
+
+    if (m_highlight.lock)
+      add(lock);
 
     // A break action's barrel turns down about the breech
     if (m_highlight.hinge && m_hasHinge && !swing)
@@ -1105,11 +1207,26 @@ namespace dxvk {
 
     m_pipBoyScreen = vrComputeForearmPoint(FreeHandPose, FreeHandWrist, FreeHandTwist,
       wristOffset, twistOffset, point) * (1.0f / VrGameUnitsPerMetre);
-    m_hasPipBoyScreen = true;
+
+    // The screen lies on the forearm, facing away from its axis, which runs
+    // from the elbow (the forearm bone) to the wrist (the hand bone)
+    VrVector3 axis   = FreeHandPose.rotate * vrTranspose(FreeHandWrist) * wristOffset;
+    VrVector3 normal = m_pipBoyScreen * VrGameUnitsPerMetre - (FreeHandPose.translate - axis);
+    float axisLength = vrLength(axis);
+
+    if (axisLength > 0.0f) {
+      axis   = axis * (1.0f / axisLength);
+      normal = normal - axis * vrDot(normal, axis);
+    }
+
+    float normalLength = vrLength(normal);
+    m_pipBoyScreenNormal = normalLength > 0.0f ? normal * (1.0f / normalLength) : VrVector3();
+    m_hasPipBoyScreen = normalLength > 0.0f;
 
     if (!m_loggedScreen) {
       Logger::info(str::format("VR: The Pip-Boy screen is ", m_pipBoyScreen.x, " m forward, ",
-        m_pipBoyScreen.y, " m up and ", m_pipBoyScreen.z, " m right of the left controller"));
+        m_pipBoyScreen.y, " m up and ", m_pipBoyScreen.z, " m right of the left controller, facing ",
+        m_pipBoyScreenNormal.x, ", ", m_pipBoyScreenNormal.y, ", ", m_pipBoyScreenNormal.z));
       m_loggedScreen = true;
     }
   }
@@ -1689,11 +1806,14 @@ namespace dxvk {
     VrWeaponPartKind kind = action == ActionKind::Swing && !looping ? VrWeaponPartKind::Loader
       : (round ? VrWeaponPartKind::Round : VrWeaponPartKind::Magazine);
 
-    // The reload animations never hold their rounds well in the hand: they
-    // are held between the fingers instead
-    m_pinched = kind == VrWeaponPartKind::Round;
-
     uint8_t* magazine = hiddenFound ? m_hiddenMagazine : vrFindWeaponPart(weapon, kind);
+
+    // A launcher is loaded with the round it fires
+    if (!magazine && kind == VrWeaponPartKind::Magazine)
+      magazine = vrFindWeaponPart(weapon, VrWeaponPartKind::Projectile);
+
+    bool fired = magazine
+      && vrClassifyWeaponPart(field<const char*>(magazine, VrGame::ObjectName)) == VrWeaponPartKind::Projectile;
 
     if (m_hiddenMagazine && (!hiddenFound || m_magazineState != VrMagazineState::Out)) {
       if (hiddenFound)
@@ -1724,7 +1844,9 @@ namespace dxvk {
       m_hasMagazineCentre = false;
       m_hasMagazineGrip   = false;
       m_hasPinch          = false;
+      m_hasLockCentre     = false;
       m_loggedMagazine    = false;
+      m_loggedLock        = false;
     }
 
     // The game's reload animation, once the weapon's model is in the hand
@@ -1745,9 +1867,17 @@ namespace dxvk {
         // named as a lever
         m_hasReloadAnimation = vrReadReloadAnimation(player(), root, weapon, magazine, round, looping,
           action == ActionKind::None ? vrFindWeaponPart(weapon, VrWeaponPartKind::Rack) : nullptr,
-          hinge, action == ActionKind::Swing, leftHand, m_reloadAnimation);
+          hinge, action == ActionKind::Swing,
+          action == ActionKind::None ? vrFindWeaponPart(weapon, VrWeaponPartKind::Lock) : nullptr,
+          leftHand, m_reloadAnimation);
       }
     }
+
+    // The reload animations never hold their rounds well in the hand, and
+    // some never carry their magazine: they are held between the fingers
+    // instead
+    m_pinched = kind == VrWeaponPartKind::Round
+      || (m_hasReloadAnimation && m_reloadAnimation.handDistance > MagazineHandReach);
 
     // An action that opens is reloaded by hand only once its reload
     // animation tells how it opens
@@ -1776,7 +1906,9 @@ namespace dxvk {
       m_hasMagazineCentre = true;
     }
 
-    if (round && m_hasReloadAnimation && m_reloadAnimation.round) {
+    // A launcher's round is put where its reload animation leaves it: the
+    // shot carried it away from its place
+    if (m_hasReloadAnimation && (fired || (round && m_reloadAnimation.round))) {
       VrGameRotation weaponRotation = readRotation(weapon, VrGame::ObjectWorldRotation);
 
       rotation = weaponRotation * m_reloadAnimation.place.rotate;
@@ -1787,8 +1919,9 @@ namespace dxvk {
     VrVector3 centre = m_hasMagazineCentre ? m_magazineCentre : VrVector3();
     VrVector3 well   = position + rotation * centre * scale;
 
-    m_magazineWell = vrPointToHand(hand, well);
-    m_hasMagazine  = true;
+    m_magazineWell  = vrPointToHand(hand, well);
+    m_hasMagazine   = true;
+    m_magazineFired = fired;
     m_hasHinge     = action != ActionKind::None;
     m_swingAction  = action == ActionKind::Swing;
 
@@ -1879,8 +2012,19 @@ namespace dxvk {
       return nullptr;
     }
 
-    if (m_magazineState == VrMagazineState::InWeapon)
-      return nullptr;
+    if (m_magazineState == VrMagazineState::InWeapon) {
+      // The game hides a launcher's round when it fires it, or when the
+      // weapon is drawn empty, until it plays its reload animation or the
+      // weapon is drawn loaded: it is shown in its place once a round is
+      // pushed into the tube
+      if (!fired)
+        return nullptr;
+
+      field<uint32_t>(magazine, VrGame::ObjectFlags) &= ~VrGame::ObjectFlagAppCulled;
+      pose.rotate    = rotation;
+      pose.translate = position;
+      return magazine;
+    }
 
     if (loop && m_roundState == VrRoundState::Loading) {
       // From between the fingers to the port, then along the way in to its
@@ -1945,12 +2089,72 @@ namespace dxvk {
 
     uint32_t& flags = field<uint32_t>(magazine, VrGame::ObjectFlags);
 
-    if (round && (flags & VrGame::ObjectFlagAppCulled)) {
+    if ((round || fired) && (flags & VrGame::ObjectFlagAppCulled)) {
       flags &= ~VrGame::ObjectFlagAppCulled;
       m_shownRound = magazine;
     }
 
     return magazine;
+  }
+
+
+  uint8_t* VrWeaponHand::placeLock(
+          uint8_t*              weapon,
+    const VrGameCameraPose&     hand,
+          void*                 updateData) {
+    // Only over a magazine reloaded by hand, whose reload animation turns it
+    uint8_t* lock = m_hasMagazine && !m_hasHinge && m_hasReloadAnimation && m_reloadAnimation.hasLock
+      ? findObject(weapon, m_reloadAnimation.lock.part.c_str()) : nullptr;
+
+    if (!lock)
+      return nullptr;
+
+    VrGameRotation weaponRotation = readRotation(weapon, VrGame::ObjectWorldRotation);
+    VrGameRotation lockRotation   = readRotation(lock, VrGame::ObjectWorldRotation);
+    VrVector3 pivot               = readVector(lock, VrGame::ObjectWorldTranslation);
+    float scale                   = field<float>(lock, VrGame::ObjectWorldScale);
+
+    // Its middle in its own frame, wherever it is drawn
+    auto bound = field<uint8_t*>(lock, VrGame::ObjectWorldBound);
+
+    if (bound && scale > 0.0f && field<float>(bound, sizeof(VrVector3)) > 0.0f) {
+      m_lockCentre    = vrTranspose(lockRotation) * (readVector(bound, 0) - pivot) * (1.0f / scale);
+      m_hasLockCentre = true;
+    }
+
+    if (!m_hasLockCentre)
+      return nullptr;
+
+    // Shut as the reload animation starts with it, which is not always how
+    // the model has it: the grenade machinegun's lock is open in its model
+    const VrHingeAnimation& animation = m_reloadAnimation.lock;
+    VrVector3 axis = weaponRotation * animation.axis;
+    VrVector3 arm  = weaponRotation * animation.closed.rotate * m_lockCentre * scale;
+
+    m_lockPivot = vrPointToHand(hand, pivot);
+    m_lockAxis  = { vrDot(axis, hand.forward), vrDot(axis, hand.up), vrDot(axis, hand.right) };
+    m_lockArm   = { vrDot(arm, hand.forward), vrDot(arm, hand.up), vrDot(arm, hand.right) };
+    m_hasLock   = true;
+
+    if (!m_loggedLock) {
+      Logger::info(str::format("VR: The weapon's magazine is under the lock '", animation.part, "', turned open by ",
+        animation.angle * 57.2957795f, " degrees, its middle ", vrLength(arm) / VrGameUnitsPerMetre * 100.0f,
+        " cm from its pivot"));
+      m_loggedLock = true;
+    }
+
+    // The game animates it while the weapon is not reloaded by hand
+    if (!m_lockDriven)
+      return lock;
+
+    // Turned about its pivot, from shut to open as the animation has it
+    VrGameTransform pose;
+    pose.rotate    = weaponRotation * vrGameRotationFromQuaternion(vrSlerp(
+      vrQuaternionFromGameRotation(animation.closed.rotate), vrQuaternionFromGameRotation(animation.open.rotate), m_lockTurn));
+    pose.translate = pivot;
+
+    drawPart(lock, pose, updateData);
+    return lock;
   }
 
 

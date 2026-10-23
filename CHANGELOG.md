@@ -36,8 +36,17 @@ Weapons are now reloaded with the hands instead of the reload button. It is on b
 - **Highlighted parts**: the part that needs working next (the empty or jammed magazine or cell, the rack part, a break
   action's barrel, the loading port while rounds are held) glows the way V.A.T.S. highlights a limb, wherever the
   hand is. Outside V.A.T.S. only; V.A.T.S. keeps its own highlight.
-- **Not yet covered**: heavy weapons, launchers and weapons whose model has no recognised magazine part keep the
-  game's reload (the X button) for now.
+- **Heavy weapons**: the ammunition boxes of the minigun, CZ57 Avenger, K9000 and grenade machineguns, the shoulder
+  mounted machine gun's box, the Red Glare's canister and the Tesla cannon's cell are taken out and put in like
+  magazines (the Gatling laser and plasma casters already were). The box of the minigun family and of the grenade
+  machineguns sits under a lock, turned open with the left hand before the box comes out and shut once a new one is
+  in; the weapon does not fire while it is open. A cell the game's animation never puts in the left hand (the
+  Gatling laser's) is held between the fingers.
+- **Launchers** (missile launcher, Annabelle, Fat Man, Esther): after the shot the tube is empty; a missile or mini-nuke
+  taken behind the shoulder is pushed into the tube.
+- **Flamers, incinerators and arc welder**: no part comes out of them, so they keep the game's reload (automatic when
+  empty, or X), with manual reload on or off.
+- **Not yet covered**: weapons whose model has no recognised part keep the game's reload (the X button).
 
 **Bindings**: a new SteamVR action, "Take out, take and insert a magazine (left hand)", is bound to the left trigger,
 and the two-handed grip moved from the left trigger to the left grip. Players with custom bindings need to bind the
@@ -74,3 +83,6 @@ new action and move the grip.
 ### Fixes
 
 - The Settings list is now sized for all its entries; the sixth entry was cut off.
+- Flames (flamer, Burning Love, ...) come out of the muzzle of the weapon in the hand; they followed the head.
+- The Pip-Boy no longer opens when the left forearm passes in front of the face with its screen turned away, nor while
+  the left hand holds a magazine or rounds.

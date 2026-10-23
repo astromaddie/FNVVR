@@ -34,6 +34,9 @@ namespace dxvk {
     /// Where a magazine held by the left hand has its centre, in the left
     /// hand's frame (VrWeaponHand::magazineHeld), valid with the well
     VrVector3               held;
+    /// The magazine is the round the weapon fires, a launcher's missile or
+    /// mini-nuke (VrWeaponHand::magazineFired), valid with the well
+    bool                    fired = false;
     /// Where the rack part's centre is home, in the right hand's frame
     /// (VrWeaponHand::rackPart), or \c nullptr without one
     const VrVector3*        rack = nullptr;
@@ -49,6 +52,14 @@ namespace dxvk {
     /// its place, in the right hand's frame (VrWeaponHand::roundPort), or
     /// \c nullptr if the weapon is not loaded round by round
     const VrVector3*        port = nullptr;
+    /// Where the lock over the magazine turns about, in the right hand's
+    /// frame (VrWeaponHand::lockPivot), or \c nullptr without one
+    const VrVector3*        lock = nullptr;
+    /// Axis it turns about to open, from the pivot to its middle (in game
+    /// units) and how far it turns, in radians, valid with the lock
+    VrVector3               lockAxis;
+    VrVector3               lockArm;
+    float                   lockAngle = 0.0f;
     /// Axis a revolver is flicked open about, in the right hand's frame
     /// (VrWeaponHand::actionRoll), or \c nullptr if the weapon is not a
     /// revolver
@@ -68,6 +79,7 @@ namespace dxvk {
     VrRackEvent     rack     = VrRackEvent::None;
     VrBreakEvent    action   = VrBreakEvent::None;
     VrRoundEvent    round    = VrRoundEvent::None;
+    VrLockEvent     lock     = VrLockEvent::None;
     /// The weapon jammed since the last frame
     bool            jammed   = false;
   };
@@ -133,6 +145,18 @@ namespace dxvk {
    * a magazine is. A revolver loaded round by round opens its loading gate
    * instead, which empties nothing: its rounds only go in while it is
    * open.
+   *
+   * Phase 5d (findings/reload.md §8.12): the heavy weapons' ammunition
+   * boxes, cells and canisters are magazines. A launcher's magazine is the
+   * round it fires: once it is fired the tube is empty, and a new missile or
+   * mini-nuke taken behind the back is pushed into it as a magazine is.
+   * Nothing is taken out of a launcher, and its jams are the game's.
+   * Flamers and incinerators have no part to take out and keep the game's
+   * reload (user, 2026-10-22). The lock
+   * over the minigun's and the grenade machineguns' box is turned open
+   * before the box comes out, and shut once one is in, see VrLockHand:
+   * while it is open the weapon does not fire, and while it is shut no
+   * box goes out or in.
    *
    * The reloads may be started from the game's other threads, so the clip
    * left to watch is shared under a lock, and the weapon reloaded by hand
@@ -229,6 +253,33 @@ namespace dxvk {
     }
 
     /**
+     * \brief How far the lock over the magazine is turned open, see
+     *    VrWeaponHand::setLock
+     */
+    float lockTurn() const {
+      return m_lock.turn();
+    }
+
+    /**
+     * \brief Whether the left hand holds a magazine or rounds, or
+     *    works the rack part or the lock
+     */
+    bool leftHandBusy() const {
+      VrMagazineState magazine = m_magazine.state();
+
+      return magazine == VrMagazineState::InHand || magazine == VrMagazineState::Seating
+          || m_rounds.state() != VrRoundState::Empty || m_rack.held() || m_lock.held();
+    }
+
+    /**
+     * \brief Whether the weapon in the hand has a lock over its magazine
+     *    turned by hand, see VrWeaponHand::setLock
+     */
+    bool lockDriven() const {
+      return m_hasLockPart;
+    }
+
+    /**
      * \brief How far back the rack part rests, see VrWeaponHand::setRack
      */
     float rackRest() const {
@@ -270,6 +321,9 @@ namespace dxvk {
     VrRackHand      m_rack;
     VrBreakHand     m_action;
     VrFlickHand     m_flick;
+    VrLockHand      m_lock;
+    // The weapon in the hand has a lock over its magazine
+    bool            m_hasLockPart = false;
 
     // The right hand at the last frame, to tell how fast it turns
     VrGameCameraPose m_lastRight;
@@ -298,7 +352,8 @@ namespace dxvk {
     // was not worked since: it does not fire, as if jammed
     std::atomic<bool> m_unchambered = { false };
 
-    // The action in the hand is open: it does not fire
+    // The action in the hand, or the lock over its magazine, is open: it
+    // does not fire
     std::atomic<bool> m_actionOpen  = { false };
 
     // How far back the rack part rests, in metres

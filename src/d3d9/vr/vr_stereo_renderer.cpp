@@ -916,6 +916,7 @@ namespace dxvk {
       hands.well       = m_weaponHand->magazineWell();
       hands.axis       = m_weaponHand->magazineAxis();
       hands.held       = m_weaponHand->magazineHeld();
+      hands.fired      = m_weaponHand->magazineFired();
       hands.animation  = m_weaponHand->reloadAnimation();
       hands.rack       = m_weaponHand->rackPart();
       hands.rackAxis   = m_weaponHand->rackAxis();
@@ -923,6 +924,10 @@ namespace dxvk {
       hands.barrel     = m_weaponHand->actionBarrel();
       hands.roll       = m_weaponHand->actionRoll();
       hands.port       = m_weaponHand->roundPort();
+      hands.lock       = m_weaponHand->lockPivot();
+      hands.lockAxis   = m_weaponHand->lockAxis();
+      hands.lockArm    = m_weaponHand->lockArm();
+      hands.lockAngle  = m_weaponHand->lockAngle();
     }
 
     VrReloadEvents events = m_manualReload->updateHands(hands);
@@ -996,6 +1001,20 @@ namespace dxvk {
         break;
     }
 
+    switch (events.lock) {
+      case VrLockEvent::Grabbed:
+        m_backend.applyHaptic(VrHand::Left, MagazineFaintHaptic, MagazineHapticDuration);
+        break;
+
+      case VrLockEvent::Opened:
+      case VrLockEvent::Shut:
+        m_backend.applyHaptic(VrHand::Left, MagazineInsertedHaptic, MagazineHapticDuration);
+        break;
+
+      case VrLockEvent::None:
+        break;
+    }
+
     if (events.jammed)
       m_backend.applyHaptic(VrHand::Right, MagazineInsertedHaptic, MagazineHapticDuration);
 
@@ -1003,6 +1022,7 @@ namespace dxvk {
       m_weaponHand->setMagazine(m_manualReload->magazineState(), m_manualReload->magazineSeat());
       m_weaponHand->setRack(m_manualReload->rackHeld(), m_manualReload->rackPull(), m_manualReload->rackRest());
       m_weaponHand->setActionOpen(m_manualReload->actionOpen());
+      m_weaponHand->setLock(m_manualReload->lockTurn(), m_manualReload->lockDriven());
       m_weaponHand->setRoundLoop(m_manualReload->roundState(), m_manualReload->roundTime());
       m_weaponHand->setHighlight(vrPartsToWork(m_manualReload->situation()));
     }
@@ -1094,21 +1114,28 @@ namespace dxvk {
 
     const VrControllerState& left = input.controllers[uint32_t(VrHand::Left)];
     const VrVector3* offset = m_weaponHand->pipBoyScreen();
+    const VrVector3* facing = m_weaponHand->pipBoyScreenNormal();
 
     VrVector3 screen;
+    VrVector3 normal;
 
-    if (left.isActive && offset)
+    if (left.isActive && offset && facing) {
       screen = vrComputeControllerPoint(left, *offset);
+      normal = vrComputeControllerDirection(left, *facing);
+    }
 
-    // The left hand holding the weapon is not where the screen would be
+    // The left hand holding the weapon is not where the screen would be,
+    // nor is one bringing a magazine or a round to it
     bool gripped = input.hasActions && input.actions.isPressed(VrAction::TwoHandGrip);
+    bool loading = m_manualReload && m_manualReload->leftHandBusy();
 
     VrPipBoyGazeInput gaze;
     gaze.head     = input.isHeadTracked ? &input.headPose : nullptr;
-    gaze.screen   = left.isActive && offset ? &screen : nullptr;
+    gaze.screen   = left.isActive && offset && facing ? &screen : nullptr;
+    gaze.normal   = left.isActive && offset && facing ? &normal : nullptr;
     gaze.state    = m_pipBoyControl.state();
     // The right hand at the Pip-Boy reaches for its light, not its screen
-    gaze.canOpen  = state == VrGameStateKind::InGame && !gripped
+    gaze.canOpen  = state == VrGameStateKind::InGame && !gripped && !loading
                  && !m_rightHandAtPipBoy && !m_controls.switchesPipBoyLight();
     gaze.canClose = state == VrGameStateKind::PipBoy && !m_menuOverPipBoy;
     gaze.dt       = dt;

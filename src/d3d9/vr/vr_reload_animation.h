@@ -67,6 +67,8 @@ namespace dxvk {
   struct VrHingeAnimation {
     /// Name of the part that turns
     std::string     part;
+    /// The part in the weapon node's frame while the action is closed
+    VrGameTransform closed;
     /// The part in the weapon node's frame while the action is open
     VrGameTransform open;
     /// How far it turns, in radians
@@ -115,13 +117,17 @@ namespace dxvk {
     /// The part is a round loaded by itself (VrWeaponPartKind::Round),
     /// read from the animation that loads one round
     bool                    round = false;
-    /// Where a round is in its place, in the weapon node's frame (the
-    /// round part's own place in the model may be elsewhere), valid if
-    /// \c round
+    /// Where the part is in its place, in the weapon node's frame: where a
+    /// round comes to rest, or where the animation leaves the magazine at
+    /// its end (the part's own place in the model may be elsewhere: a
+    /// launcher's shot carries its round away)
     VrGameTransform         place;
     /// The magazine part in the left hand bone's frame while the hand
     /// holds the new magazine, in units of the hand's scale
     VrGameTransform         magazineInHand;
+    /// How far the magazine's centre is from the left hand bone then, in
+    /// metres: the hand of some animations never carries it
+    float                   handDistance = 0.0f;
     /// Rotations of the bones below the left hand in their parents while
     /// it holds the new magazine
     std::vector<VrBonePose> fingers;
@@ -141,6 +147,10 @@ namespace dxvk {
     /// The loop that loads one round, valid if \c hasLoop
     VrRoundLoop             loop;
     bool                    hasLoop = false;
+    /// How the animation turns the lock over the magazine open before
+    /// taking it out and shut once it is back, valid if \c hasLock
+    VrHingeAnimation        lock;
+    bool                    hasLock = false;
   };
 
   /**
@@ -165,7 +175,9 @@ namespace dxvk {
    * the same way: its speed loader is the round, and the part that swings
    * it out is the one of its ancestors the animation turns furthest; or
    * its loading gate is the hinge. A weapon loaded round by round with a
-   * looping reload also gets the loop that loads one round.
+   * looping reload also gets the loop that loads one round. The lock over a
+   * magazine is read as a hinge that opens before the magazine goes out
+   * and shuts after it is back in.
    *
    * Only called on the game's main thread, while the animation is not
    * played. Evaluating a track keeps nothing but its last time.
@@ -183,6 +195,8 @@ namespace dxvk {
    * \param [in] swing The action is a revolver's: the hinge, or without
    *    one the ancestor of the round the animation turns furthest, swings
    *    open in the weapon
+   * \param [in] lock The lock over the magazine below the weapon node, or
+   *    \c nullptr
    * \param [in] leftHand The left hand bone
    * \param [out] animation What the animation does
    * \returns \c false if the weapon has no first-person reload animation
@@ -199,6 +213,7 @@ namespace dxvk {
           uint8_t*              rack,
           uint8_t*              hinge,
           bool                  swing,
+          uint8_t*              lock,
           uint8_t*              leftHand,
           VrReloadAnimation&    animation);
 

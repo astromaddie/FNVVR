@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cctype>
+#include <cfloat>
 #include <cmath>
 #include <cstring>
 #include <string>
@@ -21,14 +22,19 @@ namespace dxvk {
     const PartException PartExceptions[] = {
       // The sniper rifle's second magazine model, for its other clip size
       { "srcliphigh",  VrWeaponPartKind::None },
-      // The Tesla cannon's cell, not its magazine (##TCClip)
-      { "tceccell",    VrWeaponPartKind::None },
+      // The clamp over the Tesla cannon's cell (##TCECCell), which its
+      // reload animation carries in
+      { "tcclip",      VrWeaponPartKind::None },
+      // The missile or mini-nuke in a launcher's tube
+      { "nifround",    VrWeaponPartKind::Projectile },
     };
 
-    const char* const MagazineWords[] = { "clip", "magazine", "drum", "cell", "battery" };
+    // Also the ammunition boxes of the heavy weapons and the Red Glare's
+    // rocket canister
+    const char* const MagazineWords[] = { "clip", "magazine", "drum", "cell", "battery", "ammo", "canister" };
 
     // Parts next to the magazine, or magazines that do not come out
-    const char* const NotMagazineWords[] = { "release", "latch", "spring", "peg", "bay", "assembly", "moon" };
+    const char* const NotMagazineWords[] = { "release", "latch", "lock", "spring", "peg", "bay", "assembly", "moon" };
 
     const char* const RackWords[] = { "slide", "bolt", "charginghandle", "lever", "bar" };
 
@@ -41,6 +47,9 @@ namespace dxvk {
     const char* const NotRoundWords[] = { "empty", "casing" };
 
     const char* const HingeWords[] = { "stock" };
+
+    // The lock over a magazine, named with it
+    const char* const LockWords[] = { "lock" };
 
     const char* const LoaderWords[] = { "speedloader" };
 
@@ -100,6 +109,9 @@ namespace dxvk {
 
     if (containsAny(part, LoaderWords))
       return VrWeaponPartKind::Loader;
+
+    if (containsAny(part, MagazineWords) && containsAny(part, LockWords))
+      return VrWeaponPartKind::Lock;
 
     if (containsAny(part, MagazineWords) && !containsAny(part, NotMagazineWords))
       return VrWeaponPartKind::Magazine;
@@ -448,6 +460,74 @@ namespace dxvk {
   }
 
 
+  VrLockEvent VrLockHand::update(const VrLockInput& input) {
+    bool pressed = input.grip && !m_gripDown;
+    m_gripDown = input.grip;
+
+    if (!m_held) {
+      if (!input.active || !pressed || input.blocked || grabDistance(input) > m_reach.grab)
+        return VrLockEvent::None;
+
+      m_held = true;
+      return VrLockEvent::Grabbed;
+    }
+
+    // Let go of, it stays as it is, open or shut
+    if (!input.grip || !input.active) {
+      m_held = false;
+      m_turn = m_open ? 1.0f : 0.0f;
+      return VrLockEvent::None;
+    }
+
+    // The hand about the axis, from the lock shut towards open
+    VrVector3 offset = input.hand - input.pivot;
+    VrVector3 shut   = input.arm - input.axis * vrDot(input.arm, input.axis);
+    float shutLength = vrLength(shut);
+
+    if (shutLength <= 0.0f || input.angle <= 0.0f)
+      return VrLockEvent::None;
+
+    shut = shut * (1.0f / shutLength);
+    VrVector3 side = cross(input.axis, shut);
+
+    float angle = std::atan2(vrDot(offset, side), vrDot(offset, shut));
+    m_turn = std::clamp(angle / input.angle, 0.0f, 1.0f);
+
+    if (!m_open && m_turn >= m_reach.open) {
+      m_open = true;
+      return VrLockEvent::Opened;
+    }
+
+    if (m_open && m_turn <= m_reach.shut) {
+      m_open = false;
+      return VrLockEvent::Shut;
+    }
+
+    return VrLockEvent::None;
+  }
+
+
+  void VrLockHand::reset() {
+    m_held = false;
+    m_open = false;
+    m_turn = 0.0f;
+  }
+
+
+  float VrLockHand::grabDistance(const VrLockInput& input) const {
+    constexpr float M = VrGameUnitsPerMetre;
+    float length = vrLength(input.arm);
+
+    if (length <= 0.0f)
+      return FLT_MAX;
+
+    // Along the lock as it is turned now
+    VrQuaternion turn = vrQuaternionFromAxisAngle(input.axis, m_turn * input.angle);
+    VrVector3 arm = vrGameRotationFromQuaternion(turn) * input.arm;
+    return vrDistanceToSegment(input.hand, input.pivot, arm * (1.0f / length), 2.0f * length) / M;
+  }
+
+
   float vrTurnRate(
     const VrGameCameraPose&     from,
     const VrGameCameraPose&     to,
@@ -710,13 +790,20 @@ namespace dxvk {
     bool empty    = situation.clip <= 0;
 
     switch (situation.kind) {
-      case VrReloadKind::Magazine:
+      case VrReloadKind::Magazine: {
         if (situation.magazine != VrMagazineState::InWeapon)
           break;
 
-        parts.rack     = situation.hasRack && (situation.jammed || situation.pendingFill);
-        parts.magazine = !parts.rack && (empty || (situation.jammed && !situation.hasRack));
-        break;
+        parts.rack = situation.hasRack && (situation.jammed || situation.pendingFill);
+
+        // A lock is opened to take the magazine out, and shut over a
+        // loaded one
+        bool takeOut = !parts.rack && (empty || (situation.jammed && !situation.hasRack));
+        bool locked  = situation.hasLock && !situation.lockOpen;
+
+        parts.magazine = takeOut && !locked;
+        parts.lock     = situation.hasLock && !parts.rack && (takeOut ? locked : situation.lockOpen);
+      } break;
 
       case VrReloadKind::Rounds: {
         bool holding = situation.rounds != VrRoundState::Empty;

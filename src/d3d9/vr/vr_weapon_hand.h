@@ -48,7 +48,9 @@ namespace dxvk {
    *   drawn in the hand instead, along the barrel as it is drawn, with the
    *   game's spread kept. The game's auto-aim, which would turn them
    *   towards the point under the centre of its camera, the head, leaves
-   *   them alone.
+   *   them alone. A flame stays on the shooter's projectile node every
+   *   frame: while FlameProjectile places it, that node is put at the
+   *   muzzle drawn in the hand.
    * - AnimData::MorphOrBlendToSequence starts the game's animations. When
    *   the other hand supports a pistol, the game's aim animation starts
    *   without blending from the previous pose, so the left hand is on the
@@ -162,6 +164,20 @@ namespace dxvk {
      */
     const VrVector3* pipBoyScreen() const {
       return m_hasPipBoyScreen ? &m_pipBoyScreen : nullptr;
+    }
+
+    /**
+     * \brief Which way the Pip-Boy's screen faces relative to the left
+     *    controller
+     *
+     * Away from the forearm's axis, through the screen's centre, measured
+     * with pipBoyScreen.
+     *
+     * \returns The unit direction along the controller's forward, up and
+     *    right axes, or \c nullptr if the screen was not found
+     */
+    const VrVector3* pipBoyScreenNormal() const {
+      return m_hasPipBoyScreen ? &m_pipBoyScreenNormal : nullptr;
     }
 
     /**
@@ -282,6 +298,16 @@ namespace dxvk {
     }
 
     /**
+     * \brief Whether the magazine is the round the weapon fires
+     *
+     * A launcher's missile or mini-nuke, valid with magazineWell: it is
+     * never taken out, and leaves the weapon when it is fired.
+     */
+    bool magazineFired() const {
+      return m_magazineFired;
+    }
+
+    /**
      * \brief Sets where the rack part of the weapon in the hand is drawn
      *
      * Applied when the model is next drawn.
@@ -321,6 +347,59 @@ namespace dxvk {
      */
     float rackTravel() const {
       return m_rackTravel;
+    }
+
+    /**
+     * \brief Sets how far the lock over the magazine is turned open
+     *
+     * Applied when the model is next drawn, from 0 (shut, as the game's
+     * reload animation starts with it) to 1 (as open as it turns it).
+     *
+     * \param [in] turn How far it is turned
+     * \param [in] driven The weapon is reloaded by hand: the lock is drawn
+     *    as it is turned, the game's pose of it is left as it is otherwise
+     */
+    void setLock(float turn, bool driven) {
+      m_lockTurn   = turn;
+      m_lockDriven = driven;
+    }
+
+    /**
+     * \brief Where the lock over the magazine turns about
+     *
+     * In the right hand's frame (see vrPointFromHand), measured each time
+     * the model is drawn.
+     *
+     * \returns The point, or \c nullptr if the weapon in the hand is not
+     *    reloaded by hand or has no lock its reload animation turns
+     */
+    const VrVector3* lockPivot() const {
+      return m_hasLock ? &m_lockPivot : nullptr;
+    }
+
+    /**
+     * \brief Axis the lock turns about to open
+     *
+     * A unit vector in the right hand's frame, valid with lockPivot.
+     */
+    const VrVector3& lockAxis() const {
+      return m_lockAxis;
+    }
+
+    /**
+     * \brief From the lock's pivot to its middle, shut
+     *
+     * In the right hand's frame, in game units, valid with lockPivot.
+     */
+    const VrVector3& lockArm() const {
+      return m_lockArm;
+    }
+
+    /**
+     * \brief How far the lock turns open, in radians
+     */
+    float lockAngle() const {
+      return m_reloadAnimation.lock.angle;
     }
 
     /**
@@ -465,8 +544,10 @@ namespace dxvk {
     VrVector3        m_pipBoyShift;
     bool             m_pipBoyPlaced = false;
 
-    // Centre of the Pip-Boy's screen in the left controller's frame
+    // Centre of the Pip-Boy's screen and the way it faces in the left
+    // controller's frame
     VrVector3        m_pipBoyScreen;
+    VrVector3        m_pipBoyScreenNormal;
     bool             m_hasPipBoyScreen = false;
 
     // Size asked for the Pip-Boy, and the model it was applied to with the
@@ -479,11 +560,13 @@ namespace dxvk {
     VrNodeScale      m_pipBoyWrittenPlacement;
     float            m_pipBoyAppliedScale = 1.0f;
 
-    // Muzzle relative to the first-person root, and the direction the
-    // hand pointed, when the weapon was last drawn in the hand
+    // Muzzle relative to the first-person root, its rotation, and the
+    // direction the hand pointed, when the weapon was last drawn in the hand
     VrVector3        m_muzzleOffset;
+    VrGameRotation   m_muzzleRotation;
     VrVector3        m_aimDirection;
     bool             m_hasAim = false;
+    bool             m_loggedFlame = false;
 
     // Melee weapon held still in the hand, see placeModel: the weapon node
     // and form it was drawn with, compared but not dereferenced, and its
@@ -514,6 +597,7 @@ namespace dxvk {
     VrVector3        m_magazineAxis;
     VrVector3        m_magazineHeld;
     bool             m_hasMagazine = false;
+    bool             m_magazineFired = false;
     VrVector3        m_magazineCentre;
     bool             m_hasMagazineCentre = false;
     const uint8_t*   m_magazineForm = nullptr;
@@ -601,6 +685,19 @@ namespace dxvk {
     uint32_t         m_reloadTries = 0;
     uint32_t         m_reloadWait = 0;
 
+    // Lock over the magazine: how far it is to be turned open and whether
+    // it is drawn so, its middle in its own frame, and where it turns
+    // about, its axis and its arm (shut) in the right hand's frame
+    float            m_lockTurn = 0.0f;
+    bool             m_lockDriven = false;
+    VrVector3        m_lockCentre;
+    bool             m_hasLockCentre = false;
+    VrVector3        m_lockPivot;
+    VrVector3        m_lockAxis;
+    VrVector3        m_lockArm;
+    bool             m_hasLock = false;
+    bool             m_loggedLock = false;
+
     // Set while the game creates a projectile aimed with the hand, so that
     // its auto-aim leaves it alone
     bool             m_handAimedShot = false;
@@ -653,6 +750,37 @@ namespace dxvk {
             uint32_t a9, uint32_t a10, uint32_t a11, uint32_t a12,
             float spreadHeading, float spreadPitch, uint32_t a15);
 
+    static void __fastcall flameProcess3DHook(
+            uint8_t*              projectile,
+            void*                 unused);
+
+    static void __fastcall flameUpdateHook(
+            uint8_t*              projectile,
+            void*                 unused,
+            float                 dt);
+
+    /**
+     * \brief Where the player's shots start, aimed with the hand
+     *
+     * \param [in] shooter Actor firing
+     * \param [out] muzzle World position of the muzzle drawn in the hand
+     * \returns \c false unless the player fires the weapon drawn in the
+     *    hand, outside V.A.T.S.
+     */
+    static bool handMuzzle(
+      const void*                 shooter,
+            VrVector3&            muzzle);
+
+    /**
+     * \brief Calls a FlameProjectile function with the shooter's
+     *    projectile node at the muzzle drawn in the hand
+     *
+     * The node is restored afterwards: the game animates the first-person
+     * model from it.
+     */
+    template<typename Fn>
+    static void withNodeAtMuzzle(uint8_t* projectile, Fn&& call);
+
     static void __fastcall autoAimHook(
             uint8_t*              player,
             void*                 unused,
@@ -685,7 +813,7 @@ namespace dxvk {
 
     void measureBlade(const uint8_t* weapon, const VrGameCameraPose& hand);
 
-    void findHighlight(uint8_t* root, uint8_t* weapon, uint8_t* hinge, bool swing);
+    void findHighlight(uint8_t* root, uint8_t* weapon, uint8_t* hinge, uint8_t* lock, bool swing);
 
     /**
      * \brief A part of the weapon the left hand holds as the reload
@@ -835,6 +963,18 @@ namespace dxvk {
             uint8_t*              weapon,
       const VrGameCameraPose&     hand,
             VrGameTransform&      pose);
+
+    /**
+     * \brief Finds the lock over the weapon's magazine and draws it as far
+     *    open as it is turned
+     *
+     * \returns The lock, or \c nullptr if the weapon has none to turn by
+     *    hand
+     */
+    uint8_t* placeLock(
+            uint8_t*              weapon,
+      const VrGameCameraPose&     hand,
+            void*                 updateData);
 
     /**
      * \brief Draws a part of the weapon at a pose for this update only

@@ -185,6 +185,25 @@ namespace dxvk {
     constexpr uintptr_t ApplyAutoAim    = 0x00965620;
 
     /**
+     * FlameProjectile vtable entries (table 0x0108F2F4), both __thiscall:
+     * Process3D (no argument) stores the flame's rotation relative to the
+     * shooter's projectile node in Projectile::kFollowOffset (+0x94), and
+     * UpdateProjectile (frame time) puts the flame at that node's world
+     * translate and turned with it every frame before its target pick
+     * (vtable +0x328, RunTargetPick). The node comes from the shooter's
+     * GetProjectileNode (TESObjectREFR vtable slot, __thiscall without
+     * arguments; Actor::GetProjectileNode 0x008BE0A0 returns the
+     * first-person model's for the player). The shooter is at +0xFC
+     * (Projectile::GetShooter 0x00874480). See findings/weapon.md §10.
+     */
+    constexpr uintptr_t FlameProcess3DSlot   = 0x0108F600;
+    constexpr uintptr_t FlameProcess3D       = 0x009B3320;
+    constexpr uintptr_t FlameUpdateSlot      = 0x0108F604;
+    constexpr uintptr_t FlameUpdate          = 0x009B34C0;
+    constexpr uintptr_t ProjectileShooter    = 0xFC;
+    constexpr uintptr_t RefProjectileNodeSlot = 0x20C;
+
+    /**
      * Player fields: first-person root (NiNode*) and whether the first-person
      * model is used (0) or the third-person one, as Fire reads it (0x00524D10).
      * Actor process (+0x68) and its virtual function telling whether the

@@ -96,6 +96,10 @@ TEST_CASE(magazine_parts_are_found_by_keyword) {
   CHECK(vrClassifyWeaponPart("##PPEnergyCell") == VrWeaponPartKind::Magazine);
   CHECK(vrClassifyWeaponPart("##PLRBattery") == VrWeaponPartKind::Magazine);
   CHECK(vrClassifyWeaponPart("##CSDrum") == VrWeaponPartKind::Magazine);
+  CHECK(vrClassifyWeaponPart("##MinigunAmmo:1") == VrWeaponPartKind::Magazine);
+  CHECK(vrClassifyWeaponPart("##SMMG_Ammobox") == VrWeaponPartKind::Magazine);
+  CHECK(vrClassifyWeaponPart("##RGCanister") == VrWeaponPartKind::Magazine);
+  CHECK(vrClassifyWeaponPart("##TCECCell") == VrWeaponPartKind::Magazine);
 }
 
 
@@ -108,7 +112,20 @@ TEST_CASE(parts_next_to_the_magazine_are_not_magazines) {
   CHECK(vrClassifyWeaponPart("##PowerCellAssembly") == VrWeaponPartKind::None);
   CHECK(vrClassifyWeaponPart("##MoonClip") == VrWeaponPartKind::None);
   CHECK(vrClassifyWeaponPart("##SRClipHigh") == VrWeaponPartKind::None);
-  CHECK(vrClassifyWeaponPart("##TCECCell") == VrWeaponPartKind::None);
+  CHECK(vrClassifyWeaponPart("##TCClip") == VrWeaponPartKind::None);
+}
+
+
+TEST_CASE(the_lock_over_a_box_is_a_lock) {
+  CHECK(vrClassifyWeaponPart("##MinigunAmmoLock") == VrWeaponPartKind::Lock);
+  CHECK(vrClassifyWeaponPart("##MinigunAmmoLock:0") == VrWeaponPartKind::Lock);
+}
+
+
+TEST_CASE(a_launchers_round_is_a_projectile) {
+  CHECK(vrClassifyWeaponPart("##NifRound") == VrWeaponPartKind::Projectile);
+  CHECK(vrClassifyWeaponPart("##NifRound:0") == VrWeaponPartKind::Projectile);
+  CHECK(!vrIsCartridgePart("##NifRound"));
 }
 
 
@@ -627,7 +644,6 @@ TEST_CASE(rounds_are_found_by_keyword) {
   CHECK(vrClassifyWeaponPart("##Shells") == VrWeaponPartKind::Round);
   CHECK(vrClassifyWeaponPart("##ShellFull") == VrWeaponPartKind::Round);
   CHECK(vrClassifyWeaponPart("##Bullet1") == VrWeaponPartKind::Round);
-  CHECK(vrClassifyWeaponPart("##NifRound") == VrWeaponPartKind::Round);
   CHECK(vrClassifyWeaponPart("##ShellEmpty") == VrWeaponPartKind::None);
   CHECK(vrClassifyWeaponPart("##swmCasing") == VrWeaponPartKind::None);
 }
@@ -729,6 +745,91 @@ namespace {
     return { Well.x + beside * M, Well.y + metres * M, Well.z };
   }
 
+}
+
+
+namespace {
+
+  // A lock over the well, 12 cm long to its middle, pointing north when
+  // shut and turned up about the east axis by 90 degrees to open
+  const VrVector3 LockAxis = { 1.0f, 0.0f, 0.0f };
+  const VrVector3 LockArm  = { 0.0f, 0.12f * M, 0.0f };
+
+  VrLockInput lockInput(bool grip, float degrees, float metres) {
+    float a = degrees * 3.14159265f / 180.0f;
+
+    VrLockInput in;
+    in.active = true;
+    in.grip   = grip;
+    in.pivot  = Well;
+    in.axis   = LockAxis;
+    in.arm    = LockArm;
+    in.angle  = 3.14159265f / 2.0f;
+    in.hand   = { Well.x, Well.y + std::cos(a) * metres * M, Well.z + std::sin(a) * metres * M };
+    return in;
+  }
+
+}
+
+
+TEST_CASE(lock_turns_open_and_shut_with_the_hand) {
+  VrLockHand lock;
+
+  CHECK(lock.update(lockInput(true, 0.0f, 0.2f)) == VrLockEvent::Grabbed);
+  CHECK(lock.held());
+  CHECK(lock.update(lockInput(true, 45.0f, 0.2f)) == VrLockEvent::None);
+  CHECK(std::abs(lock.turn() - 0.5f) < 1e-3f);
+  CHECK(!lock.open());
+
+  CHECK(lock.update(lockInput(true, 80.0f, 0.2f)) == VrLockEvent::Opened);
+  CHECK(lock.open());
+
+  // Not past its angle, and let go of it stays open
+  lock.update(lockInput(true, 150.0f, 0.2f));
+  CHECK(lock.turn() == 1.0f);
+  CHECK(lock.update(lockInput(false, 60.0f, 0.2f)) == VrLockEvent::None);
+  CHECK(!lock.held());
+  CHECK(lock.open());
+  CHECK(lock.turn() == 1.0f);
+
+  // Taken where it is, open, and turned back down
+  CHECK(lock.update(lockInput(true, 90.0f, 0.15f)) == VrLockEvent::Grabbed);
+  CHECK(lock.update(lockInput(true, 30.0f, 0.15f)) == VrLockEvent::None);
+  CHECK(lock.update(lockInput(true, 10.0f, 0.15f)) == VrLockEvent::Shut);
+  CHECK(!lock.open());
+
+  lock.update(lockInput(false, 10.0f, 0.15f));
+  CHECK(lock.turn() == 0.0f);
+}
+
+
+TEST_CASE(lock_needs_a_press_near_it) {
+  VrLockHand lock;
+
+  // Beyond its end, or held down before it came near
+  CHECK(lock.update(lockInput(true, 0.0f, 0.4f)) == VrLockEvent::None);
+  CHECK(lock.update(lockInput(true, 0.0f, 0.2f)) == VrLockEvent::None);
+  CHECK(!lock.held());
+
+  // Blocked: a hand holding a box
+  VrLockInput blocked = lockInput(false, 0.0f, 0.2f);
+  lock.update(blocked);
+  blocked.grip    = true;
+  blocked.blocked = true;
+  CHECK(lock.update(blocked) == VrLockEvent::None);
+
+  // Shut, it is not found where it would be open
+  lock.update(lockInput(false, 90.0f, 0.2f));
+  CHECK(lock.update(lockInput(true, 90.0f, 0.2f)) == VrLockEvent::None);
+
+  lock.update(lockInput(false, 0.0f, 0.2f));
+  lock.update(lockInput(true, 0.0f, 0.2f));
+  lock.update(lockInput(true, 90.0f, 0.2f));
+  CHECK(lock.open());
+
+  lock.reset();
+  CHECK(!lock.open());
+  CHECK(!lock.held());
 }
 
 
@@ -1153,6 +1254,36 @@ TEST_CASE(break_action_glows_to_open_then_to_close) {
 
   s.jammed = true;
   CHECK(vrPartsToWork(s).hinge);
+}
+
+
+TEST_CASE(lock_glows_before_and_after_the_box) {
+  VrReloadSituation s = situation(VrReloadKind::Magazine, 0);
+  s.hasLock = true;
+
+  // Shut over an empty box: the lock first, then the box
+  VrReloadParts parts = vrPartsToWork(s);
+  CHECK(parts.lock);
+  CHECK(!parts.magazine);
+
+  s.lockOpen = true;
+  parts = vrPartsToWork(s);
+  CHECK(parts.magazine);
+  CHECK(!parts.lock);
+
+  // A loaded box under an open lock: the lock, to shut it
+  s.clip = 240;
+  parts = vrPartsToWork(s);
+  CHECK(parts.lock);
+  CHECK(!parts.magazine);
+
+  s.lockOpen = false;
+  CHECK(!vrPartsToWork(s).any());
+
+  // While the box is out, nothing of the weapon glows
+  s.lockOpen = true;
+  s.magazine = VrMagazineState::InHand;
+  CHECK(!vrPartsToWork(s).any());
 }
 
 
