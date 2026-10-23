@@ -63,6 +63,11 @@ namespace dxvk {
   const char* vrThrowArmingName(VrThrowArming arming);
 
   /**
+   * \brief Whether a model's object name holds a word, in any case
+   */
+  bool vrNameContains(const char* name, const char* word);
+
+  /**
    * \brief What arming did in a frame
    */
   enum class VrArmEvent : uint32_t {

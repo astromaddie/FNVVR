@@ -11,6 +11,7 @@
 #include "vr_game_nodes.h"
 #include "vr_hand_fingers.h"
 #include "vr_melee.h"
+#include "vr_throw.h"
 #include "vr_weapon_hand.h"
 #include "vr_weapon_parts.h"
 
@@ -27,6 +28,9 @@ namespace dxvk {
       float x, float y, float z, float heading, float pitch,
       uint32_t a9, uint32_t a10, uint32_t a11, uint32_t a12,
       float spreadHeading, float spreadPitch, uint32_t a15);
+
+    // Projectile::GetSpeed, __thiscall without arguments, returns a float
+    using ProjectileGetSpeedFn = float (__fastcall*)(uint8_t* projectile, void* unused);
 
     // FlameProjectile::Process3D is __thiscall without arguments
     using FlameProcess3DFn = void (__fastcall*)(uint8_t* projectile, void* unused);
@@ -79,6 +83,12 @@ namespace dxvk {
     constexpr int8_t WeaponTypePistolEnergy = 4;
     constexpr int8_t WeaponTypeRifle        = 5;
     constexpr int8_t WeaponTypeLauncher     = 9;
+    constexpr int8_t WeaponTypeGrenade      = 10;
+    constexpr int8_t WeaponTypeThrown       = 13;
+
+    // A grenade's pin is a part of its model with this in its name, in
+    // any case
+    constexpr char PinPartName[] = "pin";
 
     // How long the magazine takes to move between the hand and its well
     constexpr float MagazineBlendTime = 0.12f;
@@ -457,6 +467,12 @@ namespace dxvk {
         VrGame::ProjectileCreate, reinterpret_cast<const void*>(&VrWeaponHand::createProjectileHook)))
       Logger::warn("VR: The projectile call was not found, the weapon shoots along the head");
 
+    // If this one fails, a grenade thrown by hand flies as fast as the
+    // game's own throw, whatever the hand's speed
+    if (found && !VrGameMemory::redirectCall(VrGame::ProjectileSpeedCallSite,
+        VrGame::ProjectileGetSpeed, reinterpret_cast<const void*>(&VrWeaponHand::projectileSpeedHook)))
+      Logger::warn("VR: The grenade speed call was not found, grenades thrown by hand fly at the game's speed");
+
     // If these fail, flames come from in front of the head
     if (found && !(VrGameMemory::redirectVirtual(VrGame::FlameProcess3DSlot,
           VrGame::FlameProcess3D, reinterpret_cast<const void*>(&VrWeaponHand::flameProcess3DHook))
@@ -595,9 +611,21 @@ namespace dxvk {
           uint32_t a9, uint32_t a10, uint32_t a11, uint32_t a12,
           float spreadHeading, float spreadPitch, uint32_t a15) {
     VrVector3 muzzle;
-    bool handAimed = handMuzzle(shooter, muzzle);
+    bool thrown    = g_weaponHand && g_weaponHand->m_throwing && shooter == player();
+    bool handAimed = thrown || handMuzzle(shooter, muzzle);
 
-    if (handAimed) {
+    if (thrown) {
+      // Along the hand's motion, without the game's spread: the hand
+      // throws it. The spread still spins it.
+      const VrThrowRelease& release = g_weaponHand->m_throwRelease;
+      VrHeadAngles aim = vrComputeAimAngles(release.velocity);
+
+      x = release.origin.x;
+      y = release.origin.y;
+      z = release.origin.z;
+      heading = aim.yaw;
+      pitch   = aim.pitch;
+    } else if (handAimed) {
       VrHeadAngles aim = vrComputeAimAngles(g_weaponHand->m_aimDirection);
 
       x = muzzle.x;
@@ -619,7 +647,55 @@ namespace dxvk {
     if (g_weaponHand)
       g_weaponHand->m_handAimedShot = false;
 
+    // A missile reads its speed as it moves, a grenade got it while it was
+    // created
+    if (thrown && result && g_weaponHand)
+      g_weaponHand->setThrowSpeed(static_cast<uint8_t*>(result));
+
     return result;
+  }
+
+
+  float __fastcall VrWeaponHand::projectileSpeedHook(
+          uint8_t*              projectile,
+          void*                 unused) {
+    if (g_weaponHand && g_weaponHand->m_throwing)
+      g_weaponHand->setThrowSpeed(projectile);
+
+    return reinterpret_cast<ProjectileGetSpeedFn>(VrGame::ProjectileGetSpeed)(projectile, nullptr);
+  }
+
+
+  void VrWeaponHand::setThrowRelease(const VrThrowRelease* release) {
+    m_throwing  = release != nullptr;
+    m_throwSped = nullptr;
+
+    if (release) {
+      m_throwRelease = *release;
+      m_throwSpeeds  = VrThrowSpeeds();
+    }
+  }
+
+
+  void VrWeaponHand::setThrowSpeed(uint8_t* projectile) {
+    if (projectile == m_throwSped)
+      return;
+
+    // The game's speed is linear in the multiplier, so scaling it gives
+    // the speed asked for. The game's throw at full power caps it.
+    float full    = reinterpret_cast<ProjectileGetSpeedFn>(VrGame::ProjectileGetSpeed)(projectile, nullptr);
+    float desired = vrLength(m_throwRelease.velocity);
+
+    m_throwSped = projectile;
+
+    if (!(full > 0.0f))
+      return;
+
+    float given = std::min(desired, full);
+    field<float>(projectile, VrGame::ProjectileSpeedMult) *= given / full;
+
+    m_throwSpeeds.full  = full;
+    m_throwSpeeds.given = given;
   }
 
 
@@ -811,6 +887,7 @@ namespace dxvk {
       writeVector(camera, VrGame::CameraWorldTranslation, m_eyePosition - shift);
 
     m_hasMagazine  = false;
+    m_hasThrown    = false;
     m_hasRack      = false;
     m_hasHinge     = false;
     m_swingAction  = false;
@@ -1056,6 +1133,9 @@ namespace dxvk {
         muzzle ? "" : " (no projectile node, the shots follow the hand)"));
       m_loggedBarrelWeapon = weapon;
     }
+
+    if (type >= WeaponTypeGrenade && type <= WeaponTypeThrown)
+      placeThrown(weapon, form, type, hand);
 
     // The weapon's model is attached below the node once it is loaded
     uint32_t objects = vrCountWeaponObjects(weapon);
@@ -2355,6 +2435,17 @@ namespace dxvk {
   }
 
 
+  void VrWeaponHand::show(uint8_t* object) {
+    auto hidden = std::find(m_hiddenObjects.begin(), m_hiddenObjects.end(), object);
+
+    if (hidden == m_hiddenObjects.end())
+      return;
+
+    field<uint32_t>(object, VrGame::ObjectFlags) &= ~VrGame::ObjectFlagAppCulled;
+    m_hiddenObjects.erase(hidden);
+  }
+
+
   void VrWeaponHand::showArms(uint8_t* root) {
     m_hidesRightHand = false;
     m_hidesModel     = false;
@@ -2402,6 +2493,64 @@ namespace dxvk {
       Logger::info(str::format("VR: Melee weapon blade ", vrLength(m_blade.tip - m_blade.base) / VrGameUnitsPerMetre,
         " m long, tip at ", m_blade.tip.x, ", ", m_blade.tip.y, ", ", m_blade.tip.z, " units in the hand's frame"));
     }
+  }
+
+
+  void VrWeaponHand::placeThrown(uint8_t* weapon, const uint8_t* form, int8_t type, const VrGameCameraPose& hand) {
+    // The model in the hand is the weapon node's first child, which the
+    // game culls when it launches the weapon
+    auto children = field<uint8_t**>(weapon, VrGame::NodeChildren);
+    uint8_t* model = children && field<uint16_t>(weapon, VrGame::NodeChildCount) ? children[0] : nullptr;
+
+    if (!model)
+      return;
+
+    uint32_t& flags = field<uint32_t>(model, VrGame::ObjectFlags);
+
+    if (m_showThrown) {
+      flags &= ~VrGame::ObjectFlagAppCulled;
+      m_showThrown = false;
+    }
+
+    if (form != m_thrown.form) {
+      m_thrown = VrHeldThrown();
+      m_thrown.form = form;
+      m_thrown.type = type;
+    }
+
+    m_thrown.shown = !(flags & VrGame::ObjectFlagAppCulled);
+    m_hasThrown    = true;
+
+    // A culled model's bound is not updated: the last one drawn is kept
+    auto bound = readField<const uint8_t*>(weapon, VrGame::ObjectWorldBound);
+
+    if (m_thrown.shown && bound) {
+      m_thrown.centre = vrPointToHand(hand, readVector(bound, 0));
+      m_thrown.radius = readField<float>(bound, sizeof(VrVector3));
+    }
+
+    // The model's names tell how it is armed and what its pin is
+    uint32_t objects = vrCountWeaponObjects(weapon);
+
+    if (form != m_loggedThrownForm || objects != m_loggedThrownObjects) {
+      vrLogModelObjects(weapon, form);
+      m_loggedThrownForm    = form;
+      m_loggedThrownObjects = objects;
+    }
+
+    forEachObject(model, MaxModelDepth, [this] (uint8_t* object) {
+      auto name = field<const char*>(object, VrGame::ObjectName);
+
+      if (!name || !vrNameContains(name, PinPartName))
+        return;
+
+      if (m_throwArmed) {
+        hide(object, !m_loggedPin);
+        m_loggedPin = true;
+      } else {
+        show(object);
+      }
+    });
   }
 
 

@@ -83,6 +83,7 @@ vr_dxvk_src = files([
   'vr_game_resolution.cpp',
   'vr_game_timer.cpp',
   'vr_hand_activate_pick.cpp',
+  'vr_hand_throw.cpp',
   'vr_preview_window.cpp',
   'vr_render_passes.cpp',
   'vr_sky_anchor.cpp',

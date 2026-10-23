@@ -67,8 +67,9 @@ namespace dxvk {
      * \brief Keeps the attack control from the game from the next frame on
      *
      * \param [in] hand Whether the melee weapon in the hand is swung with
-     *    the hand (see VrMeleeSwing), so that the game does not swing it
-     *    with its own animation as well
+     *    the hand (see VrMeleeSwing), or the weapon in it thrown with the
+     *    hand (see VrHandThrow), so that the game does not swing or throw
+     *    it with its own animation as well
      */
     void setSwingsWithHand(bool hand) {
       m_swingsWithHand = hand;

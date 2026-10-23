@@ -33,6 +33,12 @@ namespace dxvk {
       { "pulse",    VrThrowArming::Button },
     };
 
+    std::string lowerCase(std::string text) {
+      std::transform(text.begin(), text.end(), text.begin(),
+        [] (unsigned char c) { return char(std::tolower(c)); });
+      return text;
+    }
+
     std::string fileName(const char* path) {
       std::string name(path);
       size_t slash = name.find_last_of("\\/");
@@ -40,9 +46,7 @@ namespace dxvk {
       if (slash != std::string::npos)
         name.erase(0, slash + 1);
 
-      std::transform(name.begin(), name.end(), name.begin(),
-        [] (unsigned char c) { return char(std::tolower(c)); });
-      return name;
+      return lowerCase(std::move(name));
     }
 
   }
@@ -75,6 +79,11 @@ namespace dxvk {
     }
 
     return "unknown";
+  }
+
+
+  bool vrNameContains(const char* name, const char* word) {
+    return name && word && lowerCase(name).find(lowerCase(word)) != std::string::npos;
   }
 
 

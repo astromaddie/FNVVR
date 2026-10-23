@@ -35,6 +35,14 @@ TEST_CASE(throw_arming_follows_type_and_model) {
 }
 
 
+TEST_CASE(throw_name_contains_word_in_any_case) {
+  CHECK(vrNameContains("GrenadePIN01", "pin"));
+  CHECK(vrNameContains("##Pin", "Pin"));
+  CHECK(!vrNameContains("Grenade", "pin"));
+  CHECK(!vrNameContains(nullptr, "pin"));
+}
+
+
 TEST_CASE(throw_arm_nothing_to_act_on_is_armed) {
   VrThrowArm arm;
   arm.reset(VrThrowArming::None);

@@ -102,6 +102,36 @@ namespace dxvk {
   }
 
 
+  void vrLogModelObjects(const uint8_t* weapon, const uint8_t* form) {
+    const char* name  = form ? readField<const char*>(form, VrGame::WeaponFullName) : nullptr;
+    const char* model = form ? readField<const char*>(form, VrGame::WeaponModelPath) : nullptr;
+
+    Logger::info(str::format("VR: Objects of the thrown weapon '", name ? name : "", "' (", model ? model : "",
+      ", type ", form ? uint32_t(readField<uint8_t>(form, VrGame::WeaponAnimationType)) : 0u,
+      ", attack animation ", form ? uint32_t(readField<uint8_t>(form, VrGame::WeaponAttackAnimation)) : 0u,
+      "), centimetres along the weapon node's axes:"));
+
+    VrGameRotation toWeapon = vrTranspose(readRotation(weapon, VrGame::ObjectWorldRotation));
+    VrVector3      origin   = readVector(weapon, VrGame::ObjectWorldTranslation);
+
+    vrVisitGameObjects(reinterpret_cast<uintptr_t>(weapon), MaxPartDepth,
+      [&] (uintptr_t object, uint32_t depth) {
+        auto part = reinterpret_cast<const uint8_t*>(object);
+        bool culled = readField<uint32_t>(part, VrGame::ObjectFlags) & VrGame::ObjectFlagAppCulled;
+
+        std::string line = str::format("VR:   '", objectName(object), vrGameAsNode(object) ? "' (node" : "' (geometry",
+          ", depth ", depth, culled ? ", culled)" : ")");
+
+        if (auto bound = readField<const uint8_t*>(part, VrGame::ObjectWorldBound)) {
+          float radius = readField<float>(bound, sizeof(VrVector3));
+          line += str::format(" bound centre ", formatCm(toWeapon * (readVector(bound, 0) - origin)),
+            " radius ", radius * CentimetresPerUnit);
+        }
+
+        Logger::info(line);
+      });
+  }
+
 
   uint8_t* vrFindWeaponPart(uint8_t* weapon, VrWeaponPartKind kind) {
     uintptr_t found      = 0;

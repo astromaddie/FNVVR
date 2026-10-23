@@ -31,6 +31,19 @@ namespace dxvk {
   void vrLogWeaponParts(const uint8_t* weapon, const uint8_t* form);
 
   /**
+   * \brief Logs every object of the thrown weapon in the hand
+   *
+   * Grenades have no "##" parts: the names of all their objects tell
+   * where a pin, fuse or button may be, see findings/throw.md. Each is
+   * logged with its depth, whether it is culled, and the centre and
+   * radius of its bound along the weapon node's axes, in centimetres.
+   *
+   * \param [in] weapon The first-person weapon node (NiNode*)
+   * \param [in] form The equipped weapon (TESObjectWEAP*), or \c nullptr
+   */
+  void vrLogModelObjects(const uint8_t* weapon, const uint8_t* form);
+
+  /**
    * \brief Finds a part of the weapon in the hand
    *
    * The part is told by its name, see vrClassifyWeaponPart. Only a part

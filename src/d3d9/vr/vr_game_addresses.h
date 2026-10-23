@@ -185,6 +185,33 @@ namespace dxvk {
     constexpr uintptr_t ApplyAutoAim    = 0x00965620;
 
     /**
+     * Thrown weapons, see findings/throw.md (GOG database).
+     * TESObjectWEAP::Fire(actor) is __thiscall with one stack argument; for
+     * a weapon of type 10 to 13 it launches from the hand's weapon node,
+     * spends one of the weapons and culls the node's model (child 0), or
+     * unequips the weapon when it was the last. Projectile::AddInitialVelocity
+     * calls Projectile::GetSpeed (__thiscall, returns a float) at the site
+     * below to push a Havok projectile (grenades) along its Y axis;
+     * missiles read GetSpeed again as they move. GetSpeed is
+     * (fArrowWeakSpeed * (1 - power) + speed * power) * the speed multiplier
+     * at +0xD0. Projectile::Launch gives the player's thrown and placed weapons
+     * (TESObjectWEAP::IsThrownWeapon: ranged but not a gun) the power
+     * min(1, fArrowBowTimerBase + mult * the player's release timer at
+     * +0x730), which the game sets to 10 for V.A.T.S. throws. The weapon's
+     * attack animation (TESObjectWEAP::GetAttackAnim 0x0051F5F0) is a byte
+     * at +0x11D.
+     */
+    constexpr uintptr_t WeaponFire                 = 0x00523150;
+    constexpr uint8_t   WeaponFirePrologue[]       = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x3C, 0x4E, 0xEF, 0x00,
+                                                       0x64, 0xA1, 0x00, 0x00, 0x00, 0x00 };
+    constexpr uintptr_t ProjectileSpeedCallSite    = 0x009BEBD9;
+    constexpr uintptr_t ProjectileGetSpeed         = 0x009669C0;
+    constexpr uintptr_t ProjectileSpeedMult        = 0xD0;
+    constexpr uintptr_t PlayerProjectileReleaseTimer = 0x730;
+    constexpr float     ThrowReleaseTimerFull      = 10.0f;
+    constexpr uintptr_t WeaponAttackAnimation      = 0x11D;
+
+    /**
      * FlameProjectile vtable entries (table 0x0108F2F4), both __thiscall:
      * Process3D (no argument) stores the flame's rotation relative to the
      * shooter's projectile node in Projectile::kFollowOffset (+0x94), and
