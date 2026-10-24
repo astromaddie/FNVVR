@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 
 #include "test.h"
@@ -269,6 +270,47 @@ TEST_CASE(draw_settle_keeps_a_hand_on_the_weapon_shown) {
   }
 
   CHECK(!settle.away());
+  CHECK(settle.timedOut());
+}
+
+
+TEST_CASE(draw_settle_waits_for_a_hand_held_still_far_away) {
+  constexpr float Frame = 1.0f / 72.0f;
+  VrDrawSettle settle;
+
+  // The game holds the hand still 1.65 m from the weapon node, then
+  // blends it in: steady that far is not settled
+  float time = 0.0f;
+
+  for (uint32_t i = 0; i < 30; i++) {
+    CHECK(!settle.update({ 1.65f, 0.0f, 0.0f }, Frame));
+    CHECK(settle.away());
+    time += Frame;
+  }
+
+  float distance = 1.65f;
+
+  while (distance > 0.1f) {
+    distance = std::max(distance - 0.1f, 0.1f);
+    CHECK(!settle.update({ distance, 0.0f, 0.0f }, Frame));
+    time += Frame;
+  }
+
+  bool took = false;
+
+  for (uint32_t i = 0; i < 30 && !took; i++) {
+    took = settle.update({ 0.12f, 0.0f, 0.0f }, Frame);
+    time += Frame;
+  }
+
+  CHECK(took);
+  CHECK(!settle.timedOut());
+  CHECK(!settle.away());
+  CHECK(time < VrDrawSettle::MaxWait);
+
+  // The trace starts at the far hand
+  CHECK(settle.traceCount() > 1);
+  CHECK_NEAR(settle.trace()[0], 1.65f, 1e-5);
 }
 
 

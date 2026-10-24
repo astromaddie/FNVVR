@@ -192,11 +192,17 @@ namespace dxvk {
     if (m_settled)
       return false;
 
-    m_waited  += dt;
     m_distance = vrLength(offset);
     m_farthest = std::max(m_farthest, m_distance);
 
-    if (!m_hasStart || vrLength(offset - m_start) > Tolerance) {
+    if (m_traceCount < m_trace.size() && m_waited >= float(m_traceCount) * TraceStep)
+      m_trace[m_traceCount++] = m_distance;
+
+    m_waited += dt;
+
+    // A hand held still far from the node is not where the weapon's idle
+    // puts it: the game has not blended it in yet
+    if (!m_hasStart || vrLength(offset - m_start) > Tolerance || m_distance > SettleReach) {
       m_start      = offset;
       m_hasStart   = true;
       m_steadyTime = 0.0f;
@@ -204,7 +210,8 @@ namespace dxvk {
       m_steadyTime += dt;
     }
 
-    m_settled = m_steadyTime >= SettleTime || m_waited >= MaxWait;
+    m_timedOut = m_steadyTime < SettleTime && m_waited >= MaxWait;
+    m_settled  = m_steadyTime >= SettleTime || m_timedOut;
 
     if (away())
       m_awayTime += dt;

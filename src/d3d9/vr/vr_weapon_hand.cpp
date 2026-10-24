@@ -2559,9 +2559,15 @@ namespace dxvk {
 
     if (m_drawSettle.update(offset * (1.0f / VrGameUnitsPerMetre), m_frameTime) && m_drawSettle.awayTime() > 0.0f) {
       auto name = form ? readField<const char*>(form, VrGame::WeaponFullName) : nullptr;
+      std::string trace;
+
+      for (uint32_t i = 0; i < m_drawSettle.traceCount(); i++)
+        trace += str::format(i ? ", " : "", int(m_drawSettle.trace()[i] * 100.0f + 0.5f));
+
       Logger::info(str::format("VR: '", name ? name : "", "' just drawn was hidden for ", m_drawSettle.awayTime(),
-        " s, while the game moved the right hand up to ", m_drawSettle.farthest(), " m from the weapon node; it settled ",
-        m_drawSettle.distance(), " m from it"));
+        " s, while the game moved the right hand up to ", m_drawSettle.farthest(), " m from the weapon node; ",
+        m_drawSettle.timedOut() ? "the wait ran out " : "it settled ", m_drawSettle.distance(),
+        " m from it (cm every ", VrDrawSettle::TraceStep, " s: ", trace, ")"));
     }
 
     return m_drawSettle.away();

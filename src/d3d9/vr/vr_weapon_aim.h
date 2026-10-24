@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #include "vr_game_space.h"
 
 namespace dxvk {
@@ -195,7 +197,10 @@ namespace dxvk {
    * the right hand bone can be far from the weapon node (heavy weapons),
    * so it shows far from the controller. The hand's offset from the weapon
    * node is taken as settled once it has stayed within \ref Tolerance for
-   * \ref SettleTime, or after \ref MaxWait if the game keeps moving it.
+   * \ref SettleTime within \ref SettleReach of the node, or after
+   * \ref MaxWait if the game keeps it moving or far. The game can hold the
+   * hand still far from the node before it blends it in (1.65 m with the
+   * minigun and the grenade machine gun, findings/weapon.md §7.1).
    */
   class VrDrawSettle {
 
@@ -208,7 +213,18 @@ namespace dxvk {
     constexpr static float Tolerance = 0.01f;
 
     /// Longest wait before the offset is taken anyway, in seconds
-    constexpr static float MaxWait = 1.0f;
+    constexpr static float MaxWait = 1.5f;
+
+    /// Farthest from the weapon node a steady hand is taken as settled,
+    /// in metres: the idle poses of the weapons seen so far keep it within
+    /// 21 cm
+    constexpr static float SettleReach = 0.5f;
+
+    /// How often the distance is kept for the log, in seconds
+    constexpr static float TraceStep = 0.05f;
+
+    /// Distances kept for the log, enough for \ref MaxWait
+    constexpr static uint32_t TraceSize = 32;
 
     /// Within this distance of the weapon node, in metres, the hand shows
     /// close enough to its controller while it settles
@@ -262,6 +278,25 @@ namespace dxvk {
       return m_distance;
     }
 
+    /**
+     * \brief Whether the longest wait ran out before the hand settled
+     */
+    bool timedOut() const {
+      return m_timedOut;
+    }
+
+    /**
+     * \brief Distances from the weapon node every \ref TraceStep since the
+     *    draw, in metres
+     */
+    const float* trace() const {
+      return m_trace.data();
+    }
+
+    uint32_t traceCount() const {
+      return m_traceCount;
+    }
+
   private:
 
     VrVector3 m_start;
@@ -272,6 +307,10 @@ namespace dxvk {
     float     m_distance   = 0.0f;
     float     m_farthest   = 0.0f;
     float     m_awayTime   = 0.0f;
+    bool      m_timedOut   = false;
+
+    std::array<float, TraceSize> m_trace = { };
+    uint32_t  m_traceCount = 0;
 
   };
 
