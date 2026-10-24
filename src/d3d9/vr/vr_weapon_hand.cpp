@@ -387,14 +387,16 @@ namespace dxvk {
      * vrCameraRotation, in game units): the lighter stands up in the
      * closed hand, its node's y axis (towards its flame) along the
      * controller's up and its x axis pointing forward, a little above
-     * the controller's centre. With its x axis along the controller's
-     * right or pointing back, the fingers went through it.
+     * the controller's centre, behind it and to its left so that the
+     * thumb, middle and ring fingers close around it. With its x axis
+     * along the controller's right or pointing back, or centred on the
+     * controller, the fingers went through it.
      */
     const VrGameTransform LighterInHand = {
       {{ { 1.0f, 0.0f, 0.0f },
          { 0.0f, 1.0f, 0.0f },
          { 0.0f, 0.0f, 1.0f } }},
-      { 0.0f, 0.015f * VrGameUnitsPerMetre, 0.0f },
+      { -0.035f * VrGameUnitsPerMetre, 0.015f * VrGameUnitsPerMetre, -0.02f * VrGameUnitsPerMetre },
     };
 
     struct FreeHandBone {
