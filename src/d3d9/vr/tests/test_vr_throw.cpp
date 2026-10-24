@@ -260,6 +260,42 @@ TEST_CASE(throw_tracker_measures_the_last_motion) {
 }
 
 
+TEST_CASE(throw_tracker_finds_the_fastest_motion_before_the_release) {
+  VrThrowTracker tracker;
+  CHECK(vrLength(tracker.peakVelocity(0.05f, 0.15f)) == 0.0f);
+
+  // Still, 6 m/s forward, then the follow-through: 2 m/s down for 0.1 s
+  VrVector3 position = { 0.0f, 0.0f, 0.0f };
+
+  for (uint32_t i = 0; i < 10; i++)
+    tracker.add(position, Frame);
+
+  for (uint32_t i = 0; i < 8; i++) {
+    position.x += 6.0f * Frame;
+    tracker.add(position, Frame);
+  }
+
+  for (uint32_t i = 0; i < 9; i++) {
+    position.y -= 2.0f * Frame;
+    tracker.add(position, Frame);
+  }
+
+  // When the trigger lets go the hand comes down
+  VrVector3 last = tracker.velocity(0.05f);
+  CHECK_NEAR(last.x, 0.0f, 1e-3);
+  CHECK_NEAR(last.y, -2.0f, 1e-3);
+
+  // The throw was forward
+  VrVector3 peak = tracker.peakVelocity(0.05f, 0.15f);
+  CHECK_NEAR(peak.x, 6.0f, 1e-3);
+  CHECK_NEAR(peak.y, 0.0f, 1e-3);
+
+  // Too long ago to count
+  VrVector3 recent = tracker.peakVelocity(0.05f, 0.03f);
+  CHECK_NEAR(recent.x, 0.0f, 1e-3);
+}
+
+
 TEST_CASE(throw_share_grows_with_the_hand) {
   VrThrowConfig config;
   CHECK(vrComputeThrowShare(1.0f, config) == 0.0f);

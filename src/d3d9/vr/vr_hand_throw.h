@@ -47,7 +47,7 @@ namespace dxvk {
    * fuse, presses a mine's button with the index finger), at the part of
    * the model it acts on (VrWeaponHand measures them). A grenade or thrown
    * weapon is thrown by letting go of the right trigger while the hand
-   * moves fast enough; a mine leaves the hand at a press of the trigger,
+   * moves fast enough, along the hand's fastest motion just before; a mine leaves the hand at a press of the trigger,
    * as fast as the hand moves, however slowly.
    *
    * The weapon is fired with TESObjectWEAP::Fire, which spends one and
@@ -112,6 +112,9 @@ namespace dxvk {
       /// Where the player was when the hand let go, in the game world
       VrVector3      player;
       float          handSpeed = 0.0f;
+      /// The hand's speed and pitch, in radians, when the trigger let go
+      float          releasedSpeed = 0.0f;
+      float          releasedPitch = 0.0f;
       float          age = 0.0f;
     };
 

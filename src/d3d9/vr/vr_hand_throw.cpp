@@ -236,12 +236,20 @@ namespace dxvk {
       return events;
     }
 
-    VrVector3 velocity  = m_tracker.velocity(m_config.velocityWindow);
+    // A mine leaves at the press, moving as the hand does then; a throw
+    // takes the hand's fastest motion just before the trigger let go
+    VrVector3 released  = m_tracker.velocity(m_config.velocityWindow);
+    VrVector3 velocity  = placed ? released
+      : m_tracker.peakVelocity(m_config.velocityWindow, m_config.peakLookback);
     float     handSpeed = vrLength(velocity);
 
     PendingThrow pending;
     pending.form      = held->form;
     pending.handSpeed = handSpeed;
+    pending.releasedSpeed = vrLength(released);
+    pending.releasedPitch = vrLength(released) > 0.0f
+      ? -vrComputeAimAngles(vrPointFromHand(input.body, released) - input.body.position).pitch
+      : 0.0f;
     pending.player    = readVector(player(), VrGame::RefLocation);
     pending.release.origin = centre;
 
@@ -380,7 +388,8 @@ namespace dxvk {
     uint8_t* projectile = m_weaponHand.thrownProjectile();
 
     Logger::info(str::format("VR: Threw '", weaponName(pending.form), "', hand at ", pending.handSpeed, " m/s, ",
-      -angles.pitch * DegreesPerRadian, " degrees up: ", speeds.given / VrGameUnitsPerMetre,
+      -angles.pitch * DegreesPerRadian, " degrees up (when the trigger let go ", pending.releasedSpeed, " m/s, ",
+      pending.releasedPitch * DegreesPerRadian, " degrees up): ", speeds.given / VrGameUnitsPerMetre,
       " m/s (game's full throw ", speeds.full / VrGameUnitsPerMetre, " m/s)",
       m_firesInUpdate ? ", in the player's update" : ", while the frame is drawn",
       projectile ? "" : ", no projectile was launched"));

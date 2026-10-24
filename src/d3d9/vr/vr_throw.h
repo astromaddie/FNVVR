@@ -84,6 +84,10 @@ namespace dxvk {
     /// Span of the hand's motion that gives the speed at the release, in
     /// seconds
     float velocityWindow = 0.05f;
+    /// How long before the trigger lets go the hand's fastest motion is
+    /// looked for, in seconds: the trigger is let go late, as the hand
+    /// already slows down and comes down in its follow-through
+    float peakLookback = 0.15f;
   };
 
   /**
@@ -260,9 +264,23 @@ namespace dxvk {
      */
     VrVector3 velocity(float window) const;
 
+    /**
+     * \brief Fastest velocity of the last part of the motion
+     *
+     * The velocity over \p window ending at each position of the last
+     * \p lookback seconds, the latest included, and the fastest of them.
+     *
+     * \param [in] window Span of each velocity, in seconds, at least one
+     *    frame
+     * \param [in] lookback How far back the spans may end, in seconds
+     * \returns The velocity in metres per second, zero until two positions
+     *    are known
+     */
+    VrVector3 peakVelocity(float window, float lookback) const;
+
   private:
 
-    static constexpr uint32_t Capacity = 16;
+    static constexpr uint32_t Capacity = 32;
 
     struct Sample {
       VrVector3 position;
@@ -272,6 +290,10 @@ namespace dxvk {
     std::array<Sample, Capacity> m_samples = { };
     uint32_t m_count = 0;
     uint32_t m_next  = 0;
+
+    const Sample& sample(uint32_t back) const;
+
+    VrVector3 velocityEndingAt(uint32_t back, float window) const;
 
   };
 

@@ -289,29 +289,57 @@ namespace dxvk {
 
 
   VrVector3 VrThrowTracker::velocity(float window) const {
-    if (m_count < 2)
+    return velocityEndingAt(0, window);
+  }
+
+
+  VrVector3 VrThrowTracker::peakVelocity(float window, float lookback) const {
+    VrVector3 peak = velocityEndingAt(0, window);
+    float age = 0.0f;
+
+    // Each older end, as long as a span still fits before it
+    for (uint32_t back = 1; back + 1 < m_count; back++) {
+      age += sample(back - 1).dt;
+
+      if (age > lookback)
+        break;
+
+      VrVector3 v = velocityEndingAt(back, window);
+
+      if (vrLength(v) > vrLength(peak))
+        peak = v;
+    }
+
+    return peak;
+  }
+
+
+  const VrThrowTracker::Sample& VrThrowTracker::sample(uint32_t back) const {
+    return m_samples[(m_next + Capacity - 1 - back) % Capacity];
+  }
+
+
+  VrVector3 VrThrowTracker::velocityEndingAt(uint32_t back, float window) const {
+    if (back + 1 >= m_count)
       return VrVector3();
 
-    // Newest first: the latest position, then back in time until the
-    // window is covered
-    const Sample& last = m_samples[(m_next + Capacity - 1) % Capacity];
+    // From the end back in time until the window is covered
+    const Sample& last = sample(back);
     float time = 0.0f;
-    uint32_t used = 0;
+    uint32_t first = back;
 
-    for (uint32_t i = 1; i < m_count; i++) {
-      time += m_samples[(m_next + Capacity - i) % Capacity].dt;
-      used  = i;
+    for (uint32_t i = back; i + 1 < m_count; i++) {
+      time += sample(i).dt;
+      first = i + 1;
 
       if (time >= window)
         break;
     }
 
-    const Sample& first = m_samples[(m_next + Capacity - 1 - used) % Capacity];
-
     if (time <= 0.0f)
       return VrVector3();
 
-    return (last.position - first.position) * (1.0f / time);
+    return (last.position - sample(first).position) * (1.0f / time);
   }
 
 
