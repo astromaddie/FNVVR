@@ -52,6 +52,11 @@ namespace dxvk {
     /// within reach of the hand
     bool                      hasLighter = false;
     VrGameTransform           lighterInHand;
+    /// The centre of the lighter's meshes in the hand bone's frame, in
+    /// units of the hand's scale, and the unit direction from it towards
+    /// its flame, with hasLighter
+    VrVector3                 lighterCentre;
+    VrVector3                 lighterUp;
     /// The lighter's parts the animation moves, lit (its cap open)
     std::vector<VrPartPose>   lighterLit;
     /// The button and the parts below it that the animation moves, as

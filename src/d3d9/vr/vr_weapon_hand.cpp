@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <iterator>
 
@@ -345,6 +346,9 @@ namespace dxvk {
          { -0.0939852f,  0.994846f, -0.0380647f } }},
       { -8.81553f, -1.23918f, -1.42719f },
     };
+
+    // The controller's up, in its frame (forward, up and right)
+    const VrVector3 ControllerUp = { 0.0f, 1.0f, 0.0f };
 
     /**
      * \brief Pose of the lighter of the dynamite and the fire bomb in the
@@ -2769,16 +2773,23 @@ namespace dxvk {
     VrGameCameraPose controller = m_otherHand;
     controller.position = controller.position - shift;
 
-    // Where the free pose puts the hand bone
-    VrGameTransform hand = vrComputeHeldTransform(controller, FreeHandPose);
     float handScale = field<float>(otherHand, VrGame::ObjectWorldScale);
 
-    // The lighter stays in the hand as the animation holds it lit, the
-    // fingers on it
+    // The lighter stays in the hand as the animation holds it, the fingers
+    // on it. The hand at its free pose and the lighter are turned together
+    // about the lighter so that it stands up in the fist, its flame along
+    // the controller's up: the animation's hand is not at the free pose.
     if (m_throwAnimation.hasLighter) {
       const VrGameTransform& inHand = m_throwAnimation.lighterInHand;
-      held.pose.rotate    = hand.rotate * inHand.rotate;
-      held.pose.translate = hand.translate + hand.rotate * inHand.translate * handScale;
+
+      VrGameTransform lighter;
+      lighter.rotate    = FreeHandPose.rotate * inHand.rotate;
+      lighter.translate = FreeHandPose.translate + FreeHandPose.rotate * inHand.translate * handScale;
+
+      VrVector3 centre = FreeHandPose.translate + FreeHandPose.rotate * m_throwAnimation.lighterCentre * handScale;
+      lighter = vrTurnTransform(lighter, centre, FreeHandPose.rotate * m_throwAnimation.lighterUp, ControllerUp);
+
+      held.pose    = vrComputeHeldTransform(controller, lighter);
       held.inHand  = &inHand;
       held.fingers = &m_throwAnimation.fingers;
       return true;
@@ -2786,7 +2797,7 @@ namespace dxvk {
 
     // The fingers close on the pin as the animation's do
     if (m_throwArm.pinHeld) {
-      held.pose    = hand;
+      held.pose    = vrComputeHeldTransform(controller, FreeHandPose);
       held.inHand  = &m_atHandBone;
       held.fingers = &m_throwAnimation.fingers;
       return true;
@@ -2899,7 +2910,16 @@ namespace dxvk {
     m_thrown.hasFlame = true;
 
     if (!m_loggedLighter) {
-      Logger::info(str::format("VR: The lighter is in the left hand", animated ? " as the attack animation holds it" : "",
+      std::string turned;
+
+      if (animated) {
+        VrVector3 up = FreeHandPose.rotate * animation->lighterUp;
+        float angle = std::acos(std::clamp(vrDot(up, ControllerUp) / std::max(vrLength(up), 1e-6f), -1.0f, 1.0f));
+        turned = str::format(" as the attack animation holds it, hand and lighter turned ", angle * 180.0f / 3.14159265f,
+          " degrees to stand it up");
+      }
+
+      Logger::info(str::format("VR: The lighter is in the left hand", turned,
         ", its flame ", vrLength(m_thrown.flame) / VrGameUnitsPerMetre, " m from the controller"));
       m_loggedLighter = true;
     }

@@ -296,6 +296,31 @@ namespace dxvk {
     const VrVector3&        target);
 
   /**
+   * \brief Smallest rotation that turns one direction onto another
+   *
+   * \param [in] from Direction to turn, need not be unit length
+   * \param [in] to Direction it ends along, need not be unit length
+   * \returns The rotation; half a turn about an axis perpendicular to
+   *    \p from if the two are opposite, no rotation if either is zero
+   */
+  VrGameRotation vrComputeRotationBetween(const VrVector3& from, const VrVector3& to);
+
+  /**
+   * \brief Turns a transform about a point, by the smallest rotation
+   *    that turns one direction onto another
+   *
+   * \param [in] t Transform to turn
+   * \param [in] pivot Point that stays in place, in the frame of \p t
+   * \param [in] from Direction to turn, in the frame of \p t
+   * \param [in] to Direction it ends along
+   */
+  VrGameTransform vrTurnTransform(
+    const VrGameTransform&      t,
+    const VrVector3&            pivot,
+    const VrVector3&            from,
+    const VrVector3&            to);
+
+  /**
    * \brief Inverse of a rigid transform
    */
   VrGameTransform vrInverse(const VrGameTransform& t);

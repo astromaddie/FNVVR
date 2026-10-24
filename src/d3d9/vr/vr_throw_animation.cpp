@@ -301,6 +301,19 @@ namespace dxvk {
       animation.lighterInHand.translate = (toHand * (lighter.translate - hand.translate)) * (1.0f / hand.scale);
       animation.hasLighter = true;
       animation.lighterLit = readParts(tracks, nodes.lighter, false, act);
+
+      // Where it stands from: its meshes' centre towards its flame, or
+      // its node's y axis without one
+      VrVector3 centre = lighter.translate + lighter.rotate * meshCentre(nodes.lighter) * lighter.scale;
+      VrVector3 up     = lighter.rotate * VrVector3 { 0.0f, 1.0f, 0.0f };
+      VrVector3 flame;
+
+      if (nodes.flame && pointAt(tracks, nodes.flame, nodes.root, meshCentre(nodes.flame), hold, flame)
+       && vrLength(flame - centre) > 0.0f)
+        up = (flame - centre) * (1.0f / vrLength(flame - centre));
+
+      animation.lighterCentre = (toHand * (centre - hand.translate)) * (1.0f / hand.scale);
+      animation.lighterUp     = toHand * up;
     }
 
     // A switch is left thrown

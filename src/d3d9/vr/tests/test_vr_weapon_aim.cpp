@@ -272,6 +272,60 @@ TEST_CASE(draw_settle_keeps_a_hand_on_the_weapon_shown) {
 }
 
 
+TEST_CASE(rotation_between_turns_one_direction_onto_another) {
+  const VrVector3 directions[] = {
+    { 0.0f, 1.0f, 0.0f }, { 1.0f, 0.0f, 0.0f }, { 0.3f, -0.2f, 0.9f },
+    { 0.0f, -2.0f, 0.0f }, { -1.0f, 0.0f, 0.0f },
+  };
+
+  for (const VrVector3& from : directions) {
+    for (const VrVector3& to : directions) {
+      VrGameRotation r = vrComputeRotationBetween(from, to);
+      VrVector3 turned = r * (from * (1.0f / vrLength(from)));
+      VrVector3 target = to * (1.0f / vrLength(to));
+
+      CHECK_NEAR(turned.x, target.x, 1e-4);
+      CHECK_NEAR(turned.y, target.y, 1e-4);
+      CHECK_NEAR(turned.z, target.z, 1e-4);
+
+      // A rotation: orthonormal, no mirror
+      CHECK_NEAR(vrRotationAngle(r * vrTranspose(r), { }), 0.0f, 1e-2);
+    }
+  }
+
+  // The smallest one: a quarter turn stays a quarter turn
+  CHECK_NEAR(vrRotationAngle(vrComputeRotationBetween({ 1.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f }), { }), Pi / 2.0f, 1e-4);
+
+  // The axis the two share is left alone
+  VrVector3 z = vrComputeRotationBetween({ 1.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f }) * VrVector3 { 0.0f, 0.0f, 1.0f };
+  CHECK_NEAR(z.z, 1.0f, 1e-5);
+}
+
+
+TEST_CASE(turn_transform_keeps_its_pivot) {
+  // A lighter lying along x in the hand, turned to stand along y about its
+  // centre
+  VrGameTransform lighter;
+  lighter.rotate    = rotationZ(-Pi / 2.0f);
+  lighter.translate = { 2.0f, 3.0f, 0.0f };
+
+  VrVector3 pivot = { 4.0f, 3.0f, 0.0f };
+  VrVector3 axis  = lighter.rotate * VrVector3 { 0.0f, 1.0f, 0.0f };
+  VrGameTransform upright = vrTurnTransform(lighter, pivot, axis, { 0.0f, 1.0f, 0.0f });
+
+  VrVector3 up = upright.rotate * VrVector3 { 0.0f, 1.0f, 0.0f };
+  CHECK_NEAR(up.x, 0.0f, 1e-5);
+  CHECK_NEAR(up.y, 1.0f, 1e-5);
+
+  // The pivot, a point of the lighter, stays where it was
+  VrVector3 local = vrTranspose(lighter.rotate) * (pivot - lighter.translate);
+  VrVector3 moved = upright.rotate * local + upright.translate;
+  CHECK_NEAR(moved.x, pivot.x, 1e-4);
+  CHECK_NEAR(moved.y, pivot.y, 1e-4);
+  CHECK_NEAR(moved.z, pivot.z, 1e-4);
+}
+
+
 TEST_CASE(aim_angles_follow_game_convention) {
   VrHeadAngles north = vrComputeAimAngles({ 0.0f, 2.0f, 0.0f });
   CHECK_NEAR(north.yaw, 0.0f, 1e-5);

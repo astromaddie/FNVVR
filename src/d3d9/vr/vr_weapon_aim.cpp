@@ -248,6 +248,62 @@ namespace dxvk {
   }
 
 
+  VrGameRotation vrComputeRotationBetween(const VrVector3& from, const VrVector3& to) {
+    float fromLength = vrLength(from);
+    float toLength   = vrLength(to);
+
+    if (fromLength <= 0.0f || toLength <= 0.0f)
+      return VrGameRotation();
+
+    VrVector3 a = from * (1.0f / fromLength);
+    VrVector3 b = to * (1.0f / toLength);
+    VrVector3 axis = cross(a, b);
+
+    float s = vrLength(axis);
+    float c = vrDot(a, b);
+
+    if (s < 1e-6f) {
+      if (c > 0.0f)
+        return VrGameRotation();
+
+      // Opposite: half a turn about any axis perpendicular to them
+      axis = cross(a, std::abs(a.x) < 0.9f ? VrVector3 { 1.0f, 0.0f, 0.0f } : VrVector3 { 0.0f, 1.0f, 0.0f });
+      s = 0.0f;
+      c = -1.0f;
+    }
+
+    axis = axis * (1.0f / vrLength(axis));
+
+    // Rodrigues' rotation formula, applied to each axis for the columns
+    VrGameRotation result;
+
+    for (uint32_t j = 0; j < 3; j++) {
+      VrVector3 e = { j == 0 ? 1.0f : 0.0f, j == 1 ? 1.0f : 0.0f, j == 2 ? 1.0f : 0.0f };
+      VrVector3 v = e * c + cross(axis, e) * s + axis * (vrDot(axis, e) * (1.0f - c));
+
+      result.m[0][j] = v.x;
+      result.m[1][j] = v.y;
+      result.m[2][j] = v.z;
+    }
+
+    return result;
+  }
+
+
+  VrGameTransform vrTurnTransform(
+    const VrGameTransform&      t,
+    const VrVector3&            pivot,
+    const VrVector3&            from,
+    const VrVector3&            to) {
+    VrGameRotation turn = vrComputeRotationBetween(from, to);
+
+    VrGameTransform result;
+    result.rotate    = turn * t.rotate;
+    result.translate = pivot + turn * (t.translate - pivot);
+    return result;
+  }
+
+
   VrGameTransform vrInverse(const VrGameTransform& t) {
     VrGameTransform result;
     result.rotate    = vrTranspose(t.rotate);
