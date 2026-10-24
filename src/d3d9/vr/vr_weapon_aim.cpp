@@ -183,6 +183,36 @@ namespace dxvk {
   }
 
 
+  void VrDrawSettle::reset() {
+    *this = VrDrawSettle();
+  }
+
+
+  bool VrDrawSettle::update(const VrVector3& offset, float dt) {
+    if (m_settled)
+      return false;
+
+    m_waited  += dt;
+    m_distance = vrLength(offset);
+    m_farthest = std::max(m_farthest, m_distance);
+
+    if (!m_hasStart || vrLength(offset - m_start) > Tolerance) {
+      m_start      = offset;
+      m_hasStart   = true;
+      m_steadyTime = 0.0f;
+    } else {
+      m_steadyTime += dt;
+    }
+
+    m_settled = m_steadyTime >= SettleTime || m_waited >= MaxWait;
+
+    if (away())
+      m_awayTime += dt;
+
+    return m_settled;
+  }
+
+
   VrGameCameraPose vrComputeTwoHandedPose(
     const VrGameCameraPose& hand,
     const VrVector3&        support,

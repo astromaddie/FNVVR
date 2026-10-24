@@ -203,6 +203,75 @@ TEST_CASE(held_rotation_is_taken_if_the_game_keeps_animating) {
 }
 
 
+TEST_CASE(draw_settle_hides_a_hand_blended_away_from_the_weapon) {
+  constexpr float Frame = 1.0f / 72.0f;
+  VrDrawSettle settle;
+
+  // The game blends the hand from 60 cm away to its place on the weapon
+  float distance = 0.6f;
+  float blended  = 0.0f;
+
+  while (distance > 0.05f) {
+    CHECK(!settle.update({ distance, 0.0f, 0.0f }, Frame));
+    CHECK(settle.away() == (distance > VrDrawSettle::NearHand));
+    distance -= 0.03f;
+    blended  += Frame;
+  }
+
+  CHECK(!settle.settled());
+  CHECK_NEAR(settle.farthest(), 0.6f, 1e-5);
+
+  // Idle: steady, so it settles and shows
+  bool took = false;
+  float time = 0.0f;
+
+  for (uint32_t i = 0; i < 30 && !took; i++) {
+    took = settle.update({ 0.05f + 0.0001f * float(i), 0.0f, 0.0f }, Frame);
+    time += Frame;
+  }
+
+  CHECK(took);
+  CHECK(!settle.away());
+  CHECK(time >= VrDrawSettle::SettleTime);
+  CHECK(settle.awayTime() > 0.0f);
+  CHECK(settle.awayTime() < blended);
+
+  // Settled once: a reload moving the hand later does not hide it
+  CHECK(!settle.update({ 0.5f, 0.0f, 0.0f }, Frame));
+  CHECK(!settle.away());
+
+  // A new weapon waits again
+  settle.reset();
+  CHECK(!settle.update({ 0.5f, 0.0f, 0.0f }, Frame));
+  CHECK(settle.away());
+}
+
+
+TEST_CASE(draw_settle_keeps_a_hand_on_the_weapon_shown) {
+  constexpr float Frame = 1.0f / 72.0f;
+  VrDrawSettle settle;
+
+  // A hand that stays near the weapon node never shows away
+  for (uint32_t i = 0; i < 5; i++) {
+    settle.update({ 0.03f * float(i % 2), 0.0f, 0.0f }, Frame);
+    CHECK(!settle.away());
+  }
+
+  // A hand the game keeps moving far away is shown after the longest wait
+  settle.reset();
+  float time = 0.0f;
+  float x = 0.2f;
+
+  while (!settle.update({ x, 0.0f, 0.0f }, Frame)) {
+    x    += 0.02f;
+    time += Frame;
+    CHECK(time < VrDrawSettle::MaxWait + Frame);
+  }
+
+  CHECK(!settle.away());
+}
+
+
 TEST_CASE(aim_angles_follow_game_convention) {
   VrHeadAngles north = vrComputeAimAngles({ 0.0f, 2.0f, 0.0f });
   CHECK_NEAR(north.yaw, 0.0f, 1e-5);

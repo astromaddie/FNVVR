@@ -536,6 +536,7 @@ namespace dxvk {
 
     m_frameTime         = dt;
     m_heldSettleUpdated = false;
+    m_drawSettleUpdated = false;
     m_magazineBlend     = std::min(m_magazineBlend + dt / MagazineBlendTime, 1.0f);
     m_actionSwing       = m_actionOpen
       ? std::min(m_actionSwing + dt / ActionSwingTime, 1.0f)
@@ -918,6 +919,11 @@ namespace dxvk {
       m_twoHanded = false;
       m_braced    = false;
       hideModel(root);
+
+      if (!m_loggedHidden) {
+        Logger::info("VR: The arms and the weapon are hidden while the lasers point at a menu");
+        m_loggedHidden = true;
+      }
       return;
     }
 
@@ -942,6 +948,7 @@ namespace dxvk {
       m_hasBlade  = false;
       m_twoHanded = false;
       m_braced    = false;
+      m_drawWeapon = nullptr;
       showArms(root);
       return;
     }
@@ -992,6 +999,18 @@ namespace dxvk {
     int8_t type = form ? readField<int8_t>(form, VrGame::WeaponAnimationType) : WeaponTypeNone;
     uint8_t* fist = (type == WeaponTypeNone || type == WeaponTypeHandToHand)
       ? findObject(root, VrGame::RightHandNodeName) : nullptr;
+
+    // While the game blends the arms into the idle of a weapon just drawn,
+    // the right hand can be far from the weapon node, which lands on the
+    // controller: the model is hidden until the hand settles on the weapon
+    if (!fist && settleDrawnWeapon(root, weapon, form, drawnWeapon, weaponRotation)) {
+      m_hasAim    = false;
+      m_hasBlade  = false;
+      m_twoHanded = false;
+      m_braced    = false;
+      hideModel(root);
+      return;
+    }
 
     VrGameTransform rig = held
       ? vrComputeRigHoldingWeapon(weaponRotation, drawnWeapon, m_heldSettle.rotation(), hand)
@@ -2424,11 +2443,6 @@ namespace dxvk {
 
     hide(root, false);
     m_hidesModel = true;
-
-    if (!m_loggedHidden) {
-      Logger::info("VR: The arms and the weapon are hidden while the lasers point at a menu");
-      m_loggedHidden = true;
-    }
   }
 
 
@@ -2481,6 +2495,38 @@ namespace dxvk {
     });
 
     m_hiddenObjects.clear();
+  }
+
+
+  bool VrWeaponHand::settleDrawnWeapon(
+          uint8_t*              root,
+    const uint8_t*              weapon,
+    const uint8_t*              form,
+    const VrVector3&            drawnWeapon,
+    const VrGameRotation&       weaponRotation) {
+    if (weapon != m_drawWeapon || form != m_drawForm) {
+      m_drawWeapon = weapon;
+      m_drawForm   = form;
+      m_drawSettle.reset();
+    }
+
+    uint8_t* rightHand = m_drawSettle.settled() ? nullptr : findObject(root, VrGame::RightHandNodeName);
+
+    if (!rightHand || m_drawSettleUpdated)
+      return m_drawSettle.away();
+
+    m_drawSettleUpdated = true;
+
+    VrVector3 offset = vrTranspose(weaponRotation) * (readVector(rightHand, VrGame::ObjectWorldTranslation) - drawnWeapon);
+
+    if (m_drawSettle.update(offset * (1.0f / VrGameUnitsPerMetre), m_frameTime) && m_drawSettle.awayTime() > 0.0f) {
+      auto name = form ? readField<const char*>(form, VrGame::WeaponFullName) : nullptr;
+      Logger::info(str::format("VR: '", name ? name : "", "' just drawn was hidden for ", m_drawSettle.awayTime(),
+        " s, while the game moved the right hand up to ", m_drawSettle.farthest(), " m from the weapon node; it settled ",
+        m_drawSettle.distance(), " m from it"));
+    }
+
+    return m_drawSettle.away();
   }
 
 

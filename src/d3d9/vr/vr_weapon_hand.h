@@ -732,6 +732,13 @@ namespace dxvk {
     bool                 m_heldSettleUpdated = false;
     float                m_frameTime = 0.0f;
 
+    // Weapon just drawn, see settleDrawnWeapon: the weapon node and form
+    // it was drawn with, compared but not dereferenced
+    const uint8_t*       m_drawWeapon = nullptr;
+    const uint8_t*       m_drawForm   = nullptr;
+    VrDrawSettle         m_drawSettle;
+    bool                 m_drawSettleUpdated = false;
+
     // Blade of the held melee weapon, in the hand's frame, and whether the
     // weapon is in the hand this frame
     VrBlade          m_blade;
@@ -1234,6 +1241,23 @@ namespace dxvk {
     void hideArms(uint8_t* root, bool rightHand);
 
     void hideModel(uint8_t* root);
+
+    /**
+     * \brief Follows the right hand on a weapon just drawn
+     *
+     * Once per frame, until the hand settles on the weapon node.
+     *
+     * \param [in] drawnWeapon Where the game animates the weapon node
+     * \param [in] weaponRotation The weapon node's rotation there
+     * \returns \c true while the model is hidden, the hand being far
+     *    from the weapon node
+     */
+    bool settleDrawnWeapon(
+            uint8_t*              root,
+      const uint8_t*              weapon,
+      const uint8_t*              form,
+      const VrVector3&            drawnWeapon,
+      const VrGameRotation&       weaponRotation);
 
     void hide(uint8_t* object, bool log);
 
