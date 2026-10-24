@@ -9,6 +9,8 @@
 #include "vr_melee.h"
 #include "vr_pipboy_size.h"
 #include "vr_reload_animation.h"
+#include "vr_throw.h"
+#include "vr_throw_animation.h"
 #include "vr_weapon_aim.h"
 
 namespace dxvk {
@@ -24,6 +26,81 @@ namespace dxvk {
     /// Nothing is drawn: the controllers point at a menu with their lasers,
     /// and the game would otherwise animate the arms in front of its camera
     Hidden,
+  };
+
+  /**
+   * \brief The thrown or placed weapon in the right hand, as last drawn
+   *
+   * Points are in the right hand's frame (forward, up, right, see
+   * vrPointFromHand) and lengths in game units, unless noted.
+   */
+  struct VrHeldThrown {
+    /// The weapon (TESObjectWEAP*)
+    const uint8_t* form = nullptr;
+    /// Its type, 10 to 13
+    int32_t        type = 0;
+    /// Centre and radius of its model's bound
+    VrVector3      centre;
+    float          radius = 0.0f;
+    /// Whether its model is drawn: the game hides it once it is thrown,
+    /// until the next one is shown
+    bool           shown = false;
+    /// Whether its model is loaded, and the parts found in it
+    bool           loaded = false;
+    VrThrowParts   parts;
+    /// Where the pin sits in the grenade, with parts.pin
+    VrVector3      pin;
+    float          pinRadius = 0.0f;
+    /// The button, or a mine's light, which is pressed to arm it
+    bool           hasButton = false;
+    VrVector3      button;
+    float          buttonRadius = 0.0f;
+    /// The stick or bottle the lighter lights, with parts.lighter
+    bool           hasFuse = false;
+    VrVector3      fuse;
+    float          fuseRadius = 0.0f;
+    /// The lighter's flame in the left controller's frame, with
+    /// parts.lighter
+    bool           hasFlame = false;
+    VrVector3      flame;
+  };
+
+  /**
+   * \brief What the left hand did to the thrown weapon in the right hand
+   */
+  struct VrThrowArmState {
+    /// The left hand holds the pin
+    bool pinHeld = false;
+    /// The pin is out of the grenade
+    bool pinOut  = false;
+    /// The lighter is lit
+    bool lit     = false;
+    /// The weapon is armed: a mine's light is lit
+    bool armed   = false;
+  };
+
+  /**
+   * \brief Where and how fast a weapon thrown by hand leaves it
+   */
+  struct VrThrowRelease {
+    /// Start of the projectile in the game world
+    VrVector3 origin;
+    /// Unit direction it leaves along
+    VrVector3 direction;
+    /// Share of the game's full throw it gets, from 0 to 1
+    float     share = 1.0f;
+    /// Fastest it leaves, in game units per second, whatever the share
+    float     maxSpeed = 0.0f;
+  };
+
+  /**
+   * \brief Speeds of the last weapon thrown by hand, in game units per second
+   */
+  struct VrThrowSpeeds {
+    /// What the game's own throw at full power would have given
+    float full  = 0.0f;
+    /// What the projectile was given
+    float given = 0.0f;
   };
 
   /**
@@ -76,6 +153,15 @@ namespace dxvk {
    *   while the left hand pulls it, see VrRackHand, and locked back while
    *   nothing is chambered, along the way the reload animation pulls it,
    *   the left hand holding it as the animation does.
+   * - A weapon thrown by hand (see VrHandThrow) leaves from where and as
+   *   fast as the hand let it go, not from the game's animation: while it
+   *   is fired, the projectile starts at the release, along the hand's
+   *   motion, and Projectile::AddInitialVelocity's speed (and a missile's
+   *   speed multiplier) gives it a share of the game's own throw. A
+   *   grenade's pin follows the left hand that holds it and is hidden once
+   *   pulled out, the lighter of the dynamite and the fire bomb is in the
+   *   left hand, its flame lit while the left trigger is held, and a
+   *   mine's light is lit once it is armed.
    *
    * Only used on the game's main thread.
    */
@@ -477,6 +563,74 @@ namespace dxvk {
       return m_hasMagazine && m_hasReloadAnimation ? &m_reloadAnimation : nullptr;
     }
 
+    /**
+     * \brief The thrown or placed weapon in the right hand
+     *
+     * \returns The weapon as drawn on the last frame, or \c nullptr if the
+     *    hand holds none
+     */
+    const VrHeldThrown* heldThrown() const {
+      return m_hasThrown ? &m_thrown : nullptr;
+    }
+
+    /**
+     * \brief Sets what the left hand did to the thrown weapon in the hand
+     *
+     * Applied when the model is next drawn.
+     */
+    void setThrowArmState(const VrThrowArmState& state) {
+      m_throwArm = state;
+    }
+
+    /**
+     * \brief What the game's attack animation of the grenade or mine in
+     *    the hand does with the left hand
+     *
+     * \returns The animation, or \c nullptr until it is read, or if the
+     *    weapon is not armed by hand or has none
+     */
+    const VrThrowAnimation* throwAnimation() const {
+      return m_hasThrown && m_hasThrowAnimation && m_throwAnimationForm == m_thrown.form
+        ? &m_throwAnimation : nullptr;
+    }
+
+    /**
+     * \brief Shows the next thrown weapon in the hand
+     *
+     * The game hides the model in the hand when it launches the weapon and
+     * shows the next one when its throw animation puts it back in the
+     * hand, which a throw by hand never plays. The model is shown again
+     * the next time it is drawn.
+     */
+    void showThrownAgain() {
+      m_showThrown = true;
+    }
+
+    /**
+     * \brief Makes the next projectiles of the player leave as thrown
+     *
+     * \param [in] release Where and how fast, or \c nullptr to go back to
+     *    the muzzle drawn in the hand
+     */
+    void setThrowRelease(const VrThrowRelease* release);
+
+    /**
+     * \brief Speeds of the last weapon thrown with setThrowRelease
+     */
+    const VrThrowSpeeds& throwSpeeds() const {
+      return m_throwSpeeds;
+    }
+
+    /**
+     * \brief The last projectile launched with setThrowRelease
+     *
+     * \returns The projectile, or \c nullptr if none was launched: only
+     *    valid while the game keeps it, look it up by its form id
+     */
+    uint8_t* thrownProjectile() const {
+      return m_thrownProjectile;
+    }
+
   private:
 
     /**
@@ -702,6 +856,47 @@ namespace dxvk {
     // its auto-aim leaves it alone
     bool             m_handAimedShot = false;
 
+    // The thrown weapon in the hand, whether it is armed, and whether the
+    // next one is to be shown
+    VrHeldThrown     m_thrown;
+    bool             m_hasThrown  = false;
+    VrThrowArmState  m_throwArm;
+    bool             m_showThrown = false;
+
+    // Where the pin is in the left controller's frame while the hand
+    // holds it, taken when it took it
+    VrGameTransform  m_pinInHand;
+    bool             m_hasPinInHand = false;
+
+    // Last projectile thrown by hand, compared but not dereferenced
+    uint8_t*         m_thrownProjectile = nullptr;
+
+    // Set while the game fires a weapon thrown by hand, and the projectile
+    // whose speed was set, compared but not dereferenced
+    VrThrowRelease   m_throwRelease;
+    bool             m_throwing = false;
+    const uint8_t*   m_throwSped = nullptr;
+    VrThrowSpeeds    m_throwSpeeds;
+
+    // Thrown weapon whose model was last logged, compared but not
+    // dereferenced
+    const uint8_t*   m_loggedThrownForm = nullptr;
+    uint32_t         m_loggedThrownObjects = 0;
+    bool             m_loggedPin = false;
+    bool             m_loggedLighter = false;
+
+    // The game's attack animation of the grenade or mine in the hand, read
+    // once its model is in the hand, and the weapon it was read for,
+    // compared but not dereferenced
+    VrThrowAnimation m_throwAnimation;
+    bool             m_hasThrowAnimation   = false;
+    const uint8_t*   m_throwAnimationForm  = nullptr;
+    uint32_t         m_throwAnimationTries = 0;
+    uint32_t         m_throwAnimationWait  = 0;
+
+    // The identity, for a part held at the hand bone itself
+    VrGameTransform  m_atHandBone;
+
     // Weapon node whose barrel angle was last logged, compared but not
     // dereferenced
     const uint8_t*   m_loggedBarrelWeapon = nullptr;
@@ -749,6 +944,10 @@ namespace dxvk {
             float x, float y, float z, float heading, float pitch,
             uint32_t a9, uint32_t a10, uint32_t a11, uint32_t a12,
             float spreadHeading, float spreadPitch, uint32_t a15);
+
+    static float __fastcall projectileSpeedHook(
+            uint8_t*              projectile,
+            void*                 unused);
 
     static void __fastcall flameProcess3DHook(
             uint8_t*              projectile,
@@ -813,6 +1012,37 @@ namespace dxvk {
 
     void measureBlade(const uint8_t* weapon, const VrGameCameraPose& hand);
 
+    void placeThrown(
+            uint8_t*              root,
+            uint8_t*              weapon,
+            uint8_t*              otherHand,
+      const uint8_t*              form,
+            int8_t                type,
+      const VrGameCameraPose&     hand,
+      const VrVector3&            shift,
+            void*                 updateData);
+
+    void readThrowAnimation(
+      const uint8_t*              form,
+            int8_t                type,
+      const VrThrowAnimationNodes& nodes);
+
+    void posePart(uint8_t* part, const VrPartPose& pose, void* updateData);
+
+    void poseParts(uint8_t* node, const std::vector<VrPartPose>& poses, void* updateData);
+
+    void placeThrownPin(uint8_t* pin, const VrGameCameraPose& hand, const VrGameTransform& controller, void* updateData);
+
+    void placeLighter(
+            uint8_t*              lighter,
+            uint8_t*              flame,
+            uint8_t*              otherHand,
+      const VrGameCameraPose&     controller,
+      const VrVector3&            shift,
+            void*                 updateData);
+
+    void setThrowSpeed(uint8_t* projectile);
+
     void findHighlight(uint8_t* root, uint8_t* weapon, uint8_t* hinge, uint8_t* lock, bool swing);
 
     /**
@@ -840,6 +1070,19 @@ namespace dxvk {
       const VrVector3&            shift,
             void*                 updateData,
       const HeldPart*             held);
+
+    /**
+     * \brief The part the left hand holds while a thrown weapon is in the
+     *    right hand, as the game's attack animation holds it
+     *
+     * The lighter, or the pin while the hand holds it.
+     *
+     * \param [in] form The weapon in the right hand
+     * \param [in] otherHand The left hand bone
+     * \param [out] held Where the part is drawn and how the hand holds it
+     * \returns \c false if the hand holds nothing
+     */
+    bool thrownHeldPart(const uint8_t* form, uint8_t* otherHand, const VrVector3& shift, HeldPart& held) const;
 
     /**
      * \brief Finds how the action of the weapon opens
@@ -993,6 +1236,8 @@ namespace dxvk {
     void hideModel(uint8_t* root);
 
     void hide(uint8_t* object, bool log);
+
+    void show(uint8_t* object);
 
     void showArms(uint8_t* root);
 

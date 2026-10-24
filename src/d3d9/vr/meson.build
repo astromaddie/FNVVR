@@ -33,6 +33,7 @@ vr_src = files([
   'vr_terminal_texture.cpp',
   'vr_terminal_keyboard_mount.cpp',
   'vr_sound_keys.cpp',
+  'vr_throw.cpp',
 ])
 
 # Parts that depend on DXVK and Vulkan, only built into d3d9.dll
@@ -73,7 +74,9 @@ vr_dxvk_src = files([
   'vr_menu_scenes.cpp',
   'vr_manual_reload.cpp',
   'vr_part_highlight.cpp',
+  'vr_game_sequence.cpp',
   'vr_reload_animation.cpp',
+  'vr_throw_animation.cpp',
   'vr_game_sound.cpp',
   'vr_npc_gaze.cpp',
   'vr_pipboy_animation.cpp',
@@ -82,6 +85,7 @@ vr_dxvk_src = files([
   'vr_game_resolution.cpp',
   'vr_game_timer.cpp',
   'vr_hand_activate_pick.cpp',
+  'vr_hand_throw.cpp',
   'vr_preview_window.cpp',
   'vr_render_passes.cpp',
   'vr_sky_anchor.cpp',
@@ -125,6 +129,7 @@ if add_languages('cpp', native: true, required: false)
     'tests/test_vr_terminal.cpp',
     'tests/test_vr_terminal_keyboard_mount.cpp',
     'tests/test_vr_sound_keys.cpp',
+    'tests/test_vr_throw.cpp',
   ])
 
   vr_test = executable('vr_tests', vr_test_sources, vr_src,

@@ -41,4 +41,15 @@ namespace dxvk {
    */
   bool vrIsHitKey(const char* text);
 
+  /**
+   * \brief Whether a text key is an animation's "Release" key
+   *
+   * Where a throw's animation lets go of the weapon (the key names of
+   * the animation types at 0x01199A50, GOG database). Compared without
+   * case.
+   *
+   * \param [in] text Text of the key
+   */
+  bool vrIsReleaseKey(const char* text);
+
 }

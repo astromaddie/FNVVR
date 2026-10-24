@@ -81,6 +81,14 @@ namespace dxvk {
 
     constexpr uint32_t MaxLoggedPowerHits = 200;
 
+    // Pulses of a throw by hand: a faint one on the left controller when it
+    // takes the pin or the lighter reaches the fuse, a firm one when the
+    // weapon is armed, and one on the right controller when it leaves
+    constexpr float   ThrowTouchHaptic    = 0.15f;
+    constexpr float   ThrowArmedHaptic    = 0.6f;
+    constexpr float   ThrowReleaseHaptic  = 0.4f;
+    constexpr int64_t ThrowHapticDuration = 25'000'000;
+
     // Pulses of the manual reload: on the left controller when it takes a
     // magazine, on both when the magazine goes in, and a faint one when no
     // rounds are left behind the back or the magazine enters or leaves its
@@ -231,6 +239,12 @@ namespace dxvk {
     // The blade is measured where the weapon is drawn in the hand
     if (renderer->m_weaponHand)
       renderer->m_meleeSwing = VrMeleeSwing::install(swing);
+
+    if (renderer->m_weaponHand)
+      renderer->m_handThrow = VrHandThrow::install(*renderer->m_weaponHand);
+
+    if (!renderer->m_handThrow)
+      Logger::info("VR: Grenades and thrown weapons are thrown by the game's animation, as with a gamepad");
 
     if (!renderer->m_meleeSwing)
       Logger::info("VR: Melee weapons are swung by the game's animation, as with a gamepad");
@@ -522,7 +536,8 @@ namespace dxvk {
     if (m_weaponHand)
       m_controls.setGameAim(m_weaponHand->wantsGameAim() || (m_meleeSwing && m_meleeSwing->wantsBlock()));
 
-    m_controls.setSwingsWithHand(m_meleeSwing && m_meleeSwing->swingsWithHand());
+    m_controls.setSwingsWithHand((m_meleeSwing && m_meleeSwing->swingsWithHand())
+      || (m_handThrow && m_handThrow->throwsWithHand()));
 
     m_controls.setMenuBack(m_closePipBoy);
 
@@ -560,6 +575,7 @@ namespace dxvk {
     updateWeaponHand(input, state, modelCamera, dt);
     updateManualReload(input, state, dt);
     updateMeleeSwing(input, state, dt);
+    updateHandThrow(input, state, dt);
     updateHandPick(input, state);
     updatePipBoyGaze(input, state, dt);
 
@@ -1079,6 +1095,57 @@ namespace dxvk {
   }
 
 
+  void VrStereoRenderer::updateHandThrow(
+    const VrInputState&         input,
+          VrGameStateKind       state,
+          float                 dt) {
+    if (!m_handThrow)
+      return;
+
+    const VrControllerState& right = input.controllers[uint32_t(VrHand::Right)];
+    const VrControllerState& left  = input.controllers[uint32_t(VrHand::Left)];
+
+    VrHandThrowInput hands;
+    VrGameCameraPose rightHand, leftHand;
+
+    hands.body = m_gameCameraPose;
+    hands.dt   = dt;
+
+    if (state == VrGameStateKind::InGame && m_hasReference && right.isActive && input.hasActions) {
+      rightHand     = handInGame(right);
+      hands.hand    = &rightHand;
+      hands.attack  = input.actions.isPressed(VrAction::Attack);
+      hands.grip    = input.actions.isPressed(VrAction::TwoHandGrip);
+      hands.trigger = input.actions.isPressed(VrAction::Magazine);
+
+      if (left.isActive) {
+        leftHand        = handInGame(left);
+        hands.otherHand = &leftHand;
+      }
+    }
+
+    VrHandThrowEvents events = m_handThrow->update(hands);
+
+    switch (events.arm) {
+      case VrArmEvent::PinTaken:
+      case VrArmEvent::Lighting:
+        m_backend.applyHaptic(VrHand::Left, ThrowTouchHaptic, ThrowHapticDuration);
+        break;
+
+      case VrArmEvent::Armed:
+        m_backend.applyHaptic(VrHand::Left, ThrowArmedHaptic, ThrowHapticDuration);
+        break;
+
+      case VrArmEvent::PinDropped:
+      case VrArmEvent::None:
+        break;
+    }
+
+    if (events.thrown)
+      m_backend.applyHaptic(VrHand::Right, ThrowReleaseHaptic, ThrowHapticDuration);
+  }
+
+
   bool VrStereoRenderer::updatePowerCharge(
     const VrInputState&         input,
           int32_t&              cost) {
@@ -1125,9 +1192,10 @@ namespace dxvk {
     }
 
     // The left hand holding the weapon is not where the screen would be,
-    // nor is one bringing a magazine or a round to it
+    // nor is one bringing a magazine or a round to it, or arming a grenade
     bool gripped = input.hasActions && input.actions.isPressed(VrAction::TwoHandGrip);
-    bool loading = m_manualReload && m_manualReload->leftHandBusy();
+    bool loading = (m_manualReload && m_manualReload->leftHandBusy())
+                || (m_handThrow && m_handThrow->leftHandBusy());
 
     VrPipBoyGazeInput gaze;
     gaze.head     = input.isHeadTracked ? &input.headPose : nullptr;

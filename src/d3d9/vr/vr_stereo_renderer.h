@@ -23,6 +23,7 @@
 #include "vr_hud_meters.h"
 #include "vr_charge_ring.h"
 #include "vr_console_terminal.h"
+#include "vr_hand_throw.h"
 #include "vr_melee_swing.h"
 #include "vr_menu_scenes.h"
 #include "vr_manual_reload.h"
@@ -324,6 +325,9 @@ namespace dxvk {
     // Hits dealt by swinging the melee weapon in the hand
     std::unique_ptr<VrMeleeSwing> m_meleeSwing;
 
+    // Grenades, mines and thrown weapons armed and thrown by hand
+    std::unique_ptr<VrHandThrow>  m_handThrow;
+
     // Power attacks charged by holding the trigger, and their ring beside
     // the hand
     std::unique_ptr<VrPowerAttackRules> m_powerRules;
@@ -514,6 +518,8 @@ namespace dxvk {
     void updateNpcGaze();
 
     void updateMeleeSwing(const VrInputState& input, VrGameStateKind state, float dt);
+
+    void updateHandThrow(const VrInputState& input, VrGameStateKind state, float dt);
 
     void updateManualReload(const VrInputState& input, VrGameStateKind state, float dt);
 

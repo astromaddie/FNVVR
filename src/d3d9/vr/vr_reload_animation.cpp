@@ -7,6 +7,7 @@
 
 #include "vr_game_addresses.h"
 #include "vr_game_nodes.h"
+#include "vr_game_sequence.h"
 #include "vr_game_sound.h"
 #include "vr_magazine.h"
 #include "vr_reload_animation.h"
@@ -16,10 +17,6 @@ namespace dxvk {
 
   namespace {
 
-    // Process virtual function, __thiscall without arguments, returns the
-    // equipped weapon's inventory entry
-    using GetWeaponInfoFn = uint8_t* (__fastcall*)(uint8_t* process, void* unused);
-
     // ItemChange::HasModEffectActive, __thiscall with the effect, returns a
     // bool in AL
     using HasModEffectFn = uint32_t (__fastcall*)(uint8_t* entry, void* unused, uint32_t effect);
@@ -27,40 +24,12 @@ namespace dxvk {
     // TESObjectWEAP::GetReloadAnim, __thiscall with a bool
     using GetReloadAnimFn = uint32_t (__fastcall*)(const uint8_t* weapon, void* unused, uint32_t extended);
 
-    // Actor::GetAnimGroup, __thiscall with four stack arguments, returns
-    // the 16-bit group in AX
-    using GetAnimGroupFn = uint32_t (__fastcall*)(uint8_t* actor, void* unused,
-      uint32_t group, void* weaponEntry, uint32_t checkHandToHand, void* animation);
-
-    // NiTPointerMap::GetAt, __thiscall with the key and the result's address
-    using MapGetAtFn = uint32_t (__fastcall*)(uint8_t* map, void* unused, uint32_t key, uint8_t** value);
-
-    // AnimSequenceBase::GetSequenceToPlay, __thiscall with an index
-    using GetSequenceFn = uint8_t* (__fastcall*)(uint8_t* base, void* unused, int32_t index);
-
-    // NiInterpolator::UpdateTransform, __thiscall with three stack arguments
-    using UpdateTransformFn = uint32_t (__fastcall*)(uint8_t* interpolator, void* unused,
-      float time, uint8_t* target, void* value);
-
-    // NiInterpolator::IsTransformValueSupported, __thiscall without arguments
-    using IsTransformFn = uint32_t (__fastcall*)(uint8_t* interpolator, void* unused);
-
-    /// NiQuatTransform: each part is -FLT_MAX where the track has none
-    struct QuatTransform {
-      float translate[3] = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
-      float rotate[4]    = { -FLT_MAX, -FLT_MAX, -FLT_MAX, -FLT_MAX };
-      float scale        = -FLT_MAX;
-    };
-
     // How many times per second of the animation the magazine is sampled
     constexpr float SamplesPerSecond = 60.0f;
 
     // How far from the magazine's times its sounds may be, in seconds of
     // the animation
     constexpr float SoundWindow = 0.4f;
-
-    // The bones below the left hand are a few levels deep
-    constexpr uint32_t MaxHandDepth = 8;
 
     // How near the left hand bone the rack part's centre must be for the
     // animation's hand to hold it, in metres
@@ -105,179 +74,20 @@ namespace dxvk {
     }
 
     /**
-     * \brief A node's transform in an ancestor's frame
-     */
-    struct Pose {
-      VrGameRotation rotate;
-      VrVector3      translate;
-      float          scale = 1.0f;
-    };
-
-    Pose compose(const Pose& parent, const Pose& child) {
-      Pose result;
-      result.rotate    = parent.rotate * child.rotate;
-      result.translate = parent.translate + (parent.rotate * child.translate) * parent.scale;
-      result.scale     = parent.scale * child.scale;
-      return result;
-    }
-
-    /**
-     * \brief The tracks of a sequence, by the name of the object they move
-     */
-    class SequenceTracks {
-
-    public:
-
-      explicit SequenceTracks(const uint8_t* sequence) {
-        uint32_t count  = readField<uint32_t>(sequence, VrGame::SequenceArraySize);
-        auto interps    = readField<const uint8_t*>(sequence, VrGame::SequenceInterpolators);
-        auto tags       = readField<const uint8_t*>(sequence, VrGame::SequenceIdTags);
-
-        for (uint32_t i = 0; interps && tags && i < count; i++) {
-          auto interpolator = readField<uint8_t*>(interps + i * VrGame::SequenceInterpolatorSize, 0);
-          auto name         = readField<const char*>(tags + i * VrGame::SequenceIdTagSize, 0);
-
-          if (!interpolator || !name)
-            continue;
-
-          auto vtable = readField<const uint8_t*>(interpolator, 0);
-          auto isTransform = reinterpret_cast<IsTransformFn>(readField<uintptr_t>(vtable, VrGame::InterpolatorIsTransformSlot));
-
-          if (isTransform(interpolator, nullptr) & 0xFF)
-            m_tracks.push_back({ name, interpolator });
-        }
-      }
-
-      /**
-       * \brief A node's transform in its parent at a time
-       *
-       * Where the sequence has no track for it, or its track has no
-       * value, the node's current transform is used.
-       *
-       * \param [out] rotated Whether the sequence gave the rotation
-       */
-      Pose local(uint8_t* node, float time, bool* rotated = nullptr) const {
-        Pose pose;
-        pose.rotate    = readRotation(node, VrGame::ObjectLocalRotation);
-        pose.translate = readVector(node, VrGame::NodeLocalTranslate);
-        pose.scale     = readField<float>(node, VrGame::ObjectLocalScale);
-
-        if (rotated)
-          *rotated = false;
-
-        uint8_t* interpolator = find(objectName(node));
-
-        if (!interpolator)
-          return pose;
-
-        QuatTransform value;
-
-        auto vtable = readField<const uint8_t*>(interpolator, 0);
-        auto update = reinterpret_cast<UpdateTransformFn>(readField<uintptr_t>(vtable, VrGame::InterpolatorUpdateTransformSlot));
-
-        if (!(update(interpolator, nullptr, time, node, &value) & 0xFF))
-          return pose;
-
-        if (value.translate[0] != -FLT_MAX)
-          pose.translate = { value.translate[0], value.translate[1], value.translate[2] };
-
-        if (value.rotate[1] != -FLT_MAX) {
-          VrQuaternion q;
-          q.w = value.rotate[0];
-          q.x = value.rotate[1];
-          q.y = value.rotate[2];
-          q.z = value.rotate[3];
-          pose.rotate = vrGameRotationFromQuaternion(vrNormalize(q));
-
-          if (rotated)
-            *rotated = true;
-        }
-
-        if (value.scale != -FLT_MAX)
-          pose.scale = value.scale;
-
-        return pose;
-      }
-
-      /**
-       * \brief A node's transform in one of its ancestors' frame at a time
-       */
-      bool toAncestor(uint8_t* node, const uint8_t* ancestor, float time, Pose& pose) const {
-        pose = Pose();
-
-        for (; node && node != ancestor; node = readField<uint8_t*>(node, VrGame::ObjectParent))
-          pose = compose(local(node, time), pose);
-
-        return node == ancestor;
-      }
-
-    private:
-
-      struct Track {
-        const char* name;
-        uint8_t*    interpolator;
-      };
-
-      std::vector<Track> m_tracks;
-
-      uint8_t* find(const char* name) const {
-        if (!name)
-          return nullptr;
-
-        for (const Track& track : m_tracks) {
-          if (!std::strcmp(track.name, name))
-            return track.interpolator;
-        }
-
-        return nullptr;
-      }
-
-    };
-
-
-    uint8_t* weaponEntry(uint8_t* actor) {
-      uint8_t* process = readField<uint8_t*>(actor, VrGame::ActorProcess);
-
-      if (!process)
-        return nullptr;
-
-      auto vtable = readField<const uint8_t*>(process, 0);
-      auto getWeaponInfo = reinterpret_cast<GetWeaponInfoFn>(readField<uintptr_t>(vtable, VrGame::ProcessWeaponInfoSlot));
-      return getWeaponInfo(process, nullptr);
-    }
-
-
-    /**
      * \brief The first-person reload sequence the game would play
      */
     const uint8_t* findReloadSequence(uint8_t* player) {
-      uint8_t* entry = weaponEntry(player);
+      uint8_t* entry = vrActorWeaponEntry(player);
       auto weapon    = entry ? readField<const uint8_t*>(entry, VrGame::InventoryEntryForm) : nullptr;
-      auto animation = readField<uint8_t*>(player, VrGame::PlayerFirstPersonAnimData);
 
-      if (!weapon || !animation)
+      if (!weapon)
         return nullptr;
 
       uint32_t extended = reinterpret_cast<HasModEffectFn>(VrGame::ItemHasModEffect)(
         entry, nullptr, VrGame::ModEffectClipSize) & 0xFF;
       uint32_t reload = reinterpret_cast<GetReloadAnimFn>(VrGame::WeaponGetReloadAnim)(
         weapon, nullptr, extended) & 0xFF;
-      uint32_t group = reinterpret_cast<GetAnimGroupFn>(VrGame::ActorGetAnimGroup)(
-        player, nullptr, reload, nullptr, 0, animation) & 0xFFFF;
-
-      // The AnimData has no such group: the game would not play one either
-      if ((group & 0xFF) != reload)
-        return nullptr;
-
-      auto map = readField<uint8_t*>(animation, VrGame::AnimDataSequences);
-      uint8_t* base = nullptr;
-
-      if (!map || !(reinterpret_cast<MapGetAtFn>(VrGame::AnimSequenceMapGetAt)(map, nullptr, group, &base) & 0xFF) || !base)
-        return nullptr;
-
-      auto vtable = readField<const uint8_t*>(base, 0);
-      auto getSequence = reinterpret_cast<GetSequenceFn>(readField<uintptr_t>(vtable, VrGame::AnimSequenceToPlaySlot));
-      return getSequence(base, nullptr, 0);
+      return vrFindPlayerSequence(player, reload);
     }
 
 
@@ -298,38 +108,13 @@ namespace dxvk {
 
 
     /**
-     * \brief The bones below the left hand the sequence rotates, at a time
-     */
-    std::vector<VrBonePose> readFingers(const SequenceTracks& tracks, uint8_t* leftHand, float time) {
-      std::vector<VrBonePose> fingers;
-
-      vrVisitGameObjects(reinterpret_cast<uintptr_t>(leftHand), MaxHandDepth,
-        [&tracks, &fingers, leftHand, time] (uintptr_t object, uint32_t) {
-          auto bone = reinterpret_cast<uint8_t*>(object);
-          auto name = objectName(bone);
-          bool rotated = false;
-
-          if (bone == leftHand || !name)
-            return;
-
-          Pose pose = tracks.local(bone, time, &rotated);
-
-          if (rotated)
-            fingers.push_back({ name, pose.rotate });
-        });
-
-      return fingers;
-    }
-
-
-    /**
      * \brief Reads how the sequence pulls the rack part back
      *
      * \param [out] from When it starts moving
      * \param [out] to When it is home again
      */
     bool readRack(
-      const SequenceTracks&       tracks,
+      const VrSequenceTracks&       tracks,
             uint8_t*              root,
             uint8_t*              weapon,
             uint8_t*              rack,
@@ -340,11 +125,11 @@ namespace dxvk {
             float&                from,
             float&                to) {
       std::vector<VrMagazineSample> samples;
-      std::vector<Pose> poses;
+      std::vector<VrSequencePose> poses;
 
       for (uint32_t i = 0; begin + float(i) / SamplesPerSecond <= end; i++) {
         float t = begin + float(i) / SamplesPerSecond;
-        Pose pose;
+        VrSequencePose pose;
 
         if (!tracks.toAncestor(rack, weapon, t, pose))
           return false;
@@ -381,7 +166,7 @@ namespace dxvk {
       from = samples[motion.start].time;
       to   = samples[motion.home].time;
 
-      Pose hand, part;
+      VrSequencePose hand, part;
       animation.held = false;
 
       if (tracks.toAncestor(leftHand, root, time, hand) && tracks.toAncestor(rack, root, time, part)
@@ -393,7 +178,7 @@ namespace dxvk {
         animation.held                 = distance <= RackHeldReach;
         animation.partInHand.rotate    = toHand * part.rotate;
         animation.partInHand.translate = (toHand * (part.translate - hand.translate)) * (1.0f / hand.scale);
-        animation.fingers              = animation.held ? readFingers(tracks, leftHand, time) : std::vector<VrBonePose>();
+        animation.fingers              = animation.held ? vrReadSequenceFingers(tracks, leftHand, time) : std::vector<VrBonePose>();
 
         Logger::info(str::format("VR: Reload animation racks '", partName(rack), "' ", motion.travel * 100.0f,
           " cm back along ", motion.axis.x, ", ", motion.axis.y, ", ", motion.axis.z, " in the weapon, from ",
@@ -409,15 +194,15 @@ namespace dxvk {
      * \brief A node's transform in one of its ancestors' frame, as the
      *    model has it now
      */
-    bool restToAncestor(uint8_t* node, const uint8_t* ancestor, Pose& pose) {
-      pose = Pose();
+    bool restToAncestor(uint8_t* node, const uint8_t* ancestor, VrSequencePose& pose) {
+      pose = VrSequencePose();
 
       for (; node && node != ancestor; node = readField<uint8_t*>(node, VrGame::ObjectParent)) {
-        Pose local;
+        VrSequencePose local;
         local.rotate    = readRotation(node, VrGame::ObjectLocalRotation);
         local.translate = readVector(node, VrGame::NodeLocalTranslate);
         local.scale     = readField<float>(node, VrGame::ObjectLocalScale);
-        pose = compose(local, pose);
+        pose = vrComposeSequencePose(local, pose);
       }
 
       return node == ancestor;
@@ -440,7 +225,7 @@ namespace dxvk {
      *    stays open
      */
     bool readHinge(
-      const SequenceTracks&       tracks,
+      const VrSequenceTracks&       tracks,
             uint8_t*              weapon,
             uint8_t*              hinge,
             float                 begin,
@@ -451,17 +236,17 @@ namespace dxvk {
             float&                widest,
             float&                from,
             float&                to) {
-      Pose closed;
+      VrSequencePose closed;
 
       if (closedAtStart ? !tracks.toAncestor(hinge, weapon, begin, closed) : !restToAncestor(hinge, weapon, closed))
         return false;
 
       std::vector<float> times;
-      std::vector<Pose> poses;
+      std::vector<VrSequencePose> poses;
 
       for (uint32_t i = 0; begin + float(i) / SamplesPerSecond <= end; i++) {
         float t = begin + float(i) / SamplesPerSecond;
-        Pose pose;
+        VrSequencePose pose;
 
         if (!tracks.toAncestor(hinge, weapon, t, pose))
           return false;
@@ -473,7 +258,7 @@ namespace dxvk {
       std::vector<float> angles;
       widest = 0.0f;
 
-      for (const Pose& pose : poses) {
+      for (const VrSequencePose& pose : poses) {
         angles.push_back(vrRotationAngle(closed.rotate, pose.rotate));
         widest = std::max(widest, angles.back());
       }
@@ -527,7 +312,7 @@ namespace dxvk {
      * turns furthest.
      */
     bool readSwing(
-      const SequenceTracks&       tracks,
+      const VrSequenceTracks&       tracks,
             uint8_t*              weapon,
             uint8_t*              round,
             float                 begin,
@@ -635,7 +420,7 @@ namespace dxvk {
       int32_t in  = vrFindNearestSound(times.data(), times.size(), timing.in,  SoundWindow, out);
 
       auto toSound = [&entries] (int32_t index) {
-        VrReloadSound sound;
+        VrAnimationSound sound;
 
         if (index >= 0) {
           sound.sound  = readField<const uint8_t*>(entries[index], VrGame::AnimGroupSoundForm);
@@ -745,16 +530,16 @@ namespace dxvk {
     float begin = readField<float>(sequence, VrGame::SequenceBeginKeyTime);
     float end   = readField<float>(sequence, VrGame::SequenceEndKeyTime);
 
-    SequenceTracks tracks(sequence);
+    VrSequenceTracks tracks(sequence);
 
     // The magazine in the weapon's frame through the animation, from where
     // it is at the start
     std::vector<VrMagazineSample> samples;
-    std::vector<Pose> poses;
+    std::vector<VrSequencePose> poses;
 
     for (uint32_t i = 0; begin + float(i) / SamplesPerSecond <= end; i++) {
       float time = begin + float(i) / SamplesPerSecond;
-      Pose pose;
+      VrSequencePose pose;
 
       if (!tracks.toAncestor(magazine, weapon, time, pose))
         return false;
@@ -792,7 +577,7 @@ namespace dxvk {
     std::vector<float> inHandTimes;
 
     for (const VrMagazineSample& sample : samples) {
-      Pose hand, held;
+      VrSequencePose hand, held;
 
       if (sample.time < timing.out || sample.time >= timing.in
        || !tracks.toAncestor(leftHand, root, sample.time, hand)
@@ -825,7 +610,7 @@ namespace dxvk {
       timing.grip = inHandTimes[carried];
 
     // The magazine in the left hand's frame while the hand holds it
-    Pose hand, held;
+    VrSequencePose hand, held;
 
     if (!tracks.toAncestor(leftHand, root, timing.grip, hand)
      || !tracks.toAncestor(magazine, root, timing.grip, held)
@@ -840,7 +625,7 @@ namespace dxvk {
     animation.axis = timing.axis;
 
     // The fingers the animation moves
-    animation.fingers = readFingers(tracks, leftHand, timing.grip);
+    animation.fingers = vrReadSequenceFingers(tracks, leftHand, timing.grip);
 
     float rackFrom = 0.0f;
     float rackTo   = 0.0f;
@@ -905,24 +690,18 @@ namespace dxvk {
 
 
   void vrPlayReloadSound(
-    const VrReloadSound&        sound,
+    const VrAnimationSound&     sound,
     const VrVector3&            position) {
     auto player = *reinterpret_cast<uint8_t* const*>(VrGame::Player);
 
-    if (!sound.sound || !player)
+    if (!player)
       return;
-
-    uint32_t soundFlags = readField<uint32_t>(sound.sound, VrGame::SoundFormFlags);
-
-    uint32_t flags = ((soundFlags & VrGame::SoundForm2D) ? VrGame::SoundFlag2D : VrGame::SoundFlag3D)
-      | VrGame::SoundFlagOneShot | VrGame::SoundFlagFirstPerson
-      | VrGame::SoundFlagIgnoreTimescale | VrGame::SoundFlagAnimationDriven;
 
     // As fast as the reload animation would play
     auto animation = readField<const uint8_t*>(player, VrGame::PlayerFirstPersonAnimData);
     float speed = animation ? readField<float>(animation, VrGame::AnimDataReloadSpeed) : 1.0f;
 
-    vrPlayGameSound(sound.sound, flags, position, sound.volume, sound.pitch * speed);
+    vrPlayFirstPersonSound(sound, position, speed);
   }
 
 }

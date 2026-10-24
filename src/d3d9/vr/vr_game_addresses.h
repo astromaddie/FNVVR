@@ -185,6 +185,59 @@ namespace dxvk {
     constexpr uintptr_t ApplyAutoAim    = 0x00965620;
 
     /**
+     * Thrown weapons, see findings/throw.md (GOG database).
+     * TESObjectWEAP::Fire(actor) is __thiscall with one stack argument; for
+     * a weapon of type 10 to 13 it launches from the hand's weapon node,
+     * spends one of the weapons and culls the node's model (child 0), or
+     * unequips the weapon when it was the last. Projectile::AddInitialVelocity
+     * calls Projectile::GetSpeed (__thiscall, returns a float) at the site
+     * below to push a Havok projectile (grenades) along its Y axis;
+     * missiles read GetSpeed again as they move. GetSpeed is
+     * (fArrowWeakSpeed * (1 - power) + speed * power) * the speed multiplier
+     * at +0xD0. Projectile::Launch gives the player's thrown and placed weapons
+     * (TESObjectWEAP::IsThrownWeapon: ranged but not a gun) the power
+     * min(1, fArrowBowTimerBase + mult * the player's release timer at
+     * +0x730), which the game sets to 10 for V.A.T.S. throws. The weapon's
+     * attack animation (TESObjectWEAP::GetAttackAnim 0x0051F5F0) is a byte
+     * at +0x11D.
+     */
+    constexpr uintptr_t WeaponFire                 = 0x00523150;
+    constexpr uint8_t   WeaponFirePrologue[]       = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x3C, 0x4E, 0xEF, 0x00,
+                                                       0x64, 0xA1, 0x00, 0x00, 0x00, 0x00 };
+    constexpr uintptr_t ProjectileSpeedCallSite    = 0x009BEBD9;
+    constexpr uintptr_t ProjectileGetSpeed         = 0x009669C0;
+    constexpr uintptr_t ProjectileSpeedMult        = 0xD0;
+    constexpr uintptr_t PlayerProjectileReleaseTimer = 0x730;
+    constexpr float     ThrowReleaseTimerFull      = 10.0f;
+    constexpr uintptr_t WeaponAttackAnimation      = 0x11D;
+
+    /**
+     * Where a throw by hand is fired, see findings/throw.md §4 (GOG
+     * database). PlayerCharacter::Update (0x0093E860) calls
+     * Actor::HandlePostAnimationActions (__thiscall, no argument), which
+     * fires the player's weapon when its animation releases it, at the
+     * site below: on the main thread, before the AI threads that step
+     * Havok run alongside the rendering.
+     */
+    constexpr uintptr_t PlayerPostAnimationCallSite = 0x0094380E;
+    constexpr uintptr_t HandlePostAnimationActions  = 0x008BA600;
+
+    /**
+     * TESForm::GetFormByNumericID (cdecl, the form id, returns the form or
+     * null), checked by its prologue. A form's id is at +0x0C. A
+     * projectile's impacts are a BSSimpleList at +0x88 (item, next) of
+     * Projectile::ImpactData whose first field is the reference hit, with
+     * bHasImpacted at +0x90; the player's reference id is 0x14.
+     */
+    constexpr uintptr_t FormById              = 0x004839C0;
+    constexpr uint8_t   FormByIdPrologue[]    = { 0x55, 0x8B, 0xEC, 0x51, 0xC7, 0x45, 0xFC, 0x00, 0x00, 0x00, 0x00,
+                                                  0x83, 0x3D, 0xC0, 0x54, 0x1C };
+    constexpr uintptr_t FormId                = 0x0C;
+    constexpr uintptr_t ProjectileImpacts     = 0x88;
+    constexpr uintptr_t ProjectileHasImpacted = 0x90;
+    constexpr uint32_t  PlayerRefId           = 0x14;
+
+    /**
      * FlameProjectile vtable entries (table 0x0108F2F4), both __thiscall:
      * Process3D (no argument) stores the flame's rotation relative to the
      * shooter's projectile node in Projectile::kFollowOffset (+0x94), and
@@ -1789,7 +1842,9 @@ namespace dxvk {
      * animation are paused while a menu is open
      * (InterfaceManager::PreIdleStuff calls BSAudio::PauseAnimationSounds,
      * 0x0070BBA0); the interface's own sounds are 2D, system and one shot
-     * only (InterfaceManager::PlayMenuSound, 0x00717280).
+     * only (InterfaceManager::PlayMenuSound, 0x00717280). A looping sound
+     * plays until BSSoundHandle::Stop (__thiscall, no argument, GOG
+     * database) is called on a handle holding its ID.
      */
     constexpr uintptr_t AudioSingleton             = 0x011F6D98;
     constexpr uintptr_t AudioGetSoundByFilename    = 0x00AD7480;
@@ -1799,6 +1854,7 @@ namespace dxvk {
     constexpr uintptr_t SoundHandleSetVolume       = 0x00AD89E0;
     constexpr uintptr_t SoundHandleSetFrequency    = 0x00AD8A90;
     constexpr uintptr_t SoundHandlePlay            = 0x00AD8830;
+    constexpr uintptr_t SoundHandleStop            = 0x00AD88F0;
     constexpr uintptr_t SoundFormFlags             = 0x48;
     constexpr uint32_t  SoundForm2D                = 0x40;
     constexpr uint32_t  SoundFlag2D                = 0x1;

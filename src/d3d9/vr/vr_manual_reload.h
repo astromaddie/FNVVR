@@ -372,13 +372,13 @@ namespace dxvk {
 
     void watchClip(int32_t clip);
 
-    void ejectMagazine(uint8_t* player, const uint8_t* weapon, const VrReloadSound* sound,
+    void ejectMagazine(uint8_t* player, const uint8_t* weapon, const VrAnimationSound* sound,
       const VrVector3& well, bool chamber);
 
-    void insertMagazine(uint8_t* player, uint8_t* weapon, const VrReloadSound* sound,
+    void insertMagazine(uint8_t* player, uint8_t* weapon, const VrAnimationSound* sound,
       const VrVector3& well, bool chambered);
 
-    void rackWeapon(uint8_t* player, uint8_t* weapon, const VrReloadSound* sound, const VrVector3& rack);
+    void rackWeapon(uint8_t* player, uint8_t* weapon, const VrAnimationSound* sound, const VrVector3& rack);
 
     VrRoundEvent updateRounds(const VrManualReloadInput& input, uint8_t* player, uint8_t* weapon,
       bool active, bool closed);
@@ -387,9 +387,9 @@ namespace dxvk {
 
     void playLoopSounds(const VrRoundLoop& loop, const VrVector3& port) const;
 
-    void cycleAction(uint8_t* player, uint8_t* weapon, const VrReloadSound* sound, const VrVector3& rack);
+    void cycleAction(uint8_t* player, uint8_t* weapon, const VrAnimationSound* sound, const VrVector3& rack);
 
-    void openAction(uint8_t* player, const uint8_t* weapon, const VrReloadSound* sound, const VrVector3& breech,
+    void openAction(uint8_t* player, const uint8_t* weapon, const VrAnimationSound* sound, const VrVector3& breech,
       bool cylinder);
 
     bool fillClip(uint8_t* player, uint8_t* weapon);

@@ -24,6 +24,7 @@ namespace dxvk {
     using SetPositionFn  = uint32_t (__fastcall*)(void* handle, void* unused, float x, float y, float z);
     using SetFloatFn     = uint32_t (__fastcall*)(void* handle, void* unused, float value);
     using PlayFn         = uint32_t (__fastcall*)(void* handle, void* unused, uint32_t loop);
+    using StopFn         = uint32_t (__fastcall*)(void* handle, void* unused);
 
     /// BSSoundHandle: the sound's ID, -1 without one, and its state
     struct SoundHandle {
@@ -53,7 +54,7 @@ namespace dxvk {
   }
 
 
-  void vrPlayGameSound(
+  int32_t vrPlayGameSound(
     const uint8_t*              sound,
           uint32_t              flags,
     const VrVector3&            position,
@@ -62,7 +63,7 @@ namespace dxvk {
     auto audio = *reinterpret_cast<void* const*>(VrGame::AudioSingleton);
 
     if (!sound || !audio)
-      return;
+      return -1;
 
     uint32_t soundFlags;
     std::memcpy(&soundFlags, sound + VrGame::SoundFormFlags, sizeof(soundFlags));
@@ -76,6 +77,45 @@ namespace dxvk {
     reinterpret_cast<SetFloatFn>(VrGame::SoundHandleSetVolume)(&handle, nullptr, volume);
     reinterpret_cast<SetFloatFn>(VrGame::SoundHandleSetFrequency)(&handle, nullptr, frequency);
     reinterpret_cast<PlayFn>(VrGame::SoundHandlePlay)(&handle, nullptr, loop != 0);
+    return handle.id;
+  }
+
+
+  bool vrGameSoundLoops(const uint8_t* sound) {
+    if (!sound)
+      return false;
+
+    uint32_t soundFlags;
+    std::memcpy(&soundFlags, sound + VrGame::SoundFormFlags, sizeof(soundFlags));
+    return reinterpret_cast<ConvertLoopFlagFn>(VrGame::SoundConvertLoopFlag)(soundFlags) != 0;
+  }
+
+
+  int32_t vrPlayFirstPersonSound(
+    const VrAnimationSound&     sound,
+    const VrVector3&            position,
+          float                 speed) {
+    if (!sound.sound)
+      return -1;
+
+    uint32_t soundFlags;
+    std::memcpy(&soundFlags, sound.sound + VrGame::SoundFormFlags, sizeof(soundFlags));
+
+    uint32_t flags = ((soundFlags & VrGame::SoundForm2D) ? VrGame::SoundFlag2D : VrGame::SoundFlag3D)
+      | VrGame::SoundFlagOneShot | VrGame::SoundFlagFirstPerson
+      | VrGame::SoundFlagIgnoreTimescale | VrGame::SoundFlagAnimationDriven;
+
+    return vrPlayGameSound(sound.sound, flags, position, sound.volume, sound.pitch * speed);
+  }
+
+
+  void vrStopGameSound(int32_t id) {
+    if (id == -1)
+      return;
+
+    SoundHandle handle;
+    handle.id = id;
+    reinterpret_cast<StopFn>(VrGame::SoundHandleStop)(&handle, nullptr);
   }
 
 }

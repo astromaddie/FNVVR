@@ -42,3 +42,11 @@ TEST_CASE(hit_key_is_found_without_case) {
   CHECK(!vrIsHitKey("Sound: Hit"));
   CHECK(!vrIsHitKey(nullptr));
 }
+
+TEST_CASE(release_key_is_found_without_case) {
+  CHECK(vrIsReleaseKey("Release"));
+  CHECK(vrIsReleaseKey("release\r"));
+  CHECK(!vrIsReleaseKey("Released"));
+  CHECK(!vrIsReleaseKey("Hit"));
+  CHECK(!vrIsReleaseKey(nullptr));
+}
