@@ -189,7 +189,8 @@ namespace dxvk {
      *    of a particle system give, 0 without such a track
      *
      * Its float tracks on the particle system, the emitter's birth rate,
-     * sampled from \p begin to \p end. Each is logged.
+     * sampled from \p begin to \p end. Each is logged, and the other
+     * tracks on the system by their controller type.
      */
     float readParticleRate(const uint8_t* sequence, uint8_t* system, float begin, float end) {
       uint32_t count = readField<uint32_t>(sequence, VrGame::SequenceArraySize);
@@ -198,6 +199,7 @@ namespace dxvk {
       const char* name = objectName(system);
 
       float rate = 0.0f;
+      std::string others;
 
       for (uint32_t i = 0; interps && tags && i < count; i++) {
         auto interpolator = readField<uint8_t*>(interps + i * VrGame::SequenceInterpolatorSize, 0);
@@ -211,8 +213,10 @@ namespace dxvk {
         auto isFloat   = reinterpret_cast<IsFloatFn>(readField<uintptr_t>(vtable, VrGame::InterpolatorIsFloatSlot));
         auto readFloat = reinterpret_cast<UpdateFloatFn>(readField<uintptr_t>(vtable, VrGame::InterpolatorUpdateFloatSlot));
 
-        if (!(isFloat(interpolator, nullptr) & 0xFF))
+        if (!(isFloat(interpolator, nullptr) & 0xFF)) {
+          others += str::format(others.empty() ? "" : ", ", controller ? controller : "?");
           continue;
+        }
 
         float highest = 0.0f;
         float first   = -1.0f;
@@ -234,6 +238,9 @@ namespace dxvk {
           "): up to ", highest, " per second", first >= 0.0f ? str::format(" from ", first, " s") : std::string()));
         rate = std::max(rate, highest);
       }
+
+      if (!others.empty())
+        Logger::info(str::format("VR: Throw animation tracks of '", name, "' besides its rate: ", others));
 
       return rate;
     }

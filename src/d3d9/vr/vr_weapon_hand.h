@@ -1075,9 +1075,26 @@ namespace dxvk {
      * in the hand is armed by its fuse.
      *
      * \param [in] sparks The particle system, or \c nullptr
+     * \param [in] model The weapon's model the system is in
      * \param [in] updateData The game's NiUpdateData of the model
      */
-    void emitSparks(uint8_t* sparks, const void* updateData);
+    void emitSparks(uint8_t* sparks, uint8_t* model, const void* updateData);
+
+    /**
+     * \brief Culls again the parts of the particle system shown for the
+     *    sparks
+     *
+     * \param [in] sparks The particle system in the hand this frame, or
+     *    \c nullptr: the parts are only touched if it is the one they
+     *    belong to, which is then still alive
+     */
+    void hideSparks(uint8_t* sparks);
+
+    /**
+     * \brief Logs what became of the sparks once, after they have burnt
+     *    for a while
+     */
+    void logSparks(uint8_t* sparks, uint8_t* controller, float time);
 
     void placeLighter(
             uint8_t*              lighter,

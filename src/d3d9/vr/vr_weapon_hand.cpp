@@ -2633,6 +2633,8 @@ namespace dxvk {
       m_loggedLighter = false;
       m_sparking      = false;
       m_loggedSparks  = false;
+      m_loggedSparkState = false;
+      hideSparks(nullptr);
     }
 
     m_hasThrown = true;
@@ -2772,8 +2774,10 @@ namespace dxvk {
     if (pin && m_hasOtherHand)
       placeThrownPin(pin, hand, vrComputeHeldTransform(controller, VrGameTransform()), updateData);
 
-    if (!lighter)
+    if (!lighter) {
+      hideSparks(nullptr);
       return;
+    }
 
     if (fuseRadius > 0.0f) {
       m_thrown.hasFuse    = true;
@@ -2783,11 +2787,11 @@ namespace dxvk {
     if (m_hasOtherHand)
       placeLighter(lighter, flame, otherHand, controller, shift, updateData);
 
-    emitSparks(sparks, updateData);
+    emitSparks(sparks, model, updateData);
   }
 
 
-  void VrWeaponHand::emitSparks(uint8_t* sparks, const void* updateData) {
+  void VrWeaponHand::emitSparks(uint8_t* sparks, uint8_t* model, const void* updateData) {
     // The fuse burns from when it is lit until the weapon leaves the hand
     uint8_t* controller = m_canEmitSparks && sparks && m_throwArm.armed && m_thrown.shown
       ? emitterController(sparks) : nullptr;
@@ -2796,8 +2800,31 @@ namespace dxvk {
     if (!controller || time < m_sparkLast)
       m_sparking = false;
 
-    if (!controller)
+    if (!controller) {
+      hideSparks(sparks);
       return;
+    }
+
+    // The model may cull the particle system until an animation shows it
+    if (m_sparkShownSystem != sparks) {
+      hideSparks(nullptr);
+      m_sparkShownSystem = sparks;
+
+      for (uint8_t* part = sparks; part && part != model && m_sparkShownCount < m_sparkShown.size();
+           part = field<uint8_t*>(part, VrGame::ObjectParent)) {
+        uint32_t& flags = field<uint32_t>(part, VrGame::ObjectFlags);
+
+        if (flags & VrGame::ObjectFlagAppCulled) {
+          flags &= ~VrGame::ObjectFlagAppCulled;
+          m_sparkShown[m_sparkShownCount++] = part;
+        }
+      }
+
+      if (m_sparkShownCount) {
+        Logger::info(str::format("VR: The model culls ", m_sparkShownCount, " part(s) of the particle system '",
+          field<const char*>(sparks, VrGame::ObjectName), "', shown while the fuse sparks"));
+      }
+    }
 
     float rate = m_hasThrowAnimation && m_throwAnimation.sparkRate > 0.0f
       ? m_throwAnimation.sparkRate : DefaultSparkRate;
@@ -2806,6 +2833,7 @@ namespace dxvk {
       m_sparking   = true;
       m_sparkStart = time;
       m_sparkLast  = time;
+      m_sparkBegin = time;
 
       if (!m_loggedSparks) {
         Logger::info(str::format("VR: The lit fuse gives sparks from '", field<const char*>(sparks, VrGame::ObjectName),
@@ -2822,6 +2850,75 @@ namespace dxvk {
     reinterpret_cast<EmitParticlesFn>(VrGame::PSysEmitterCtlrEmit)(controller, nullptr,
       time, time, m_sparkLast, m_sparkStart, FLT_MAX, rate);
     m_sparkLast = time;
+
+    logSparks(sparks, controller, time);
+  }
+
+
+  void VrWeaponHand::hideSparks(uint8_t* sparks) {
+    // Culled again only while they are still above the system in the
+    // hand: another model's parts may have been freed
+    if (sparks && sparks == m_sparkShownSystem) {
+      for (uint8_t* part = sparks; part; part = field<uint8_t*>(part, VrGame::ObjectParent)) {
+        if (std::find(m_sparkShown.begin(), m_sparkShown.begin() + m_sparkShownCount, part) != m_sparkShown.begin() + m_sparkShownCount)
+          field<uint32_t>(part, VrGame::ObjectFlags) |= VrGame::ObjectFlagAppCulled;
+      }
+    }
+
+    m_sparkShownCount  = 0;
+    m_sparkShownSystem = nullptr;
+  }
+
+
+  void VrWeaponHand::logSparks(uint8_t* sparks, uint8_t* controller, float time) {
+    // Long enough for the first particles to be updated and drawn
+    constexpr float SparkLogDelay = 0.5f;
+
+    if (m_loggedSparkState || time - m_sparkBegin < SparkLogDelay)
+      return;
+
+    m_loggedSparkState = true;
+
+    auto data = field<uint8_t*>(sparks, VrGame::GeometryModelData);
+    float last = field<float>(sparks, VrGame::PSysLastUpdateTime);
+    auto emitter = field<uint8_t*>(controller, VrGame::PSysEmitterCtlrEmitter);
+
+    std::string culled;
+
+    for (uint8_t* part = sparks; part; part = field<uint8_t*>(part, VrGame::ObjectParent)) {
+      if (field<uint32_t>(part, VrGame::ObjectFlags) & VrGame::ObjectFlagAppCulled) {
+        auto name = field<const char*>(part, VrGame::ObjectName);
+        culled += str::format(culled.empty() ? "" : ", ", "'", name ? name : "", "'");
+      }
+    }
+
+    // The controller that updates the system, among its controllers
+    constexpr uint32_t MaxControllers = 16;
+    std::string update = "none";
+    auto other = field<uint8_t*>(sparks, VrGame::ObjectControllers);
+
+    for (uint32_t i = 0; other && i < MaxControllers; i++) {
+      if (field<uintptr_t>(other, 0) == VrGame::PSysUpdateCtlrVtable) {
+        uint16_t flags = field<uint16_t>(other, VrGame::ControllerFlags);
+        update = str::format("flags ", flags, (flags & VrGame::ControllerActive) ? " (active)" : " (inactive)");
+        break;
+      }
+
+      other = field<uint8_t*>(other, VrGame::ControllerNext);
+    }
+
+    auto bound = readField<const uint8_t*>(sparks, VrGame::ObjectWorldBound);
+
+    Logger::info(str::format("VR: The fuse sparks after ", time - m_sparkBegin, " s: ",
+      data ? str::format(field<uint16_t>(data, VrGame::PSysDataActiveParticles), " particle(s) active, ",
+        field<uint16_t>(data, VrGame::PSysDataAddedParticles), " added, ",
+        field<uint16_t>(data, VrGame::PSysDataMaxParticles), " at most, data bound radius ",
+        field<float>(data, VrGame::PSysDataBoundRadius)) : std::string("no particle data"),
+      ", drawn bound radius ", bound ? readField<float>(bound, sizeof(VrVector3)) : 0.0f,
+      ", system updated ", last == -FLT_MAX ? std::string("never") : str::format(time - last, " s ago"),
+      ", update controller ", update,
+      ", particle lifespan ", emitter ? field<float>(emitter, VrGame::PSysEmitterLifeSpan) : 0.0f, " s",
+      ", culled: ", culled.empty() ? std::string("none") : culled));
   }
 
 

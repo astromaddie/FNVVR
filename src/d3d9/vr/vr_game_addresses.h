@@ -1844,6 +1844,30 @@ namespace dxvk {
     constexpr uint8_t   PSysEmitterCtlrEmitPrologue[] = { 0x51, 0xD9, 0xEE, 0x8B, 0xD1, 0xD9, 0x44, 0x24, 0x1C, 0x89, 0x14, 0x24 };
 
     /**
+     * What becomes of the particles given (GOG database, read by the fuse
+     * sparks' diagnostic). NiPSysData::AddParticle (0x00C24EA0) only counts
+     * a particle as added; NiParticleSystem::Do_UpdateSystem (0x00C1B260),
+     * run by the system's NiPSysUpdateCtlr (vtable below, Update
+     * 0x00C271C0) while that controller is active (flags bit 0x8,
+     * NiTimeController::DontDoUpdate), makes the added ones active, runs
+     * the modifiers and stores its time. NiGeometry +0xB8 model data;
+     * NiPSysData +0x08 particles at most (u16), +0x10 bound (radius at
+     * +0x1C), +0x50 active (u16), +0x78 added (u16); NiParticleSystem
+     * +0xD4 last update time (-FLT_MAX before the first); the controller's
+     * flags are ControllerFlags (ControllerActive); NiPSysEmitter +0x48
+     * particle lifespan.
+     */
+    constexpr uintptr_t GeometryModelData           = 0xB8;
+    constexpr uintptr_t PSysDataMaxParticles        = 0x08;
+    constexpr uintptr_t PSysDataBoundRadius         = 0x1C;
+    constexpr uintptr_t PSysDataActiveParticles     = 0x50;
+    constexpr uintptr_t PSysDataAddedParticles      = 0x78;
+    constexpr uintptr_t PSysLastUpdateTime          = 0xD4;
+    constexpr uintptr_t PSysUpdateCtlrVtable        = 0x010BE6B4;
+    constexpr uintptr_t PSysEmitterCtlrEmitter      = 0x3C;
+    constexpr uintptr_t PSysEmitterLifeSpan         = 0x48;
+
+    /**
      * TESAnimGroup: the sounds of the animation's "Sound:" text keys,
      * read when it is loaded (GetSound 0x005F3710): their count and an
      * array of AnimGroupSound (0x10 bytes: the time, the volume as a byte
