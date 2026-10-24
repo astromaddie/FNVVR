@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #include "vr_game_space.h"
 
 namespace dxvk {
@@ -187,6 +189,132 @@ namespace dxvk {
   };
 
   /**
+   * \brief Waits for the game to settle the right hand on a weapon just
+   *    drawn
+   *
+   * The model is moved so that the weapon node lands on the controller.
+   * While the game blends the arms into the idle of a weapon just drawn,
+   * the right hand bone can be far from the weapon node (heavy weapons),
+   * so it shows far from the controller. The hand's offset from the weapon
+   * node is taken as settled once it has stayed within \ref Tolerance for
+   * \ref SettleTime within \ref SettleReach of the node, or after
+   * \ref MaxWait if the game keeps it moving or far. The game can hold the
+   * hand still far from the node before it blends it in (1.65 m with the
+   * minigun and the grenade machine gun, findings/weapon.md §7.1).
+   */
+  class VrDrawSettle {
+
+  public:
+
+    /// How long the offset must stay steady, in seconds
+    constexpr static float SettleTime = 0.15f;
+
+    /// How far the offset may move while steady, in metres
+    constexpr static float Tolerance = 0.01f;
+
+    /// Longest wait before the offset is taken anyway, in seconds
+    constexpr static float MaxWait = 1.5f;
+
+    /// Farthest from the weapon node a steady hand is taken as settled,
+    /// in metres: the idle poses of the weapons seen so far keep it within
+    /// 21 cm
+    constexpr static float SettleReach = 0.5f;
+
+    /// How often the distance is kept for the log, in seconds
+    constexpr static float TraceStep = 0.05f;
+
+    /// Distances kept for the log, enough for \ref MaxWait
+    constexpr static uint32_t TraceSize = 32;
+
+    /// Within this distance of the weapon node, in metres, the hand shows
+    /// close enough to its controller while it settles
+    constexpr static float NearHand = 0.1f;
+
+    /**
+     * \brief Waits again, for a weapon that was just drawn
+     */
+    void reset();
+
+    /**
+     * \brief Follows the right hand in a frame
+     *
+     * \param [in] offset Right hand bone relative to the weapon node, in
+     *    the weapon node's frame, in metres
+     * \param [in] dt Time since the previous frame, in seconds
+     * \returns \c true in the frame the offset settles
+     */
+    bool update(const VrVector3& offset, float dt);
+
+    /**
+     * \brief Whether the hand would show away from its controller: not
+     *    settled yet, and farther than \ref NearHand from the weapon node
+     */
+    bool away() const {
+      return !m_settled && m_distance > NearHand;
+    }
+
+    bool settled() const {
+      return m_settled;
+    }
+
+    /**
+     * \brief Time the hand showed away from its controller, in seconds
+     */
+    float awayTime() const {
+      return m_awayTime;
+    }
+
+    /**
+     * \brief Farthest the hand was from the weapon node, in metres
+     */
+    float farthest() const {
+      return m_farthest;
+    }
+
+    /**
+     * \brief Distance from the weapon node in the last frame, in metres
+     */
+    float distance() const {
+      return m_distance;
+    }
+
+    /**
+     * \brief Whether the longest wait ran out before the hand settled
+     */
+    bool timedOut() const {
+      return m_timedOut;
+    }
+
+    /**
+     * \brief Distances from the weapon node every \ref TraceStep since the
+     *    draw, in metres
+     */
+    const float* trace() const {
+      return m_trace.data();
+    }
+
+    uint32_t traceCount() const {
+      return m_traceCount;
+    }
+
+  private:
+
+    VrVector3 m_start;
+    bool      m_hasStart   = false;
+    bool      m_settled    = false;
+    float     m_steadyTime = 0.0f;
+    float     m_waited     = 0.0f;
+    float     m_distance   = 0.0f;
+    float     m_farthest   = 0.0f;
+    float     m_awayTime   = 0.0f;
+    bool      m_timedOut   = false;
+
+    std::array<float, TraceSize> m_trace = { };
+    uint32_t  m_traceCount = 0;
+
+  };
+
+  /**
    * \brief Turns the hand holding the weapon towards the supporting hand
    *
    * With both hands on the weapon, the line between the hands decides
@@ -205,6 +333,31 @@ namespace dxvk {
     const VrGameCameraPose& hand,
     const VrVector3&        support,
     const VrVector3&        target);
+
+  /**
+   * \brief Smallest rotation that turns one direction onto another
+   *
+   * \param [in] from Direction to turn, need not be unit length
+   * \param [in] to Direction it ends along, need not be unit length
+   * \returns The rotation; half a turn about an axis perpendicular to
+   *    \p from if the two are opposite, no rotation if either is zero
+   */
+  VrGameRotation vrComputeRotationBetween(const VrVector3& from, const VrVector3& to);
+
+  /**
+   * \brief Turns a transform about a point, by the smallest rotation
+   *    that turns one direction onto another
+   *
+   * \param [in] t Transform to turn
+   * \param [in] pivot Point that stays in place, in the frame of \p t
+   * \param [in] from Direction to turn, in the frame of \p t
+   * \param [in] to Direction it ends along
+   */
+  VrGameTransform vrTurnTransform(
+    const VrGameTransform&      t,
+    const VrVector3&            pivot,
+    const VrVector3&            from,
+    const VrVector3&            to);
 
   /**
    * \brief Inverse of a rigid transform

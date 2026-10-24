@@ -183,6 +183,43 @@ namespace dxvk {
   }
 
 
+  void VrDrawSettle::reset() {
+    *this = VrDrawSettle();
+  }
+
+
+  bool VrDrawSettle::update(const VrVector3& offset, float dt) {
+    if (m_settled)
+      return false;
+
+    m_distance = vrLength(offset);
+    m_farthest = std::max(m_farthest, m_distance);
+
+    if (m_traceCount < m_trace.size() && m_waited >= float(m_traceCount) * TraceStep)
+      m_trace[m_traceCount++] = m_distance;
+
+    m_waited += dt;
+
+    // A hand held still far from the node is not where the weapon's idle
+    // puts it: the game has not blended it in yet
+    if (!m_hasStart || vrLength(offset - m_start) > Tolerance || m_distance > SettleReach) {
+      m_start      = offset;
+      m_hasStart   = true;
+      m_steadyTime = 0.0f;
+    } else {
+      m_steadyTime += dt;
+    }
+
+    m_timedOut = m_steadyTime < SettleTime && m_waited >= MaxWait;
+    m_settled  = m_steadyTime >= SettleTime || m_timedOut;
+
+    if (away())
+      m_awayTime += dt;
+
+    return m_settled;
+  }
+
+
   VrGameCameraPose vrComputeTwoHandedPose(
     const VrGameCameraPose& hand,
     const VrVector3&        support,
@@ -214,6 +251,62 @@ namespace dxvk {
     result.forward = rotate(hand.forward);
     result.up      = rotate(hand.up);
     result.right   = rotate(hand.right);
+    return result;
+  }
+
+
+  VrGameRotation vrComputeRotationBetween(const VrVector3& from, const VrVector3& to) {
+    float fromLength = vrLength(from);
+    float toLength   = vrLength(to);
+
+    if (fromLength <= 0.0f || toLength <= 0.0f)
+      return VrGameRotation();
+
+    VrVector3 a = from * (1.0f / fromLength);
+    VrVector3 b = to * (1.0f / toLength);
+    VrVector3 axis = cross(a, b);
+
+    float s = vrLength(axis);
+    float c = vrDot(a, b);
+
+    if (s < 1e-6f) {
+      if (c > 0.0f)
+        return VrGameRotation();
+
+      // Opposite: half a turn about any axis perpendicular to them
+      axis = cross(a, std::abs(a.x) < 0.9f ? VrVector3 { 1.0f, 0.0f, 0.0f } : VrVector3 { 0.0f, 1.0f, 0.0f });
+      s = 0.0f;
+      c = -1.0f;
+    }
+
+    axis = axis * (1.0f / vrLength(axis));
+
+    // Rodrigues' rotation formula, applied to each axis for the columns
+    VrGameRotation result;
+
+    for (uint32_t j = 0; j < 3; j++) {
+      VrVector3 e = { j == 0 ? 1.0f : 0.0f, j == 1 ? 1.0f : 0.0f, j == 2 ? 1.0f : 0.0f };
+      VrVector3 v = e * c + cross(axis, e) * s + axis * (vrDot(axis, e) * (1.0f - c));
+
+      result.m[0][j] = v.x;
+      result.m[1][j] = v.y;
+      result.m[2][j] = v.z;
+    }
+
+    return result;
+  }
+
+
+  VrGameTransform vrTurnTransform(
+    const VrGameTransform&      t,
+    const VrVector3&            pivot,
+    const VrVector3&            from,
+    const VrVector3&            to) {
+    VrGameRotation turn = vrComputeRotationBetween(from, to);
+
+    VrGameTransform result;
+    result.rotate    = turn * t.rotate;
+    result.translate = pivot + turn * (t.translate - pivot);
     return result;
   }
 

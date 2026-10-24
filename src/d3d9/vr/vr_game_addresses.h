@@ -1814,6 +1814,66 @@ namespace dxvk {
     constexpr uintptr_t InterpolatorIsTransformSlot     = 0xB8;
 
     /**
+     * A track's IDTag also names the controller type (+0x08), a NiFixedString
+     * like the object's name. A NiInterpolator's virtual UpdateFloat
+     * (__thiscall with the time, the target and a float to fill, returns a
+     * bool in AL) and IsFloatValueSupported read a float track, such as a
+     * particle emitter's birth rate (NiInterpolator_vtbl, GOG database).
+     */
+    constexpr uintptr_t SequenceIdTagControllerType = 0x08;
+    constexpr uintptr_t InterpolatorUpdateFloatSlot = 0x9C;
+    constexpr uintptr_t InterpolatorIsFloatSlot     = 0xA8;
+
+    /**
+     * Particles, see findings/throw.md §7 (GOG database): a NiObjectNET's
+     * controllers are a list (NiTimeController, next at +0x30, target at
+     * +0x2C). A NiPSysEmitterCtlr (vtable below) emits the particles of its
+     * target NiParticleSystem through its emitter (+0x3C) while an
+     * animation drives its birth rate; without the animation it emits
+     * nothing. NiPSysEmitterCtlr::EmitParticles (__thiscall, ret 0x18:
+     * update time, current and last times, emission start and stop times,
+     * birth rate per second) emits floor((min(current, stop) - start) *
+     * rate) - floor((last - start) * rate) particles, aged from the start,
+     * where the emitter object puts them. NiUpdateData starts with its time.
+     */
+    constexpr uintptr_t ObjectControllers           = 0x0C;
+    constexpr uintptr_t ControllerTarget            = 0x2C;
+    constexpr uintptr_t ControllerNext              = 0x30;
+    constexpr uintptr_t PSysEmitterCtlrVtable       = 0x010BD594;
+    constexpr uintptr_t PSysEmitterCtlrEmit         = 0x00C1C3C0;
+    constexpr uint8_t   PSysEmitterCtlrEmitPrologue[] = { 0x51, 0xD9, 0xEE, 0x8B, 0xD1, 0xD9, 0x44, 0x24, 0x1C, 0x89, 0x14, 0x24 };
+
+    /**
+     * What becomes of the particles given (GOG database, read by the fuse
+     * sparks' diagnostic). NiPSysData::AddParticle (0x00C24EA0) only counts
+     * a particle as added; NiParticleSystem::Do_UpdateSystem (0x00C1B260),
+     * run by the system's NiPSysUpdateCtlr (vtable below, Update
+     * 0x00C271C0) while that controller is active (flags bit 0x8,
+     * NiTimeController::DontDoUpdate), makes the added ones active, runs
+     * the modifiers and stores its time. NiGeometry +0xB8 model data;
+     * NiPSysData +0x08 particles at most (u16), +0x10 bound (radius at
+     * +0x1C), +0x50 active (u16), +0x78 added (u16); NiParticleSystem
+     * +0xD4 last update time (-FLT_MAX before the first); the controller's
+     * flags are ControllerFlags (ControllerActive); NiPSysEmitter +0x48
+     * particle lifespan. Do_UpdateSystem is the virtual UpdateSystem(float
+     * time) at +0xF0 of NiParticleSystem, NiMeshParticleSystem and
+     * BSStripParticleSystem (vtables 0x010BD450, 0x010BDD88, 0x010BE360);
+     * the update controller calls it there with its scaled time. The
+     * first-person model is updated with a NiUpdateData of time 0 without
+     * its controllers (PlaceCamera, 0x00874DD4).
+     */
+    constexpr uintptr_t GeometryModelData           = 0xB8;
+    constexpr uintptr_t PSysDataMaxParticles        = 0x08;
+    constexpr uintptr_t PSysDataBoundRadius         = 0x1C;
+    constexpr uintptr_t PSysDataActiveParticles     = 0x50;
+    constexpr uintptr_t PSysDataAddedParticles      = 0x78;
+    constexpr uintptr_t PSysLastUpdateTime          = 0xD4;
+    constexpr uintptr_t PSysUpdateCtlrVtable        = 0x010BE6B4;
+    constexpr uintptr_t PSysEmitterCtlrEmitter      = 0x3C;
+    constexpr uintptr_t PSysEmitterLifeSpan         = 0x48;
+    constexpr uintptr_t PSysUpdateSystemSlot        = 0xF0;
+
+    /**
      * TESAnimGroup: the sounds of the animation's "Sound:" text keys,
      * read when it is loaded (GetSound 0x005F3710): their count and an
      * array of AnimGroupSound (0x10 bytes: the time, the volume as a byte

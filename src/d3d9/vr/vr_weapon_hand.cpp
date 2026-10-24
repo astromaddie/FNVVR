@@ -1,5 +1,7 @@
 #include <algorithm>
 #include <array>
+#include <cfloat>
+#include <cmath>
 #include <cstring>
 #include <iterator>
 
@@ -21,6 +23,16 @@ namespace dxvk {
 
     // NiAVObject::Update is __thiscall with one stack argument
     using ObjectUpdateFn = void (__fastcall*)(uint8_t* object, void* unused, void* updateData);
+
+    // NiPSysEmitterCtlr::EmitParticles, __thiscall with six stack arguments
+    using EmitParticlesFn = void (__fastcall*)(uint8_t* controller, void* unused,
+      float time, float current, float last, float start, float stop, float rate);
+
+    // NiParticleSystem::UpdateSystem, virtual, __thiscall with the time
+    using UpdateSystemFn = void (__fastcall*)(uint8_t* system, void* unused, float time);
+
+    // Particles per second of a lit fuse whose animation gives none
+    constexpr float DefaultSparkRate = 30.0f;
 
     // Projectile::Create is __cdecl with 16 arguments and returns the projectile
     using ProjectileCreateFn = void* (__cdecl*)(
@@ -208,6 +220,24 @@ namespace dxvk {
         vrFindGameObject(reinterpret_cast<uintptr_t>(root), name, MaxModelDepth));
     }
 
+    /**
+     * \brief The particle emitter controller of an object, or \c nullptr
+     */
+    uint8_t* emitterController(uint8_t* object) {
+      // A model's objects carry a handful of controllers at most
+      constexpr uint32_t MaxControllers = 16;
+      auto controller = field<uint8_t*>(object, VrGame::ObjectControllers);
+
+      for (uint32_t i = 0; controller && i < MaxControllers; i++) {
+        if (field<uintptr_t>(controller, 0) == VrGame::PSysEmitterCtlrVtable)
+          return controller;
+
+        controller = field<uint8_t*>(controller, VrGame::ControllerNext);
+      }
+
+      return nullptr;
+    }
+
     bool isAncestor(const uint8_t* ancestor, uint8_t* object) {
       for (; object; object = field<uint8_t*>(object, VrGame::ObjectParent)) {
         if (object == ancestor)
@@ -346,6 +376,9 @@ namespace dxvk {
       { -8.81553f, -1.23918f, -1.42719f },
     };
 
+    // The controller's up, in its frame (forward, up and right)
+    const VrVector3 ControllerUp = { 0.0f, 1.0f, 0.0f };
+
     /**
      * \brief Pose of the lighter of the dynamite and the fire bomb in the
      *    left hand, relative to its controller
@@ -353,13 +386,14 @@ namespace dxvk {
      * In the controller's frame (forward, up and right, as in
      * vrCameraRotation, in game units): the lighter stands up in the
      * closed hand, its node's y axis (towards its flame) along the
-     * controller's up and its x axis along its right, a little above the
-     * controller's centre.
+     * controller's up and its x axis pointing forward, a little above
+     * the controller's centre. With its x axis along the controller's
+     * right or pointing back, the fingers went through it.
      */
     const VrGameTransform LighterInHand = {
-      {{ { 0.0f, 0.0f, -1.0f },
-         { 0.0f, 1.0f,  0.0f },
-         { 1.0f, 0.0f,  0.0f } }},
+      {{ { 1.0f, 0.0f, 0.0f },
+         { 0.0f, 1.0f, 0.0f },
+         { 0.0f, 0.0f, 1.0f } }},
       { 0.0f, 0.015f * VrGameUnitsPerMetre, 0.0f },
     };
 
@@ -520,6 +554,14 @@ namespace dxvk {
 
     std::unique_ptr<VrWeaponHand> weaponHand(new VrWeaponHand());
     g_weaponHand = weaponHand.get();
+
+    // If this one fails, a lit fuse shows no sparks
+    weaponHand->m_canEmitSparks = VrGameMemory::matches(VrGame::PSysEmitterCtlrEmit,
+      VrGame::PSysEmitterCtlrEmitPrologue, sizeof(VrGame::PSysEmitterCtlrEmitPrologue));
+
+    if (!weaponHand->m_canEmitSparks)
+      Logger::warn("VR: The particle emitter function was not found, a lit fuse shows no sparks");
+
     return weaponHand;
   }
 
@@ -536,6 +578,9 @@ namespace dxvk {
 
     m_frameTime         = dt;
     m_heldSettleUpdated = false;
+    m_drawSettleUpdated = false;
+    m_idleLighterUpdated = false;
+    m_sparkUpdated      = false;
     m_magazineBlend     = std::min(m_magazineBlend + dt / MagazineBlendTime, 1.0f);
     m_actionSwing       = m_actionOpen
       ? std::min(m_actionSwing + dt / ActionSwingTime, 1.0f)
@@ -918,6 +963,11 @@ namespace dxvk {
       m_twoHanded = false;
       m_braced    = false;
       hideModel(root);
+
+      if (!m_loggedHidden) {
+        Logger::info("VR: The arms and the weapon are hidden while the lasers point at a menu");
+        m_loggedHidden = true;
+      }
       return;
     }
 
@@ -942,6 +992,7 @@ namespace dxvk {
       m_hasBlade  = false;
       m_twoHanded = false;
       m_braced    = false;
+      m_drawWeapon = nullptr;
       showArms(root);
       return;
     }
@@ -992,6 +1043,18 @@ namespace dxvk {
     int8_t type = form ? readField<int8_t>(form, VrGame::WeaponAnimationType) : WeaponTypeNone;
     uint8_t* fist = (type == WeaponTypeNone || type == WeaponTypeHandToHand)
       ? findObject(root, VrGame::RightHandNodeName) : nullptr;
+
+    // While the game blends the arms into the idle of a weapon just drawn,
+    // the right hand can be far from the weapon node, which lands on the
+    // controller: the model is hidden until the hand settles on the weapon
+    if (!fist && settleDrawnWeapon(root, weapon, form, drawnWeapon, weaponRotation)) {
+      m_hasAim    = false;
+      m_hasBlade  = false;
+      m_twoHanded = false;
+      m_braced    = false;
+      hideModel(root);
+      return;
+    }
 
     VrGameTransform rig = held
       ? vrComputeRigHoldingWeapon(weaponRotation, drawnWeapon, m_heldSettle.rotation(), hand)
@@ -1063,6 +1126,10 @@ namespace dxvk {
 
     for (uint32_t i = 0; i < fingerCount; i++)
       writeRotation(fingers[i].bone, VrGame::ObjectLocalRotation, fingers[i].rotate);
+
+    // The left hand is still where the game animates it
+    if (forearm && type >= WeaponTypeGrenade && type <= WeaponTypeThrown)
+      measureIdleLighter(root, weapon, otherHand, form);
 
     bool handPlaced = forearm && m_hasOtherHand && !m_twoHanded && !m_braced;
 
@@ -2424,11 +2491,6 @@ namespace dxvk {
 
     hide(root, false);
     m_hidesModel = true;
-
-    if (!m_loggedHidden) {
-      Logger::info("VR: The arms and the weapon are hidden while the lasers point at a menu");
-      m_loggedHidden = true;
-    }
   }
 
 
@@ -2484,6 +2546,44 @@ namespace dxvk {
   }
 
 
+  bool VrWeaponHand::settleDrawnWeapon(
+          uint8_t*              root,
+    const uint8_t*              weapon,
+    const uint8_t*              form,
+    const VrVector3&            drawnWeapon,
+    const VrGameRotation&       weaponRotation) {
+    if (weapon != m_drawWeapon || form != m_drawForm) {
+      m_drawWeapon = weapon;
+      m_drawForm   = form;
+      m_drawSettle.reset();
+    }
+
+    uint8_t* rightHand = m_drawSettle.settled() ? nullptr : findObject(root, VrGame::RightHandNodeName);
+
+    if (!rightHand || m_drawSettleUpdated)
+      return m_drawSettle.away();
+
+    m_drawSettleUpdated = true;
+
+    VrVector3 offset = vrTranspose(weaponRotation) * (readVector(rightHand, VrGame::ObjectWorldTranslation) - drawnWeapon);
+
+    if (m_drawSettle.update(offset * (1.0f / VrGameUnitsPerMetre), m_frameTime) && m_drawSettle.awayTime() > 0.0f) {
+      auto name = form ? readField<const char*>(form, VrGame::WeaponFullName) : nullptr;
+      std::string trace;
+
+      for (uint32_t i = 0; i < m_drawSettle.traceCount(); i++)
+        trace += str::format(i ? ", " : "", int(m_drawSettle.trace()[i] * 100.0f + 0.5f));
+
+      Logger::info(str::format("VR: '", name ? name : "", "' just drawn was hidden for ", m_drawSettle.awayTime(),
+        " s, while the game moved the right hand up to ", m_drawSettle.farthest(), " m from the weapon node; ",
+        m_drawSettle.timedOut() ? "the wait ran out " : "it settled ", m_drawSettle.distance(),
+        " m from it (cm every ", VrDrawSettle::TraceStep, " s: ", trace, ")"));
+    }
+
+    return m_drawSettle.away();
+  }
+
+
   bool VrWeaponHand::holdsWeapon(const uint8_t* player) const {
     if (readField<uint8_t>(player, VrGame::PlayerThirdPerson))
       return false;
@@ -2536,6 +2636,10 @@ namespace dxvk {
       m_thrown.type = type;
       m_hasPinInHand  = false;
       m_loggedLighter = false;
+      m_sparking      = false;
+      m_loggedSparks  = false;
+      m_loggedSparkState = false;
+      hideSparks(nullptr);
     }
 
     m_hasThrown = true;
@@ -2624,8 +2728,10 @@ namespace dxvk {
       m_thrown.hasButton = partBound(pressed, m_thrown.button, m_thrown.buttonRadius) || m_thrown.hasButton;
 
     // The lighter lights the largest mesh of the model besides itself: the
-    // stick of dynamite, the bottle
-    uint8_t* fuse = nullptr;
+    // stick of dynamite, the bottle. A particle system besides the
+    // lighter's gives the lit fuse's sparks, which the animation emits.
+    uint8_t* fuse   = nullptr;
+    uint8_t* sparks = nullptr;
     float fuseRadius = 0.0f;
 
     if (lighter) {
@@ -2633,8 +2739,15 @@ namespace dxvk {
         VrVector3 centre;
         float radius = 0.0f;
 
-        if (asGeometry(object) && !isAncestor(lighter, object)
-         && partBound(object, centre, radius) && radius > fuseRadius) {
+        if (isAncestor(lighter, object))
+          return;
+
+        if (emitterController(object)) {
+          sparks = sparks ? sparks : object;
+          return;
+        }
+
+        if (asGeometry(object) && partBound(object, centre, radius) && radius > fuseRadius) {
           m_thrown.fuse = centre;
           fuse          = object;
           fuseRadius    = radius;
@@ -2651,6 +2764,7 @@ namespace dxvk {
     nodes.button   = button ? button : light;
     nodes.lighter  = lighter;
     nodes.flame    = flame;
+    nodes.sparks   = sparks;
     readThrowAnimation(form, type, nodes);
 
     const VrThrowAnimation* animation = throwAnimation();
@@ -2665,8 +2779,10 @@ namespace dxvk {
     if (pin && m_hasOtherHand)
       placeThrownPin(pin, hand, vrComputeHeldTransform(controller, VrGameTransform()), updateData);
 
-    if (!lighter)
+    if (!lighter) {
+      hideSparks(nullptr);
       return;
+    }
 
     if (fuseRadius > 0.0f) {
       m_thrown.hasFuse    = true;
@@ -2675,6 +2791,166 @@ namespace dxvk {
 
     if (m_hasOtherHand)
       placeLighter(lighter, flame, otherHand, controller, shift, updateData);
+
+    emitSparks(sparks, model);
+  }
+
+
+  void VrWeaponHand::emitSparks(uint8_t* sparks, uint8_t* model) {
+    // The fuse burns from when it is lit until the weapon leaves the hand
+    uint8_t* controller = m_canEmitSparks && sparks && m_throwArm.armed && m_thrown.shown
+      ? emitterController(sparks) : nullptr;
+
+    if (!controller) {
+      m_sparking = false;
+      hideSparks(sparks);
+      return;
+    }
+
+    // The model may cull the particle system until an animation shows it
+    if (m_sparkShownSystem != sparks) {
+      hideSparks(nullptr);
+      m_sparkShownSystem = sparks;
+
+      for (uint8_t* part = sparks; part && part != model && m_sparkShownCount < m_sparkShown.size();
+           part = field<uint8_t*>(part, VrGame::ObjectParent)) {
+        uint32_t& flags = field<uint32_t>(part, VrGame::ObjectFlags);
+
+        if (flags & VrGame::ObjectFlagAppCulled) {
+          flags &= ~VrGame::ObjectFlagAppCulled;
+          m_sparkShown[m_sparkShownCount++] = part;
+        }
+      }
+
+      if (m_sparkShownCount) {
+        Logger::info(str::format("VR: The model culls ", m_sparkShownCount, " part(s) of the particle system '",
+          field<const char*>(sparks, VrGame::ObjectName), "', shown while the fuse sparks"));
+      }
+    }
+
+    // Both eyes are drawn at the same time: the second gives none
+    if (m_sparkUpdated)
+      return;
+
+    m_sparkUpdated = true;
+
+    // The game updates the model in the hand at time 0 and without its
+    // controllers, so the sparks keep their own clock: the system's time
+    // if the game updates the system itself, else the last frame's moved
+    // by this frame's time, the system then updated here
+    float systemTime = field<float>(sparks, VrGame::PSysLastUpdateTime);
+    float time;
+
+    if (m_sparking) {
+      m_sparkGameClock = m_sparkGameClock || systemTime != m_sparkSeen;
+      time = m_sparkGameClock ? systemTime : m_sparkLast + m_frameTime;
+
+      if (time < m_sparkLast)
+        m_sparking = false;
+    }
+
+    float rate = m_hasThrowAnimation && m_throwAnimation.sparkRate > 0.0f
+      ? m_throwAnimation.sparkRate : DefaultSparkRate;
+
+    if (!m_sparking) {
+      time = systemTime == -FLT_MAX ? 0.0f : systemTime;
+
+      m_sparking   = true;
+      m_sparkGameClock = false;
+      m_sparkStart = time;
+      m_sparkLast  = time;
+      m_sparkBegin = time;
+
+      if (!m_loggedSparks) {
+        Logger::info(str::format("VR: The lit fuse gives sparks from '", field<const char*>(sparks, VrGame::ObjectName),
+          "', ", rate, " per second", m_hasThrowAnimation && m_throwAnimation.sparkRate > 0.0f ? " as the attack animation does" : ""));
+        m_loggedSparks = true;
+      }
+    }
+
+    // The particles already given are dropped from the start, so that the
+    // game's counts stay small however long the fuse burns
+    m_sparkStart += std::floor((m_sparkLast - m_sparkStart) * rate) / rate;
+
+    reinterpret_cast<EmitParticlesFn>(VrGame::PSysEmitterCtlrEmit)(controller, nullptr,
+      time, time, m_sparkLast, m_sparkStart, FLT_MAX, rate);
+
+    if (!m_sparkGameClock) {
+      auto vtable = field<const uint8_t*>(sparks, 0);
+      reinterpret_cast<UpdateSystemFn>(readField<uintptr_t>(vtable, VrGame::PSysUpdateSystemSlot))(sparks, nullptr, time);
+    }
+
+    m_sparkSeen = field<float>(sparks, VrGame::PSysLastUpdateTime);
+    m_sparkLast = time;
+
+    logSparks(sparks, controller, time);
+  }
+
+
+  void VrWeaponHand::hideSparks(uint8_t* sparks) {
+    // Culled again only while they are still above the system in the
+    // hand: another model's parts may have been freed
+    if (sparks && sparks == m_sparkShownSystem) {
+      for (uint8_t* part = sparks; part; part = field<uint8_t*>(part, VrGame::ObjectParent)) {
+        if (std::find(m_sparkShown.begin(), m_sparkShown.begin() + m_sparkShownCount, part) != m_sparkShown.begin() + m_sparkShownCount)
+          field<uint32_t>(part, VrGame::ObjectFlags) |= VrGame::ObjectFlagAppCulled;
+      }
+    }
+
+    m_sparkShownCount  = 0;
+    m_sparkShownSystem = nullptr;
+  }
+
+
+  void VrWeaponHand::logSparks(uint8_t* sparks, uint8_t* controller, float time) {
+    // Long enough for the first particles to be updated and drawn
+    constexpr float SparkLogDelay = 0.5f;
+
+    if (m_loggedSparkState || time - m_sparkBegin < SparkLogDelay)
+      return;
+
+    m_loggedSparkState = true;
+
+    auto data = field<uint8_t*>(sparks, VrGame::GeometryModelData);
+    float last = field<float>(sparks, VrGame::PSysLastUpdateTime);
+    auto emitter = field<uint8_t*>(controller, VrGame::PSysEmitterCtlrEmitter);
+
+    std::string culled;
+
+    for (uint8_t* part = sparks; part; part = field<uint8_t*>(part, VrGame::ObjectParent)) {
+      if (field<uint32_t>(part, VrGame::ObjectFlags) & VrGame::ObjectFlagAppCulled) {
+        auto name = field<const char*>(part, VrGame::ObjectName);
+        culled += str::format(culled.empty() ? "" : ", ", "'", name ? name : "", "'");
+      }
+    }
+
+    // The controller that updates the system, among its controllers
+    constexpr uint32_t MaxControllers = 16;
+    std::string update = "none";
+    auto other = field<uint8_t*>(sparks, VrGame::ObjectControllers);
+
+    for (uint32_t i = 0; other && i < MaxControllers; i++) {
+      if (field<uintptr_t>(other, 0) == VrGame::PSysUpdateCtlrVtable) {
+        uint16_t flags = field<uint16_t>(other, VrGame::ControllerFlags);
+        update = str::format("flags ", flags, (flags & VrGame::ControllerActive) ? " (active)" : " (inactive)");
+        break;
+      }
+
+      other = field<uint8_t*>(other, VrGame::ControllerNext);
+    }
+
+    auto bound = readField<const uint8_t*>(sparks, VrGame::ObjectWorldBound);
+
+    Logger::info(str::format("VR: The fuse sparks after ", time - m_sparkBegin, " s: ",
+      data ? str::format(field<uint16_t>(data, VrGame::PSysDataActiveParticles), " particle(s) active, ",
+        field<uint16_t>(data, VrGame::PSysDataAddedParticles), " added, ",
+        field<uint16_t>(data, VrGame::PSysDataMaxParticles), " at most, data bound radius ",
+        field<float>(data, VrGame::PSysDataBoundRadius)) : std::string("no particle data"),
+      ", drawn bound radius ", bound ? readField<float>(bound, sizeof(VrVector3)) : 0.0f,
+      ", system updated ", last == -FLT_MAX ? std::string("never") : str::format(time - last, " s ago"),
+      ", update controller ", update, m_sparkGameClock ? ", updated by the game" : ", updated here",
+      ", particle lifespan ", emitter ? field<float>(emitter, VrGame::PSysEmitterLifeSpan) : 0.0f, " s",
+      ", culled: ", culled.empty() ? std::string("none") : culled));
   }
 
 
@@ -2712,35 +2988,146 @@ namespace dxvk {
   }
 
 
+  const VrLighterHold* VrWeaponHand::lighterHold(const uint8_t* form) const {
+    if (!form || m_thrown.form != form)
+      return nullptr;
+
+    if (m_hasIdleLighter && m_idleLighterForm == form)
+      return &m_idleLighter;
+
+    if (m_hasThrowAnimation && m_throwAnimationForm == form && m_throwAnimation.hasLighter)
+      return &m_throwAnimation.lighter;
+
+    return nullptr;
+  }
+
+
+  void VrWeaponHand::measureIdleLighter(uint8_t* root, uint8_t* weapon, uint8_t* otherHand, const uint8_t* form) {
+    if (form != m_idleLighterForm) {
+      m_idleLighterForm   = form;
+      m_hasIdleLighter    = false;
+      m_loggedIdleLighter = -1;
+    }
+
+    // Once per frame, once the game has settled the weapon just drawn, and
+    // kept as it was while the fuse is lit
+    if (m_idleLighterUpdated || !m_drawSettle.settled() || m_throwArm.lit || m_throwArm.armed)
+      return;
+
+    m_idleLighterUpdated = true;
+
+    uint8_t* lighter = nullptr;
+    uint8_t* flame   = nullptr;
+
+    forEachObject(weapon, MaxModelDepth, [&lighter, &flame] (uint8_t* object) {
+      VrThrowPart kind = vrThrowPartKind(field<const char*>(object, VrGame::ObjectName));
+
+      if (kind == VrThrowPart::Lighter && !lighter)
+        lighter = object;
+      else if (kind == VrThrowPart::Flame && !flame)
+        flame = object;
+    });
+
+    auto lighterBound = lighter ? readField<const uint8_t*>(lighter, VrGame::ObjectWorldBound) : nullptr;
+    float handScale   = field<float>(otherHand, VrGame::ObjectWorldScale);
+    float rootScale   = field<float>(root, VrGame::ObjectWorldScale);
+
+    if (!lighterBound || readField<float>(lighterBound, sizeof(VrVector3)) <= 0.0f || handScale <= 0.0f || rootScale <= 0.0f)
+      return;
+
+    VrGameRotation handRotation = readRotation(otherHand, VrGame::ObjectWorldRotation);
+    VrVector3 handPosition      = readVector(otherHand, VrGame::ObjectWorldTranslation);
+    VrGameRotation toHand       = vrTranspose(handRotation);
+
+    VrGameRotation lighterRotation = readRotation(lighter, VrGame::ObjectWorldRotation);
+    VrVector3 centre = readVector(lighterBound, 0);
+
+    // In the root's units, as the attack animation's distance
+    float distance = vrLength(centre - handPosition) / rootScale;
+    bool  inReach  = distance <= VrLighterReach;
+
+    if (int32_t(inReach) != m_loggedIdleLighter) {
+      Logger::info(str::format("VR: The game's idle pose holds the lighter ", distance / VrGameUnitsPerMetre * 100.0f,
+        " cm from the left hand bone", inReach ? ", the left hand holds it so" : ", out of reach of the hand"));
+      m_loggedIdleLighter = int32_t(inReach);
+    }
+
+    if (!inReach)
+      return;
+
+    // Where it stands from: its meshes' centre towards its flame, or its
+    // node's y axis without one
+    VrVector3 up = lighterRotation * VrVector3 { 0.0f, 1.0f, 0.0f };
+    auto flameBound = flame ? readField<const uint8_t*>(flame, VrGame::ObjectWorldBound) : nullptr;
+
+    if (flameBound && readField<float>(flameBound, sizeof(VrVector3)) > 0.0f) {
+      VrVector3 toFlame = readVector(flameBound, 0) - centre;
+
+      if (vrLength(toFlame) > 0.0f)
+        up = toFlame * (1.0f / vrLength(toFlame));
+    }
+
+    m_idleLighter.inHand.rotate    = toHand * lighterRotation;
+    m_idleLighter.inHand.translate = (toHand * (readVector(lighter, VrGame::ObjectWorldTranslation) - handPosition)) * (1.0f / handScale);
+    m_idleLighter.centre           = (toHand * (centre - handPosition)) * (1.0f / handScale);
+    m_idleLighter.up               = toHand * up;
+
+    // The fingers as the game poses them on it
+    std::vector<VrBonePose>& fingers = m_idleLighter.fingers;
+    fingers.clear();
+
+    forEachObject(otherHand, MaxModelDepth, [otherHand, &fingers] (uint8_t* object) {
+      auto name = field<const char*>(object, VrGame::ObjectName);
+
+      if (object != otherHand && name)
+        fingers.push_back({ name, readRotation(object, VrGame::ObjectLocalRotation) });
+    });
+
+    m_hasIdleLighter = true;
+  }
+
+
   bool VrWeaponHand::thrownHeldPart(
     const uint8_t*              form,
           uint8_t*              otherHand,
     const VrVector3&            shift,
           HeldPart&             held) const {
-    if (!form || m_thrown.form != form || !m_hasThrowAnimation || m_throwAnimationForm != form)
+    if (!form || m_thrown.form != form)
       return false;
 
     VrGameCameraPose controller = m_otherHand;
     controller.position = controller.position - shift;
 
-    // Where the free pose puts the hand bone
-    VrGameTransform hand = vrComputeHeldTransform(controller, FreeHandPose);
     float handScale = field<float>(otherHand, VrGame::ObjectWorldScale);
 
-    // The lighter stays in the hand as the animation holds it lit, the
-    // fingers on it
-    if (m_throwAnimation.hasLighter) {
-      const VrGameTransform& inHand = m_throwAnimation.lighterInHand;
-      held.pose.rotate    = hand.rotate * inHand.rotate;
-      held.pose.translate = hand.translate + hand.rotate * inHand.translate * handScale;
+    // The lighter stays in the hand as the game holds it, the fingers on
+    // it. The hand at its free pose and the lighter are turned together
+    // about the lighter so that it stands up in the fist, its flame along
+    // the controller's up: the game's hand is not at the free pose.
+    if (const VrLighterHold* hold = lighterHold(form)) {
+      const VrGameTransform& inHand = hold->inHand;
+
+      VrGameTransform lighter;
+      lighter.rotate    = FreeHandPose.rotate * inHand.rotate;
+      lighter.translate = FreeHandPose.translate + FreeHandPose.rotate * inHand.translate * handScale;
+
+      VrVector3 centre = FreeHandPose.translate + FreeHandPose.rotate * hold->centre * handScale;
+      lighter = vrTurnTransform(lighter, centre, FreeHandPose.rotate * hold->up, ControllerUp);
+
+      held.pose    = vrComputeHeldTransform(controller, lighter);
       held.inHand  = &inHand;
-      held.fingers = &m_throwAnimation.fingers;
+      held.fingers = &hold->fingers;
       return true;
     }
 
-    // The fingers close on the pin as the animation's do
-    if (m_throwArm.pinHeld) {
-      held.pose    = hand;
+    if (!m_hasThrowAnimation || m_throwAnimationForm != form)
+      return false;
+
+    // The fingers close on the pin as the animation's do. Around a lighter
+    // standing at its fixed pose, they take the animation's grip as the
+    // flame reaches the fuse rather than the player's curl.
+    if (m_throwArm.pinHeld || m_thrown.parts.lighter) {
+      held.pose    = vrComputeHeldTransform(controller, FreeHandPose);
       held.inHand  = &m_atHandBone;
       held.fingers = &m_throwAnimation.fingers;
       return true;
@@ -2826,17 +3213,18 @@ namespace dxvk {
     const VrGameCameraPose&     controller,
     const VrVector3&            shift,
           void*                 updateData) {
-    // The game's animation holds the lighter in the left hand, which the
-    // model does not follow here: it is held in the left hand as the
-    // animation holds it lit, or stands in it without the animation
+    // The game holds the lighter in the left hand, which the model does not
+    // follow here: it is held in the left hand as the game holds it, or
+    // stands in it at a fixed pose
     HeldPart held = { };
     const VrThrowAnimation* animation = throwAnimation();
-    bool animated = animation && animation->hasLighter && thrownHeldPart(m_thrown.form, otherHand, shift, held);
+    const VrLighterHold* hold = lighterHold(m_thrown.form);
+    bool inHand = hold && thrownHeldPart(m_thrown.form, otherHand, shift, held);
 
-    drawPart(lighter, animated ? held.pose : vrComputeHeldTransform(controller, LighterInHand), updateData);
+    drawPart(lighter, inHand ? held.pose : vrComputeHeldTransform(controller, LighterInHand), updateData);
 
     // Lit, its cap is open
-    if (animated && m_throwArm.lit)
+    if (animation && m_throwArm.lit)
       poseParts(lighter, animation->lighterLit, updateData);
 
     // Its flame burns while the left trigger is held. A culled object is
@@ -2852,10 +3240,24 @@ namespace dxvk {
     m_thrown.flame    = vrPointToHand(controller, readVector(tip, VrGame::ObjectWorldTranslation));
     m_thrown.hasFlame = true;
 
-    if (!m_loggedLighter) {
-      Logger::info(str::format("VR: The lighter is in the left hand", animated ? " as the attack animation holds it" : "",
-        ", its flame ", vrLength(m_thrown.flame) / VrGameUnitsPerMetre, " m from the controller"));
-      m_loggedLighter = true;
+    // Logged again once the attack animation or the idle pose is read
+    int32_t source = inHand ? (hold == &m_idleLighter ? 2 : 1) : 0;
+
+    if (!m_loggedLighter || source != m_loggedLighterSource) {
+      std::string how = ", standing at a fixed pose, the fingers as the attack animation's";
+
+      if (inHand) {
+        VrVector3 up = FreeHandPose.rotate * hold->up;
+        float angle = std::acos(std::clamp(vrDot(up, ControllerUp) / std::max(vrLength(up), 1e-6f), -1.0f, 1.0f));
+        how = str::format(source == 2 ? " as the game's idle pose holds it" : " as the attack animation holds it",
+          ", hand and lighter turned ", angle * 180.0f / 3.14159265f, " degrees to stand it up");
+      }
+
+      Logger::info(str::format("VR: The lighter is in the left hand", how,
+        ", its flame ", vrLength(m_thrown.flame) / VrGameUnitsPerMetre, " m from the controller",
+        animation ? str::format(", ", animation->lighterLit.size(), " part(s) moved when lit") : std::string()));
+      m_loggedLighter       = true;
+      m_loggedLighterSource = source;
     }
   }
 

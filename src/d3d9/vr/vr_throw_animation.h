@@ -30,6 +30,29 @@ namespace dxvk {
   };
 
   /**
+   * \brief How far from the left hand bone the lighter's meshes may be for
+   *    the hand to hold it, in game units: the bone sits at the wrist
+   */
+  constexpr float VrLighterReach = 0.12f * VrGameUnitsPerMetre;
+
+  /**
+   * \brief How the left hand holds the lighter of the dynamite or the
+   *    fire bomb
+   */
+  struct VrLighterHold {
+    /// The lighter in the left hand bone's frame, in units of the hand's
+    /// scale
+    VrGameTransform         inHand;
+    /// The centre of the lighter's meshes in the hand bone's frame, in
+    /// units of the hand's scale, and the unit direction from it towards
+    /// its flame
+    VrVector3               centre;
+    VrVector3               up;
+    /// The rotations of the bones below the left hand on it
+    std::vector<VrBonePose> fingers;
+  };
+
+  /**
    * \brief What the game's attack animation of a grenade or mine does
    *    with the left hand
    *
@@ -44,19 +67,21 @@ namespace dxvk {
     /// The sounds from it to the release, played when the weapon is
     /// armed: the fuse catching, the pin coming out, the button's beep
     std::vector<VrThrowSound> arm;
-    /// The rotations of the bones below the left hand then, or when it
-    /// holds the lighter nearest
+    /// The rotations of the bones below the left hand then
     std::vector<VrBonePose>   fingers;
-    /// The lighter in the left hand bone's frame when the hand holds it
-    /// nearest, in units of the hand's scale; none if it never comes
-    /// within reach of the hand
+    /// The lighter in the left hand when the animation holds it nearest
+    /// the hand bone; none if it never comes within reach of the hand
     bool                      hasLighter = false;
-    VrGameTransform           lighterInHand;
-    /// The lighter's parts the animation moves, lit (its cap open)
+    VrLighterHold             lighter;
+    /// The lighter's parts the animation moves, lit (its cap open), when
+    /// the left hand acts
     std::vector<VrPartPose>   lighterLit;
     /// The button and the parts below it that the animation moves, as
     /// they are once it is armed (a switch thrown)
     std::vector<VrPartPose>   pressed;
+    /// The most particles per second the animation has the lit fuse's
+    /// emitter give, 0 without such a track
+    float                     sparkRate = 0.0f;
   };
 
   /**
@@ -75,6 +100,8 @@ namespace dxvk {
     /// The lighter and its flame, or \c nullptr
     uint8_t* lighter  = nullptr;
     uint8_t* flame    = nullptr;
+    /// The particle system of the lit fuse's sparks, or \c nullptr
+    uint8_t* sparks   = nullptr;
   };
 
   /**

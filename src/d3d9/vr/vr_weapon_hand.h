@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -732,6 +733,13 @@ namespace dxvk {
     bool                 m_heldSettleUpdated = false;
     float                m_frameTime = 0.0f;
 
+    // Weapon just drawn, see settleDrawnWeapon: the weapon node and form
+    // it was drawn with, compared but not dereferenced
+    const uint8_t*       m_drawWeapon = nullptr;
+    const uint8_t*       m_drawForm   = nullptr;
+    VrDrawSettle         m_drawSettle;
+    bool                 m_drawSettleUpdated = false;
+
     // Blade of the held melee weapon, in the hand's frame, and whether the
     // weapon is in the hand this frame
     VrBlade          m_blade;
@@ -884,6 +892,37 @@ namespace dxvk {
     uint32_t         m_loggedThrownObjects = 0;
     bool             m_loggedPin = false;
     bool             m_loggedLighter = false;
+    int32_t          m_loggedLighterSource = 0;
+
+    // Sparks of the lit fuse, see emitSparks: the system's time they
+    // started from, less the particles already given, and of the last
+    // frame; the system's time as left after that frame, and whether the
+    // game updates the system itself
+    bool             m_canEmitSparks = false;
+    bool             m_sparking      = false;
+    bool             m_loggedSparks  = false;
+    bool             m_sparkUpdated  = false;
+    bool             m_sparkGameClock = false;
+    float            m_sparkStart    = 0.0f;
+    float            m_sparkLast     = 0.0f;
+    float            m_sparkBegin    = 0.0f;
+    float            m_sparkSeen     = 0.0f;
+    bool             m_loggedSparkState = false;
+
+    // The particle system's parts the model culls, shown while the fuse
+    // sparks, and the system they belong to, compared but not dereferenced
+    // unless it is still in the hand
+    std::array<uint8_t*, 4> m_sparkShown = { };
+    uint32_t         m_sparkShownCount = 0;
+    const uint8_t*   m_sparkShownSystem = nullptr;
+
+    // How the game's idle pose holds the lighter in the left hand, see
+    // measureIdleLighter, for the weapon form compared but not dereferenced
+    VrLighterHold    m_idleLighter;
+    const uint8_t*   m_idleLighterForm = nullptr;
+    bool             m_hasIdleLighter  = false;
+    bool             m_idleLighterUpdated = false;
+    int32_t          m_loggedIdleLighter = -1;
 
     // The game's attack animation of the grenade or mine in the hand, read
     // once its model is in the hand, and the weapon it was read for,
@@ -1033,6 +1072,35 @@ namespace dxvk {
 
     void placeThrownPin(uint8_t* pin, const VrGameCameraPose& hand, const VrGameTransform& controller, void* updateData);
 
+    /**
+     * \brief Gives the lit fuse its sparks
+     *
+     * The particle system's emitter gives as many particles as the
+     * attack animation would since the last frame, while the weapon in
+     * the hand is armed by its fuse. The system is updated here unless
+     * the game updates it.
+     *
+     * \param [in] sparks The particle system, or \c nullptr
+     * \param [in] model The weapon's model the system is in
+     */
+    void emitSparks(uint8_t* sparks, uint8_t* model);
+
+    /**
+     * \brief Culls again the parts of the particle system shown for the
+     *    sparks
+     *
+     * \param [in] sparks The particle system in the hand this frame, or
+     *    \c nullptr: the parts are only touched if it is the one they
+     *    belong to, which is then still alive
+     */
+    void hideSparks(uint8_t* sparks);
+
+    /**
+     * \brief Logs what became of the sparks once, after they have burnt
+     *    for a while
+     */
+    void logSparks(uint8_t* sparks, uint8_t* controller, float time);
+
     void placeLighter(
             uint8_t*              lighter,
             uint8_t*              flame,
@@ -1072,10 +1140,35 @@ namespace dxvk {
       const HeldPart*             held);
 
     /**
-     * \brief The part the left hand holds while a thrown weapon is in the
-     *    right hand, as the game's attack animation holds it
+     * \brief How the left hand holds the lighter of the weapon in the right
+     *    hand: as the game's idle pose holds it, else as its attack
+     *    animation does
      *
-     * The lighter, or the pin while the hand holds it.
+     * \returns \c nullptr if neither brings it within reach of the hand
+     */
+    const VrLighterHold* lighterHold(const uint8_t* form) const;
+
+    /**
+     * \brief Reads how the game's idle pose holds the lighter in the left
+     *    hand
+     *
+     * Once per frame, with the model as the game animates it, before the
+     * left hand is moved: the lighter in the hand bone's frame and the
+     * fingers on it, kept while it is within reach of the hand.
+     *
+     * \param [in] weapon The weapon node
+     * \param [in] otherHand The left hand bone
+     */
+    void measureIdleLighter(uint8_t* root, uint8_t* weapon, uint8_t* otherHand, const uint8_t* form);
+
+    /**
+     * \brief The part the left hand holds while a thrown weapon is in the
+     *    right hand, as the game holds it
+     *
+     * The lighter (see lighterHold), or the pin while the hand holds it.
+     * A lighter out of reach of the hand in the game's poses stands in the
+     * hand at a fixed pose: the hand is then at its free pose with the
+     * attack animation's fingers.
      *
      * \param [in] form The weapon in the right hand
      * \param [in] otherHand The left hand bone
@@ -1234,6 +1327,23 @@ namespace dxvk {
     void hideArms(uint8_t* root, bool rightHand);
 
     void hideModel(uint8_t* root);
+
+    /**
+     * \brief Follows the right hand on a weapon just drawn
+     *
+     * Once per frame, until the hand settles on the weapon node.
+     *
+     * \param [in] drawnWeapon Where the game animates the weapon node
+     * \param [in] weaponRotation The weapon node's rotation there
+     * \returns \c true while the model is hidden, the hand being far
+     *    from the weapon node
+     */
+    bool settleDrawnWeapon(
+            uint8_t*              root,
+      const uint8_t*              weapon,
+      const uint8_t*              form,
+      const VrVector3&            drawnWeapon,
+      const VrGameRotation&       weaponRotation);
 
     void hide(uint8_t* object, bool log);
 

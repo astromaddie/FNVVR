@@ -1,4 +1,6 @@
+#include <algorithm>
 #include <cfloat>
+#include <cmath>
 #include <cstring>
 
 #include "../../util/log/log.h"
@@ -27,12 +29,15 @@ namespace dxvk {
     // The weapon's attack animation when it has none of its own
     constexpr uint32_t NoAttackAnimation = 0xFF;
 
-    // How far from the left hand bone the lighter's meshes may be for the
-    // hand to hold it, in game units: the bone sits at the wrist
-    constexpr float MaxLighterFromHand = 0.12f * VrGameUnitsPerMetre;
-
     // How often the lighter's distance to the hand is logged, in seconds
     constexpr float LighterLogStep = 0.1f;
+
+    // NiInterpolator::IsFloatValueSupported, __thiscall without arguments
+    using IsFloatFn = uint32_t (__fastcall*)(uint8_t* interpolator, void* unused);
+
+    // NiInterpolator::UpdateFloat, __thiscall with three stack arguments
+    using UpdateFloatFn = uint32_t (__fastcall*)(uint8_t* interpolator, void* unused,
+      float time, uint8_t* target, float* value);
 
     template<typename T>
     T readField(const uint8_t* base, uintptr_t offset) {
@@ -82,6 +87,31 @@ namespace dxvk {
 
       point = pose.translate + pose.rotate * local * pose.scale;
       return true;
+    }
+
+    /**
+     * \brief The nodes from a node up to the root at a time, for the log
+     *
+     * Each with where the sequence puts it in the root's frame, in
+     * centimetres, and whether the sequence moves it or it keeps its
+     * current transform.
+     */
+    std::string describeChain(const VrSequenceTracks& tracks, uint8_t* node, const uint8_t* root, float time) {
+      std::string chain;
+
+      for (; node && node != root; node = readField<uint8_t*>(node, VrGame::ObjectParent)) {
+        VrVector3 point;
+
+        if (!pointAt(tracks, node, root, VrVector3(), time, point))
+          break;
+
+        point = point * (100.0f / VrGameUnitsPerMetre);
+        chain += str::format(chain.empty() ? "" : " < ", "'", objectName(node), "' ",
+          int(std::lround(point.x)), ", ", int(std::lround(point.y)), ", ", int(std::lround(point.z)),
+          tracks.moves(node) ? "" : " (not animated)");
+      }
+
+      return chain;
     }
 
     /**
@@ -177,7 +207,73 @@ namespace dxvk {
 
       Logger::info(str::format("VR: Throw animation lighter", tracks.moves(nodes.lighter) ? " (animated)" : " (not animated)",
         " to the left hand bone, cm every ", LighterLogStep, " s: ", curve.empty() ? std::string("none") : curve));
+
+      // Where the two chains part, to see why the lighter is not in the hand
+      Logger::info(str::format("VR: Throw animation at ", hold, " s, cm in the first-person root: left hand ",
+        describeChain(tracks, nodes.leftHand, nodes.root, hold), "; lighter ",
+        describeChain(tracks, nodes.lighter, nodes.root, hold)));
       return hold;
+    }
+
+    /**
+     * \brief The most particles per second the sequence has the emitter
+     *    of a particle system give, 0 without such a track
+     *
+     * Its float tracks on the particle system, the emitter's birth rate,
+     * sampled from \p begin to \p end. Each is logged, and the other
+     * tracks on the system by their controller type.
+     */
+    float readParticleRate(const uint8_t* sequence, uint8_t* system, float begin, float end) {
+      uint32_t count = readField<uint32_t>(sequence, VrGame::SequenceArraySize);
+      auto interps   = readField<const uint8_t*>(sequence, VrGame::SequenceInterpolators);
+      auto tags      = readField<const uint8_t*>(sequence, VrGame::SequenceIdTags);
+      const char* name = objectName(system);
+
+      float rate = 0.0f;
+      std::string others;
+
+      for (uint32_t i = 0; interps && tags && i < count; i++) {
+        auto interpolator = readField<uint8_t*>(interps + i * VrGame::SequenceInterpolatorSize, 0);
+        auto target       = readField<const char*>(tags + i * VrGame::SequenceIdTagSize, 0);
+        auto controller   = readField<const char*>(tags + i * VrGame::SequenceIdTagSize, VrGame::SequenceIdTagControllerType);
+
+        if (!interpolator || !target || std::strcmp(target, name))
+          continue;
+
+        auto vtable    = readField<const uint8_t*>(interpolator, 0);
+        auto isFloat   = reinterpret_cast<IsFloatFn>(readField<uintptr_t>(vtable, VrGame::InterpolatorIsFloatSlot));
+        auto readFloat = reinterpret_cast<UpdateFloatFn>(readField<uintptr_t>(vtable, VrGame::InterpolatorUpdateFloatSlot));
+
+        if (!(isFloat(interpolator, nullptr) & 0xFF)) {
+          others += str::format(others.empty() ? "" : ", ", controller ? controller : "?");
+          continue;
+        }
+
+        float highest = 0.0f;
+        float first   = -1.0f;
+
+        for (uint32_t j = 0; begin + float(j) / SamplesPerSecond <= end; j++) {
+          float time  = begin + float(j) / SamplesPerSecond;
+          float value = 0.0f;
+
+          if (!(readFloat(interpolator, nullptr, time, system, &value) & 0xFF))
+            continue;
+
+          if (value > 0.0f && first < 0.0f)
+            first = time;
+
+          highest = std::max(highest, value);
+        }
+
+        Logger::info(str::format("VR: Throw animation particles of '", name, "' (", controller ? controller : "",
+          "): up to ", highest, " per second", first >= 0.0f ? str::format(" from ", first, " s") : std::string()));
+        rate = std::max(rate, highest);
+      }
+
+      if (!others.empty())
+        Logger::info(str::format("VR: Throw animation tracks of '", name, "' besides its rate: ", others));
+
+      return rate;
     }
 
     void readSounds(const uint8_t* sequence, float act, float release, VrThrowAnimation& animation) {
@@ -286,26 +382,49 @@ namespace dxvk {
     if (nodes.lighter && nodes.leftHand && nodes.root)
       hold = findLighterHold(tracks, nodes, begin, release, lighterToHand);
 
+    // The fingers as the hand acts: on the pin, the button, or the lighter
+    // at the fuse
     if (nodes.leftHand)
-      animation.fingers = vrReadSequenceFingers(tracks, nodes.leftHand, nodes.lighter ? hold : act);
+      animation.fingers = vrReadSequenceFingers(tracks, nodes.leftHand, act);
 
-    // The lighter in the hand, lit
+    // Lit, its cap is open. The parts are read in the lighter's own frame,
+    // wherever the hand holds it.
+    if (nodes.lighter)
+      animation.lighterLit = readParts(tracks, nodes.lighter, false, act);
+
+    // The lighter in the hand
     VrSequencePose hand, lighter;
 
-    if (lighterToHand <= MaxLighterFromHand
+    if (lighterToHand <= VrLighterReach
      && tracks.toAncestor(nodes.leftHand, nodes.root, hold, hand)
      && tracks.toAncestor(nodes.lighter, nodes.root, hold, lighter)
      && hand.scale > 0.0f) {
       VrGameRotation toHand = vrTranspose(hand.rotate);
-      animation.lighterInHand.rotate    = toHand * lighter.rotate;
-      animation.lighterInHand.translate = (toHand * (lighter.translate - hand.translate)) * (1.0f / hand.scale);
+      animation.lighter.inHand.rotate    = toHand * lighter.rotate;
+      animation.lighter.inHand.translate = (toHand * (lighter.translate - hand.translate)) * (1.0f / hand.scale);
+      animation.lighter.fingers          = vrReadSequenceFingers(tracks, nodes.leftHand, hold);
       animation.hasLighter = true;
-      animation.lighterLit = readParts(tracks, nodes.lighter, false, act);
+
+      // Where it stands from: its meshes' centre towards its flame, or
+      // its node's y axis without one
+      VrVector3 centre = lighter.translate + lighter.rotate * meshCentre(nodes.lighter) * lighter.scale;
+      VrVector3 up     = lighter.rotate * VrVector3 { 0.0f, 1.0f, 0.0f };
+      VrVector3 flame;
+
+      if (nodes.flame && pointAt(tracks, nodes.flame, nodes.root, meshCentre(nodes.flame), hold, flame)
+       && vrLength(flame - centre) > 0.0f)
+        up = (flame - centre) * (1.0f / vrLength(flame - centre));
+
+      animation.lighter.centre = (toHand * (centre - hand.translate)) * (1.0f / hand.scale);
+      animation.lighter.up     = toHand * up;
     }
 
     // A switch is left thrown
     if (arming == VrThrowArming::Button && nodes.button)
       animation.pressed = readParts(tracks, nodes.button, true, release);
+
+    if (nodes.sparks)
+      animation.sparkRate = readParticleRate(sequence, nodes.sparks, begin, end);
 
     readSounds(sequence, act, release, animation);
 
@@ -317,8 +436,10 @@ namespace dxvk {
                         : std::string(" s (not found)"),
       ", with ", animation.fingers.size(), " finger bone(s)",
       animation.hasLighter ? str::format(", the lighter held at ", hold, " s, its meshes ", lighterToHand / VrGameUnitsPerMetre * 100.0f,
-        " cm from the hand bone, with ", animation.lighterLit.size(), " part(s) moved lit")
-      : nodes.lighter ? std::string(", the lighter never in the left hand") : std::string(),
+        " cm from the hand bone")
+      : nodes.lighter && lighterToHand < FLT_MAX ? str::format(", the lighter never in the left hand (nearest ",
+        lighterToHand / VrGameUnitsPerMetre * 100.0f, " cm at ", hold, " s)") : std::string(),
+      nodes.lighter ? str::format(", ", animation.lighterLit.size(), " part(s) of the lighter moved lit") : std::string(),
       arming == VrThrowArming::Button ? str::format(", ", animation.pressed.size(), " part(s) moved once pressed") : std::string(),
       "; ", animation.prepare.size(), " sound(s) on the way, ", animation.arm.size(), " when armed"));
     return true;
