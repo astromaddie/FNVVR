@@ -46,7 +46,7 @@ namespace dxvk {
     // HUD groups shown on the panel in front of the head
     constexpr uintptr_t HeadHudGroups[] = {
       VrGame::HudMessages, VrGame::HudQuestReminder, VrGame::HudSubtitles,
-      VrGame::HudRadiationMeter, VrGame::HudXpMeter };
+      VrGame::HudRadiationMeter, VrGame::HudXpMeter, VrGame::HudSneakMeter };
 
     // HUD groups shown on the hands
     constexpr uintptr_t HandHudGroups[] = {
@@ -208,7 +208,7 @@ namespace dxvk {
       && renderer->m_hudMeters.initialize();
 
     if (renderer->m_hudAvailable && !renderer->m_hudMetersAvailable)
-      Logger::info("VR: The radiation and XP meters' layout was not found, they are shown where the game places them on the HUD panel");
+      Logger::info("VR: The radiation, XP and sneak meters' layout was not found, they are shown where the game places them on the HUD panel");
 
     renderer->m_handHudAvailable = renderer->m_hudAvailable && renderer->m_hudLayers.rectsFound();
     renderer->m_promptAvailable  = renderer->m_handHudAvailable
@@ -580,7 +580,12 @@ namespace dxvk {
     updatePipBoyGaze(input, state, dt);
 
     // Before the interface's tiles are updated for this frame
-    m_hudMetersPlaced = m_hudMetersAvailable ? m_hudMeters.place() : VrHudMetersPlaced();
+    D3DSURFACE_DESC targetDesc = { };
+    m_gameTarget->GetDesc(&targetDesc);
+
+    m_hudMetersPlaced = m_hudMetersAvailable
+      ? m_hudMeters.place(vrComputeInterfaceSize(targetDesc.Width, targetDesc.Height).y)
+      : VrHudMetersPlaced();
 
     for (uint32_t eye = 0; eye < VrEyeCount; eye++) {
       m_eyeCopied[eye] = false;

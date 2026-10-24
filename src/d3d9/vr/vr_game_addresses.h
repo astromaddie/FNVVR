@@ -784,6 +784,17 @@ namespace dxvk {
     constexpr uint8_t   HudRadiationMeterStore[]   = { 0x8B, 0x0D, 0xC0, 0x96, 0x1D, 0x01, 0x89, 0x81, 0x1C, 0x01, 0x00, 0x00 };
 
     /**
+     * SneakMeter group ([HIDDEN], [CAUTION], [DANGER] or [DETECTED] while
+     * the player sneaks). HUDMainMenu::Create stores it at the given site
+     * and sets its x and y from the screen size, at the top of the screen,
+     * in the middle; HUDMainMenu::SetMenuMode only sets whether it is
+     * visible. See findings/sneak.md.
+     */
+    constexpr uintptr_t HudSneakMeter = 0x130;
+    constexpr uintptr_t HudSneakMeterStoreSite = 0x0076D419;
+    constexpr uint8_t   HudSneakMeterStore[]   = { 0x8B, 0x0D, 0xC0, 0x96, 0x1D, 0x01, 0x89, 0x81, 0x30, 0x01, 0x00, 0x00 };
+
+    /**
      * HUDMainMenu fields holding the HUD groups shown on the hands: HitPoints
      * (health bar and compass), ActionPoints (action points, ammunition and
      * weapon condition), with AmmoTypeLabel and CNDArrows, which are placed

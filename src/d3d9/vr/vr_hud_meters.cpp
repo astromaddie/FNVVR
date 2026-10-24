@@ -1,3 +1,5 @@
+#include <cmath>
+
 #include "../../util/log/log.h"
 #include "../../util/util_string.h"
 
@@ -40,23 +42,38 @@ namespace dxvk {
       && VrGameMemory::matches(VrGame::HudXpMeterBaseReadSite,
         VrGame::HudXpMeterBaseRead, sizeof(VrGame::HudXpMeterBaseRead));
 
-    return m_radiationAvailable || m_xpAvailable;
+    m_sneakAvailable = shared
+      && VrGameMemory::matches(VrGame::HudSneakMeterStoreSite,
+        VrGame::HudSneakMeterStore, sizeof(VrGame::HudSneakMeterStore));
+
+    return m_radiationAvailable || m_xpAvailable || m_sneakAvailable;
   }
 
 
-  VrHudMetersPlaced VrHudMeters::place() {
+  VrHudMetersPlaced VrHudMeters::place(float interfaceHeight) {
     VrHudMetersPlaced placed;
 
-    if (!m_radiationAvailable && !m_xpAvailable)
+    uintptr_t hud = readField<uintptr_t>(VrGame::HudMainMenu, 0);
+
+    if (!hud)
       return placed;
 
-    uintptr_t hud       = readField<uintptr_t>(VrGame::HudMainMenu, 0);
-    uintptr_t messages  = hud ? readField<uintptr_t>(hud, VrGame::HudMessages) : 0;
-    uintptr_t radiation = hud && m_radiationAvailable ? readField<uintptr_t>(hud, VrGame::HudRadiationMeter) : 0;
-    uintptr_t xp        = hud && m_xpAvailable ? readField<uintptr_t>(hud, VrGame::HudXpMeter) : 0;
+    placeColumn(hud, placed);
+    placeSneakMeter(hud, interfaceHeight, placed);
+    return placed;
+  }
+
+
+  void VrHudMeters::placeColumn(uintptr_t hud, VrHudMetersPlaced& placed) {
+    if (!m_radiationAvailable && !m_xpAvailable)
+      return;
+
+    uintptr_t messages  = readField<uintptr_t>(hud, VrGame::HudMessages);
+    uintptr_t radiation = m_radiationAvailable ? readField<uintptr_t>(hud, VrGame::HudRadiationMeter) : 0;
+    uintptr_t xp        = m_xpAvailable ? readField<uintptr_t>(hud, VrGame::HudXpMeter) : 0;
 
     if (!messages)
-      return placed;
+      return;
 
     auto getFloat = reinterpret_cast<TileGetFloatFn>(VrGame::TileGetFloat);
     auto setFloat = reinterpret_cast<TileSetFloatFn>(VrGame::TileSetFloat);
@@ -100,8 +117,32 @@ namespace dxvk {
 
       placed.xp = true;
     }
+  }
 
-    return placed;
+
+  void VrHudMeters::placeSneakMeter(uintptr_t hud, float interfaceHeight, VrHudMetersPlaced& placed) {
+    uintptr_t sneak = m_sneakAvailable ? readField<uintptr_t>(hud, VrGame::HudSneakMeter) : 0;
+
+    if (!sneak)
+      return;
+
+    auto getFloat = reinterpret_cast<TileGetFloatFn>(VrGame::TileGetFloat);
+    auto setFloat = reinterpret_cast<TileSetFloatFn>(VrGame::TileSetFloat);
+
+    float target = std::floor(0.5f * interfaceHeight) + VrSneakMeterBelowMiddle;
+    float y      = getFloat(sneak, VrGame::TileTraitY);
+
+    if (y != target) {
+      setFloat(sneak, VrGame::TileTraitY, target, true);
+
+      if (!m_loggedSneak) {
+        Logger::info(str::format("VR: The sneak meter is moved from height ", y, " to ", target,
+          ", below the middle of the HUD panel in front of the head"));
+        m_loggedSneak = true;
+      }
+    }
+
+    placed.sneak = true;
   }
 
 }

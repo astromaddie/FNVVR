@@ -10,10 +10,16 @@ namespace dxvk {
   struct VrHudMetersPlaced {
     bool radiation = false;
     bool xp        = false;
+    bool sneak     = false;
   };
 
   /**
-   * \brief Moves the HUD's radiation and XP meters to the top right corner
+   * \brief How far below the middle of the screen the sneak meter is placed, in interface units
+   */
+  constexpr float VrSneakMeterBelowMiddle = 30.0f;
+
+  /**
+   * \brief Moves the HUD's meters to where the panel in front of the head shows them
    *
    * The panel in front of the head brings the top right corner towards the
    * centre (vrComputeHeadHudLayout), so both meters are placed there, in a
@@ -34,6 +40,13 @@ namespace dxvk {
    * (HUDMainMenu::UpdateVisibilityState), so both are moved, by the same
    * distance. See findings/hud.md §11-12.
    *
+   * The sneak meter ([HIDDEN], [CAUTION], ...), which the game puts at the
+   * top of the screen in the middle, where the panel moves the corners
+   * to, is placed just below the middle of the screen instead: the panel
+   * keeps the lower half where it is, so the meter is seen just below the
+   * line of sight. Only HUDMainMenu::Create sets its height. See
+   * findings/sneak.md.
+   *
    * Only used on the game's main thread.
    */
   class VrHudMeters {
@@ -47,21 +60,28 @@ namespace dxvk {
     bool initialize();
 
     /**
-     * \brief Moves the meters to the top right corner if they are not there
+     * \brief Moves the meters to their places if they are not there
      *
      * Called once per frame, since the game builds the HUD again (and puts
      * the meters back) when it reads the HUD's menu file.
      *
-     * \returns Which meters are in the top right corner
+     * \param [in] interfaceHeight Height of the screen, in interface units
+     * \returns Which meters were placed
      */
-    VrHudMetersPlaced place();
+    VrHudMetersPlaced place(float interfaceHeight);
 
   private:
 
     bool m_radiationAvailable = false;
     bool m_xpAvailable        = false;
+    bool m_sneakAvailable     = false;
     bool m_loggedRadiation    = false;
     bool m_loggedXp           = false;
+    bool m_loggedSneak        = false;
+
+    void placeColumn(uintptr_t hud, VrHudMetersPlaced& placed);
+
+    void placeSneakMeter(uintptr_t hud, float interfaceHeight, VrHudMetersPlaced& placed);
 
   };
 
