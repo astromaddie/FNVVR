@@ -141,6 +141,19 @@ namespace dxvk {
     constexpr uintptr_t ActorLifeState    = 0x108;
     constexpr uintptr_t PlayerDisabledControls = 0x680;
     constexpr uint8_t   ControlLook       = 0x2;
+    constexpr uint8_t   ControlSneak      = 0x40;
+
+    /**
+     * Actor::IsSneaking, __thiscall without arguments, returns a bool: the
+     * sneak bit (0x400) of the actor's move mode, unless it swims. Checked
+     * against its first bytes (... call Actor::GetMoveMode). The Sneak
+     * control toggles that bit in PlayerCharacter::Update when it is
+     * pressed (0x00940D54). See findings/sneak.md.
+     */
+    constexpr uintptr_t ActorIsSneaking = 0x004997B0;
+    constexpr uint8_t   ActorIsSneakingPrologue[] = {
+      0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x08, 0x89, 0x4D, 0xFC, 0x8B, 0x4D, 0xFC, 0xE8,
+    };
 
     /**
      * Weapon in the hand, see findings/weapon.md.

@@ -102,6 +102,7 @@ namespace dxvk {
     VrTurnConfig                         m_turnConfig;
     float                                m_pipBoyScale = 1.0f;
     bool                                 m_manualReload = true;
+    VrSneakConfig                        m_sneakConfig;
     bool                                 m_weaponInHand;
     VrGameTimerConfig                    m_timerConfig;
     VrRenderPassConfig                   m_passConfig;

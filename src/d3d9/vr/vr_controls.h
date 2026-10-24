@@ -7,6 +7,7 @@
 #include "vr_game_state.h"
 #include "vr_head_look.h"
 #include "vr_menu_pointer.h"
+#include "vr_sneak.h"
 
 namespace dxvk {
 
@@ -15,7 +16,7 @@ namespace dxvk {
    *
    * The actions, filtered by VrActionFilter, become a gamepad state for
    * the game (see VrGamepadHook), the head pose and the turning stick go
-   * to VrHeadLook, and the backend
+   * to VrHeadLook, the head's height to VrSneak, and the backend
    * is told whether the next frame's actions are read for the game or for
    * a menu. In menus the controllers also point at the menu panel with
    * lasers, which drive the game's cursor (see VrMenuPointer), or at the
@@ -36,6 +37,16 @@ namespace dxvk {
      * \brief Changes how the turning stick turns
      */
     void setTurnConfig(const VrTurnConfig& turn);
+
+    /**
+     * \brief Makes the player sneak by crouching when chosen
+     */
+    void setSneak(std::unique_ptr<VrSneak> sneak);
+
+    /**
+     * \brief Changes how the player sneaks
+     */
+    void setSneakConfig(const VrSneakConfig& config);
 
     /**
      * \brief Processes the input sampled for a frame
@@ -147,7 +158,21 @@ namespace dxvk {
     }
 
     /**
-     * \brief See VrHeadLook::adjustCamera
+     * \brief Adjusts the camera the game computed for this frame
+     *
+     * See VrHeadLook::adjustCamera; while the head drives the camera, it
+     * is also raised by what the game's sneaking lowered, if the player
+     * sneaks by crouching (see VrSneak). Called once per frame, before
+     * any call to adjustCamera.
+     *
+     * \param [in,out] pose Camera pose the game computed
+     * \param [in] dt Duration of a frame in seconds
+     * \returns \c true if the pose was changed
+     */
+    bool updateCamera(VrGameCameraPose& pose, float dt);
+
+    /**
+     * \brief Adjusts a camera pose as the last updateCamera did
      */
     bool adjustCamera(VrGameCameraPose& pose) const;
 
@@ -178,6 +203,7 @@ namespace dxvk {
 
     IVRBackend&                 m_backend;
     std::unique_ptr<VrHeadLook> m_headLook;
+    std::unique_ptr<VrSneak>    m_sneak;
     VrActionFilter              m_filter;
     VrMenuPointer               m_pointer;
 

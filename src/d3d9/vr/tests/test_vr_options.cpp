@@ -142,3 +142,19 @@ TEST_CASE(options_round_trip_the_manual_reload) {
   vrParseOptions("ManualReload=1", read);
   CHECK(read.manualReload);
 }
+
+
+TEST_CASE(options_round_trip_the_physical_sneak) {
+  VrOptions options;
+  CHECK(!options.physicalSneak);
+
+  VrOptions written;
+  written.physicalSneak = true;
+
+  VrOptions read;
+  vrParseOptions(vrFormatOptions(written), read);
+  CHECK(read.physicalSneak);
+
+  vrParseOptions("physicalsneak=0", read);
+  CHECK(!read.physicalSneak);
+}

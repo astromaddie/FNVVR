@@ -153,6 +153,7 @@ namespace dxvk {
     options.pipBoyScale     = std::min(std::max(config.getOption<float>("d3d9.vrPipBoyScale", options.pipBoyScale),
       VrPipBoyScaleMin), vrPipBoyStepToScale(VrPipBoyScaleSteps - 1));
     options.manualReload    = config.getOption<bool>("d3d9.vrManualReload", options.manualReload);
+    options.physicalSneak   = config.getOption<bool>("d3d9.vrPhysicalSneak", options.physicalSneak);
     VrOptionsFile::load(options);
     turn.smooth      = options.smoothTurn;
     turn.smoothSpeed = options.smoothTurnSpeed;
@@ -203,6 +204,11 @@ namespace dxvk {
         Logger::warn(str::format("VR: d3d9.vrDeveloperWeapons: '", name, "' is not a weapon type, it is ignored"));
     }
 
+    // The head rises back by more than the hysteresis before standing
+    VrCrouchConfig crouch;
+    crouch.depth = std::min(std::max(config.getOption<float>("d3d9.vrCrouchDepth", crouch.depth),
+      2.0f * crouch.hysteresis), 1.0f);
+
     VrSwingConfig swing;
     swing.hitSpeed = config.getOption<float>("d3d9.vrMeleeHitSpeed", swing.hitSpeed);
     swing.powerCost.base = config.getOption<int32_t>("d3d9.vrPowerAttackApCost", swing.powerCost.base);
@@ -213,6 +219,8 @@ namespace dxvk {
       timer, passes, developer, swing));
     g_vrSystem->m_pipBoyScale = options.pipBoyScale;
     g_vrSystem->m_manualReload = options.manualReload;
+    g_vrSystem->m_sneakConfig.physical = options.physicalSneak;
+    g_vrSystem->m_sneakConfig.crouch   = crouch;
     DxvkInstance::registerExtensionProvider(g_vrSystem->m_extensionProvider.get());
 
     VrOptionsMenu::install(options, [] (const VrOptions& changed) {
@@ -261,11 +269,13 @@ namespace dxvk {
 
     m_pipBoyScale = options.pipBoyScale;
     m_manualReload = options.manualReload;
+    m_sneakConfig.physical = options.physicalSneak;
 
     if (m_stereoRenderer) {
       m_stereoRenderer->setTurnConfig(m_turnConfig);
       m_stereoRenderer->setPipBoyScale(m_pipBoyScale);
       m_stereoRenderer->setManualReload(m_manualReload);
+      m_stereoRenderer->setSneakConfig(m_sneakConfig);
     }
 
     VrOptionsFile::save(options);
@@ -317,6 +327,7 @@ namespace dxvk {
     if (m_stereoRenderer) {
       m_stereoRenderer->setPipBoyScale(m_pipBoyScale);
       m_stereoRenderer->setManualReload(m_manualReload);
+      m_stereoRenderer->setSneakConfig(m_sneakConfig);
     }
 
     return true;

@@ -46,6 +46,17 @@ namespace dxvk {
   }
 
 
+  void VrControls::setSneak(std::unique_ptr<VrSneak> sneak) {
+    m_sneak = std::move(sneak);
+  }
+
+
+  void VrControls::setSneakConfig(const VrSneakConfig& config) {
+    if (m_sneak)
+      m_sneak->setConfig(config);
+  }
+
+
   void VrControls::update(
     const VrInputState&         input,
           VrGameStateKind       state,
@@ -54,6 +65,11 @@ namespace dxvk {
           float                 dt) {
     // The actions were read in the context chosen on the previous frame
     VrActionState actions = m_filter.update(input.actions, m_context, dt);
+
+    if (m_sneak) {
+      bool inGame = state == VrGameStateKind::InGame && m_context == VrInputContext::Game;
+      m_sneak->update(input.isHeadTracked ? &input.headPose.position.y : nullptr, inGame, dt);
+    }
 
     if (m_terminalPanel && m_context == VrInputContext::Menu && input.hasActions)
       updateTerminal(input, actions, dt);
@@ -98,6 +114,12 @@ namespace dxvk {
     if (m_swingsWithHand && m_context == VrInputContext::Game)
       actions.setPressed(VrAction::Attack, false);
 
+    // The crouch sneaks instead of the button
+    bool crouchSneaks = m_sneak && m_sneak->physical() && m_context == VrInputContext::Game;
+
+    if (crouchSneaks)
+      actions.setPressed(VrAction::Sneak, false);
+
     const VrPanelPlacement* panel = nullptr;
 
     if (m_context == VrInputContext::Menu && input.hasActions && VrMenuCursor::pointerAllowed())
@@ -116,6 +138,9 @@ namespace dxvk {
 
     if (m_gameAim && m_context == VrInputContext::Game)
       vrPressGameControl(pad, VrGameControl::Aim, gameBindings());
+
+    if (crouchSneaks && m_sneak->holdsSneakControl())
+      vrPressGameControl(pad, VrGameControl::Sneak, gameBindings());
 
     // The game switches the light once its Pip-Boy control is held long
     // enough, and does not open the Pip-Boy on that release
@@ -188,8 +213,29 @@ namespace dxvk {
   }
 
 
+  bool VrControls::updateCamera(VrGameCameraPose& pose, float dt) {
+    bool adjusted = m_headLook && m_headLook->adjustCamera(pose);
+
+    // Only a camera that follows the head is measured: not in V.A.T.S.,
+    // on furniture or when dead, where it is not raised either
+    if (m_sneak) {
+      m_sneak->measureCamera(adjusted ? &pose : nullptr, dt);
+
+      if (adjusted)
+        m_sneak->adjustCamera(pose);
+    }
+
+    return adjusted;
+  }
+
+
   bool VrControls::adjustCamera(VrGameCameraPose& pose) const {
-    return m_headLook && m_headLook->adjustCamera(pose);
+    bool adjusted = m_headLook && m_headLook->adjustCamera(pose);
+
+    if (adjusted && m_sneak)
+      m_sneak->adjustCamera(pose);
+
+    return adjusted;
   }
 
 

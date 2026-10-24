@@ -24,6 +24,8 @@ namespace dxvk {
     float pipBoyScale     = 1.0f;
     /// Reload the weapons with the hands, see findings/reload.md
     bool  manualReload    = true;
+    /// Sneak by crouching instead of with the sneak button, see findings/sneak.md
+    bool  physicalSneak   = false;
   };
 
   /// Slowest smooth turning speed of the options page, in degrees per second

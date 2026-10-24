@@ -209,6 +209,15 @@ namespace dxvk {
         m_manualReload->setEnabled(enabled);
     }
 
+    /**
+     * \brief Changes how the player sneaks
+     *
+     * Called from the game's options page, on the game's thread.
+     */
+    void setSneakConfig(const VrSneakConfig& config) {
+      m_controls.setSneakConfig(config);
+    }
+
   private:
 
     static constexpr uint32_t NoEye = ~0u;

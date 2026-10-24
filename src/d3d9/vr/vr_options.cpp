@@ -13,6 +13,7 @@ namespace dxvk {
     constexpr char SmoothTurnSpeedName[] = "smoothturnspeed";
     constexpr char PipBoyScaleName[]     = "pipboyscale";
     constexpr char ManualReloadName[]    = "manualreload";
+    constexpr char PhysicalSneakName[]   = "physicalsneak";
 
     std::string trim(const std::string& text) {
       size_t begin = 0;
@@ -137,6 +138,8 @@ namespace dxvk {
         parseFloat(value, VrPipBoyScaleMin, vrPipBoyStepToScale(VrPipBoyScaleSteps - 1), options.pipBoyScale);
       else if (name == ManualReloadName)
         parseBool(value, options.manualReload);
+      else if (name == PhysicalSneakName)
+        parseBool(value, options.physicalSneak);
     }
   }
 
@@ -150,6 +153,9 @@ namespace dxvk {
     text += "PipBoyScale=" + formatFloat(options.pipBoyScale) + "\n";
     text += "ManualReload=";
     text += options.manualReload ? "1" : "0";
+    text += "\n";
+    text += "PhysicalSneak=";
+    text += options.physicalSneak ? "1" : "0";
     text += "\n";
     return text;
   }

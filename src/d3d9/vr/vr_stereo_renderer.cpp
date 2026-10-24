@@ -233,6 +233,13 @@ namespace dxvk {
 
     renderer->m_controls.setHeadLook(VrHeadLook::install(turn));
 
+    auto sneak = VrSneak::install();
+
+    if (!sneak)
+      Logger::info("VR: The player's sneak state was not found, the player sneaks with the sneak button only");
+
+    renderer->m_controls.setSneak(std::move(sneak));
+
     if (weaponInHand)
       renderer->m_weaponHand = VrWeaponHand::install();
 
@@ -570,7 +577,7 @@ namespace dxvk {
     VrGameCameraPose modelCamera = m_gameCameraPose;
 
     // The game turned its camera with the head already
-    m_controls.adjustCamera(m_gameCameraPose);
+    m_controls.updateCamera(m_gameCameraPose, dt);
     updateNpcGaze();
     updateWeaponHand(input, state, modelCamera, dt);
     updateManualReload(input, state, dt);

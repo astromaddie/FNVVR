@@ -37,6 +37,9 @@ namespace dxvk {
     constexpr char ReloadText[]     = "Manual reload";
     constexpr char ReloadOffText[]  = "Off";
     constexpr char ReloadOnText[]   = "On";
+    constexpr char SneakText[]      = "Sneak";
+    constexpr char SneakButtonText[] = "Stick click";
+    constexpr char SneakCrouchText[] = "Real crouch";
 
     // One name per size of VrPipBoyScaleSteps, from the game's size up
     constexpr const char* PipBoySizeNames[VrPipBoyScaleSteps] = {
@@ -204,6 +207,23 @@ namespace dxvk {
     }
 
 
+    void __cdecl onSneakChanged(void* option) {
+      if (!optionsInitialised()) {
+        optionValue(option)   = g_options.physicalSneak ? 1u : 0u;
+        optionDefault(option) = 0u;
+        return;
+      }
+
+      bool physical = optionValue(option) != 0;
+
+      if (physical == g_options.physicalSneak)
+        return;
+
+      g_options.physicalSneak = physical;
+      notifyChanged();
+    }
+
+
     // Creates a user option and adds it to the game's list
     template<typename... Names>
     void* appendUserOption(const char* text, UserOptionCallback callback, int32_t type,
@@ -254,6 +274,8 @@ namespace dxvk {
         PipBoySizeNames[0], PipBoySizeNames[1], PipBoySizeNames[2], PipBoySizeNames[3], PipBoySizeNames[4]);
       appendUserOption(ReloadText, &onReloadChanged, ToggleType, ToggleValues, ArrowSpacing,
         ReloadOffText, ReloadOnText);
+      appendUserOption(SneakText, &onSneakChanged, ToggleType, ToggleValues, ArrowSpacing,
+        SneakButtonText, SneakCrouchText);
     }
 
 
