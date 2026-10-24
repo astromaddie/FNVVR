@@ -27,6 +27,13 @@ namespace dxvk {
     // The weapon's attack animation when it has none of its own
     constexpr uint32_t NoAttackAnimation = 0xFF;
 
+    // How far from the left hand bone the lighter's meshes may be for the
+    // hand to hold it, in game units: the bone sits at the wrist
+    constexpr float MaxLighterFromHand = 0.12f * VrGameUnitsPerMetre;
+
+    // How often the lighter's distance to the hand is logged, in seconds
+    constexpr float LighterLogStep = 0.1f;
+
     template<typename T>
     T readField(const uint8_t* base, uintptr_t offset) {
       return *reinterpret_cast<const T*>(base + offset);
@@ -132,6 +139,47 @@ namespace dxvk {
       return parts;
     }
 
+    /**
+     * \brief The time the animation holds the lighter nearest the left
+     *    hand bone, up to the release
+     *
+     * The distance is logged along the animation.
+     */
+    float findLighterHold(const VrSequenceTracks& tracks, const VrThrowAnimationNodes& nodes,
+        float begin, float release, float& distance) {
+      VrVector3 centre = meshCentre(nodes.lighter);
+      float hold = begin;
+      float nextLog = begin;
+      std::string curve;
+
+      distance = FLT_MAX;
+
+      for (uint32_t i = 0; begin + float(i) / SamplesPerSecond <= release; i++) {
+        float time = begin + float(i) / SamplesPerSecond;
+        VrVector3 hand, lighter;
+
+        if (!pointAt(tracks, nodes.leftHand, nodes.root, VrVector3(), time, hand)
+         || !pointAt(tracks, nodes.lighter, nodes.root, centre, time, lighter))
+          break;
+
+        float d = vrLength(lighter - hand);
+
+        if (d < distance) {
+          distance = d;
+          hold     = time;
+        }
+
+        if (time >= nextLog) {
+          curve  += str::format(curve.empty() ? "" : ", ", int(d / VrGameUnitsPerMetre * 100.0f + 0.5f));
+          nextLog = time + LighterLogStep;
+        }
+      }
+
+      Logger::info(str::format("VR: Throw animation lighter", tracks.moves(nodes.lighter) ? " (animated)" : " (not animated)",
+        " to the left hand bone, cm every ", LighterLogStep, " s: ", curve.empty() ? std::string("none") : curve));
+      return hold;
+    }
+
     void readSounds(const uint8_t* sequence, float act, float release, VrThrowAnimation& animation) {
       auto group = readField<const uint8_t*>(sequence, VrGame::AnimSequenceGroup);
 
@@ -229,15 +277,24 @@ namespace dxvk {
       }
     }
 
+    // The lighter is held as the animation holds it when it is nearest the
+    // left hand bone: the flame may reach the fuse while the hand is still
+    // bringing it there
+    float hold          = act;
+    float lighterToHand = FLT_MAX;
+
+    if (nodes.lighter && nodes.leftHand && nodes.root)
+      hold = findLighterHold(tracks, nodes, begin, release, lighterToHand);
+
     if (nodes.leftHand)
-      animation.fingers = vrReadSequenceFingers(tracks, nodes.leftHand, act);
+      animation.fingers = vrReadSequenceFingers(tracks, nodes.leftHand, nodes.lighter ? hold : act);
 
     // The lighter in the hand, lit
     VrSequencePose hand, lighter;
 
-    if (nodes.lighter && nodes.leftHand && nodes.root
-     && tracks.toAncestor(nodes.leftHand, nodes.root, act, hand)
-     && tracks.toAncestor(nodes.lighter, nodes.root, act, lighter)
+    if (lighterToHand <= MaxLighterFromHand
+     && tracks.toAncestor(nodes.leftHand, nodes.root, hold, hand)
+     && tracks.toAncestor(nodes.lighter, nodes.root, hold, lighter)
      && hand.scale > 0.0f) {
       VrGameRotation toHand = vrTranspose(hand.rotate);
       animation.lighterInHand.rotate    = toHand * lighter.rotate;
@@ -259,8 +316,9 @@ namespace dxvk {
       nearest < FLT_MAX ? str::format(" s, ", nearest / VrGameUnitsPerMetre * 100.0f, " cm from ", actor == nodes.leftHand ? "the hand bone" : "the flame")
                         : std::string(" s (not found)"),
       ", with ", animation.fingers.size(), " finger bone(s)",
-      animation.hasLighter ? str::format(", the lighter ", vrLength(animation.lighterInHand.translate) / VrGameUnitsPerMetre * 100.0f,
-        " cm from the hand bone with ", animation.lighterLit.size(), " part(s) moved lit") : std::string(),
+      animation.hasLighter ? str::format(", the lighter held at ", hold, " s, its meshes ", lighterToHand / VrGameUnitsPerMetre * 100.0f,
+        " cm from the hand bone, with ", animation.lighterLit.size(), " part(s) moved lit")
+      : nodes.lighter ? std::string(", the lighter never in the left hand") : std::string(),
       arming == VrThrowArming::Button ? str::format(", ", animation.pressed.size(), " part(s) moved once pressed") : std::string(),
       "; ", animation.prepare.size(), " sound(s) on the way, ", animation.arm.size(), " when armed"));
     return true;

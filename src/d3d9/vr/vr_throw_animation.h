@@ -44,10 +44,12 @@ namespace dxvk {
     /// The sounds from it to the release, played when the weapon is
     /// armed: the fuse catching, the pin coming out, the button's beep
     std::vector<VrThrowSound> arm;
-    /// The rotations of the bones below the left hand then
+    /// The rotations of the bones below the left hand then, or when it
+    /// holds the lighter nearest
     std::vector<VrBonePose>   fingers;
-    /// The lighter in the left hand bone's frame then, in units of the
-    /// hand's scale
+    /// The lighter in the left hand bone's frame when the hand holds it
+    /// nearest, in units of the hand's scale; none if it never comes
+    /// within reach of the hand
     bool                      hasLighter = false;
     VrGameTransform           lighterInHand;
     /// The lighter's parts the animation moves, lit (its cap open)
