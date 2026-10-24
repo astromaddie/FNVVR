@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased (since v0.8.0)
+
+- **Drawing a heavy weapon**: the arms and the weapon are hidden for the moment the game still blends the right hand
+  away from the weapon, instead of showing the hand far in front of the controller.
+- **Lighter** (dynamite, fire bomb): it stands upright in the left fist, the fingers holding it as in the game's
+  animation.
+- **Lit fuse**: the dynamite's fuse throws sparks once lit, as in the game's animation, until it leaves the hand.
+
 ## v0.8.0 (2026-10-24, since v0.7.0 `b6c9aca`)
 
 ### Grenades, mines and thrown weapons
