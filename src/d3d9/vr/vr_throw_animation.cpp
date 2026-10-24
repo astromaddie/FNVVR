@@ -28,10 +28,6 @@ namespace dxvk {
     // The weapon's attack animation when it has none of its own
     constexpr uint32_t NoAttackAnimation = 0xFF;
 
-    // How far from the left hand bone the lighter's meshes may be for the
-    // hand to hold it, in game units: the bone sits at the wrist
-    constexpr float MaxLighterFromHand = 0.12f * VrGameUnitsPerMetre;
-
     // How often the lighter's distance to the hand is logged, in seconds
     constexpr float LighterLogStep = 0.1f;
 
@@ -348,21 +344,28 @@ namespace dxvk {
     if (nodes.lighter && nodes.leftHand && nodes.root)
       hold = findLighterHold(tracks, nodes, begin, release, lighterToHand);
 
+    // The fingers as the hand acts: on the pin, the button, or the lighter
+    // at the fuse
     if (nodes.leftHand)
-      animation.fingers = vrReadSequenceFingers(tracks, nodes.leftHand, nodes.lighter ? hold : act);
+      animation.fingers = vrReadSequenceFingers(tracks, nodes.leftHand, act);
 
-    // The lighter in the hand, lit
+    // Lit, its cap is open. The parts are read in the lighter's own frame,
+    // wherever the hand holds it.
+    if (nodes.lighter)
+      animation.lighterLit = readParts(tracks, nodes.lighter, false, act);
+
+    // The lighter in the hand
     VrSequencePose hand, lighter;
 
-    if (lighterToHand <= MaxLighterFromHand
+    if (lighterToHand <= VrLighterReach
      && tracks.toAncestor(nodes.leftHand, nodes.root, hold, hand)
      && tracks.toAncestor(nodes.lighter, nodes.root, hold, lighter)
      && hand.scale > 0.0f) {
       VrGameRotation toHand = vrTranspose(hand.rotate);
-      animation.lighterInHand.rotate    = toHand * lighter.rotate;
-      animation.lighterInHand.translate = (toHand * (lighter.translate - hand.translate)) * (1.0f / hand.scale);
+      animation.lighter.inHand.rotate    = toHand * lighter.rotate;
+      animation.lighter.inHand.translate = (toHand * (lighter.translate - hand.translate)) * (1.0f / hand.scale);
+      animation.lighter.fingers          = vrReadSequenceFingers(tracks, nodes.leftHand, hold);
       animation.hasLighter = true;
-      animation.lighterLit = readParts(tracks, nodes.lighter, false, act);
 
       // Where it stands from: its meshes' centre towards its flame, or
       // its node's y axis without one
@@ -374,8 +377,8 @@ namespace dxvk {
        && vrLength(flame - centre) > 0.0f)
         up = (flame - centre) * (1.0f / vrLength(flame - centre));
 
-      animation.lighterCentre = (toHand * (centre - hand.translate)) * (1.0f / hand.scale);
-      animation.lighterUp     = toHand * up;
+      animation.lighter.centre = (toHand * (centre - hand.translate)) * (1.0f / hand.scale);
+      animation.lighter.up     = toHand * up;
     }
 
     // A switch is left thrown
@@ -395,8 +398,10 @@ namespace dxvk {
                         : std::string(" s (not found)"),
       ", with ", animation.fingers.size(), " finger bone(s)",
       animation.hasLighter ? str::format(", the lighter held at ", hold, " s, its meshes ", lighterToHand / VrGameUnitsPerMetre * 100.0f,
-        " cm from the hand bone, with ", animation.lighterLit.size(), " part(s) moved lit")
-      : nodes.lighter ? std::string(", the lighter never in the left hand") : std::string(),
+        " cm from the hand bone")
+      : nodes.lighter && lighterToHand < FLT_MAX ? str::format(", the lighter never in the left hand (nearest ",
+        lighterToHand / VrGameUnitsPerMetre * 100.0f, " cm at ", hold, " s)") : std::string(),
+      nodes.lighter ? str::format(", ", animation.lighterLit.size(), " part(s) of the lighter moved lit") : std::string(),
       arming == VrThrowArming::Button ? str::format(", ", animation.pressed.size(), " part(s) moved once pressed") : std::string(),
       "; ", animation.prepare.size(), " sound(s) on the way, ", animation.arm.size(), " when armed"));
     return true;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -891,6 +892,7 @@ namespace dxvk {
     uint32_t         m_loggedThrownObjects = 0;
     bool             m_loggedPin = false;
     bool             m_loggedLighter = false;
+    int32_t          m_loggedLighterSource = 0;
 
     // Sparks of the lit fuse, see emitSparks: the game time they started
     // from, less the particles already given, and of the last placement
@@ -899,6 +901,23 @@ namespace dxvk {
     bool             m_loggedSparks  = false;
     float            m_sparkStart    = 0.0f;
     float            m_sparkLast     = 0.0f;
+    float            m_sparkBegin    = 0.0f;
+    bool             m_loggedSparkState = false;
+
+    // The particle system's parts the model culls, shown while the fuse
+    // sparks, and the system they belong to, compared but not dereferenced
+    // unless it is still in the hand
+    std::array<uint8_t*, 4> m_sparkShown = { };
+    uint32_t         m_sparkShownCount = 0;
+    const uint8_t*   m_sparkShownSystem = nullptr;
+
+    // How the game's idle pose holds the lighter in the left hand, see
+    // measureIdleLighter, for the weapon form compared but not dereferenced
+    VrLighterHold    m_idleLighter;
+    const uint8_t*   m_idleLighterForm = nullptr;
+    bool             m_hasIdleLighter  = false;
+    bool             m_idleLighterUpdated = false;
+    int32_t          m_loggedIdleLighter = -1;
 
     // The game's attack animation of the grenade or mine in the hand, read
     // once its model is in the hand, and the weapon it was read for,
@@ -1099,10 +1118,35 @@ namespace dxvk {
       const HeldPart*             held);
 
     /**
-     * \brief The part the left hand holds while a thrown weapon is in the
-     *    right hand, as the game's attack animation holds it
+     * \brief How the left hand holds the lighter of the weapon in the right
+     *    hand: as the game's idle pose holds it, else as its attack
+     *    animation does
      *
-     * The lighter, or the pin while the hand holds it.
+     * \returns \c nullptr if neither brings it within reach of the hand
+     */
+    const VrLighterHold* lighterHold(const uint8_t* form) const;
+
+    /**
+     * \brief Reads how the game's idle pose holds the lighter in the left
+     *    hand
+     *
+     * Once per frame, with the model as the game animates it, before the
+     * left hand is moved: the lighter in the hand bone's frame and the
+     * fingers on it, kept while it is within reach of the hand.
+     *
+     * \param [in] weapon The weapon node
+     * \param [in] otherHand The left hand bone
+     */
+    void measureIdleLighter(uint8_t* root, uint8_t* weapon, uint8_t* otherHand, const uint8_t* form);
+
+    /**
+     * \brief The part the left hand holds while a thrown weapon is in the
+     *    right hand, as the game holds it
+     *
+     * The lighter (see lighterHold), or the pin while the hand holds it.
+     * A lighter out of reach of the hand in the game's poses stands in the
+     * hand at a fixed pose: the hand is then at its free pose with the
+     * attack animation's fingers.
      *
      * \param [in] form The weapon in the right hand
      * \param [in] otherHand The left hand bone
