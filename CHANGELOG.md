@@ -1,6 +1,66 @@
 # Changelog
 
-## Unreleased (since `fb87675`, 2026-10-16)
+## v0.8.0 (2026-10-24, since v0.7.0 `b6c9aca`)
+
+### Grenades, mines and thrown weapons
+
+Grenades, mines and thrown weapons are armed with the left hand and thrown with the right hand, outside V.A.T.S.
+(V.A.T.S. keeps the game's own throw).
+
+- **Arming** is done at the part of the model it acts on, with the sounds of the game's attack animation:
+  - **Pins** (frag, incendiary, Nuka grenades, ...): the left grip or trigger takes the pin and pulling the hand away
+    pulls it out. Letting go before puts it back; once out, the pin stays in the left hand until the grip lets go.
+  - **Fuses** (dynamite, fire bomb): the lighter is held in the left hand and the left trigger strikes its flame;
+    holding the flame at the fuse lights it.
+  - **Buttons, switches and dials** (plasma and pulse grenades, gas bomb, time bomb): pressed with the left index
+    fingertip or clicked with the left trigger near them.
+  - **Mines**: their light is pressed the same way and turns on once armed.
+  - Thrown weapons (throwing knives, spears, hatchets, axes) need no arming.
+- **Throwing** (grenades, thrown weapons): hold the right trigger, swing and let go. The throw follows the fastest
+  motion of the hand just before the release, and its strength follows the hand's speed, up to the game's full throw.
+  A slow release, or an unarmed grenade, stays in the hand.
+- **Placing** (mines): a press of the right trigger lets the mine go with the hand's motion, or drops it to the ground
+  when the hand is still.
+- The game spends the weapon, handles damage and crime and shows the next one in the hand half a second later. The fuse
+  starts when the grenade leaves the hand, as in the game.
+- The Pip-Boy does not open while the left hand holds a pin or a lit lighter.
+
+### Manual reload
+
+- **Heavy weapons**: the ammunition boxes of the minigun, CZ57 Avenger, K9000 and grenade machineguns, the shoulder
+  mounted machine gun's box, the Red Glare's canister and the Tesla cannon's cell are taken out and put in like
+  magazines (the Gatling laser and plasma casters already were). The box of the minigun family and of the grenade
+  machineguns sits under a lock, turned open with the left hand before the box comes out and shut once a new one is
+  in; the weapon does not fire while it is open. A cell the game's animation never puts in the left hand (the
+  Gatling laser's) is held between the fingers.
+- **Launchers** (missile launcher, Annabelle, Fat Man, Esther): after the shot the tube is empty; a missile or mini-nuke
+  taken behind the shoulder is pushed into the tube.
+- **Flamers, incinerators and arc welder**: no part comes out of them, so they keep the game's reload (automatic when
+  empty, or X), with manual reload on or off.
+- **Not yet covered**: weapons whose model has no recognised part keep the game's reload (the X button).
+
+### Finger tracking
+
+- The fingers of a free hand follow the player's fingers, read from SteamVR's hand skeleton: each finger bends from
+  the relaxed open hand to the game's fist. This covers the left hand with one-handed weapons, both hands with no
+  weapon and the Pip-Boy forearm; a hand on a weapon keeps its grip, and a hand holding a magazine or rounds keeps the
+  reload grip.
+- With no weapon, the right hand now sits at its controller; it orbited around it before.
+- **Bindings**: two new hand skeleton actions. SteamVR may need to reload the default bindings once; players with custom
+  bindings need to replace them or add the skeleton actions.
+
+### GPU support
+
+- GPUs without `VK_KHR_maintenance5` and `VK_KHR_maintenance6` (for example AMD Polaris, RX 470/570/580, on AMD's final
+  Windows driver) can now run the mod. Patch by mrlemme606-ops.
+
+### Fixes
+
+- Flames (flamer, Burning Love, ...) come out of the muzzle of the weapon in the hand; they followed the head.
+- The Pip-Boy no longer opens when the left forearm passes in front of the face with its screen turned away, nor while
+  the left hand holds a magazine or rounds.
+
+## v0.7.0 (2026-10-18, since `fb87675`)
 
 ### Manual reload
 
@@ -36,17 +96,8 @@ Weapons are now reloaded with the hands instead of the reload button. It is on b
 - **Highlighted parts**: the part that needs working next (the empty or jammed magazine or cell, the rack part, a break
   action's barrel, the loading port while rounds are held) glows the way V.A.T.S. highlights a limb, wherever the
   hand is. Outside V.A.T.S. only; V.A.T.S. keeps its own highlight.
-- **Heavy weapons**: the ammunition boxes of the minigun, CZ57 Avenger, K9000 and grenade machineguns, the shoulder
-  mounted machine gun's box, the Red Glare's canister and the Tesla cannon's cell are taken out and put in like
-  magazines (the Gatling laser and plasma casters already were). The box of the minigun family and of the grenade
-  machineguns sits under a lock, turned open with the left hand before the box comes out and shut once a new one is
-  in; the weapon does not fire while it is open. A cell the game's animation never puts in the left hand (the
-  Gatling laser's) is held between the fingers.
-- **Launchers** (missile launcher, Annabelle, Fat Man, Esther): after the shot the tube is empty; a missile or mini-nuke
-  taken behind the shoulder is pushed into the tube.
-- **Flamers, incinerators and arc welder**: no part comes out of them, so they keep the game's reload (automatic when
-  empty, or X), with manual reload on or off.
-- **Not yet covered**: weapons whose model has no recognised part keep the game's reload (the X button).
+- **Not yet covered**: heavy weapons, launchers and weapons whose model has no recognised magazine part keep the
+  game's reload (the X button) for now.
 
 **Bindings**: a new SteamVR action, "Take out, take and insert a magazine (left hand)", is bound to the left trigger,
 and the two-handed grip moved from the left trigger to the left grip. Players with custom bindings need to bind the
@@ -66,15 +117,6 @@ new action and move the grip.
 - While the console is shown, the menu panel is hidden, the lasers no longer drive the game's cursor and the gamepad
   is at rest. A flat keyboard panel remains as a fallback.
 
-### Finger tracking
-
-- The fingers of a free hand follow the player's fingers, read from SteamVR's hand skeleton: each finger bends from
-  the relaxed open hand to the game's fist. This covers the left hand with one-handed weapons, both hands with no
-  weapon and the Pip-Boy forearm; a hand on a weapon keeps its grip, and a hand holding a magazine or rounds keeps the
-  reload grip.
-- With no weapon, the right hand now sits at its controller; it orbited around it before.
-- SteamVR may need to reload the default bindings once for the new hand skeleton actions.
-
 ### Camera
 
 - The view is kept in first person: a save made in third person, an Alt+Tab or the POV control no longer leave the
@@ -83,6 +125,3 @@ new action and move the grip.
 ### Fixes
 
 - The Settings list is now sized for all its entries; the sixth entry was cut off.
-- Flames (flamer, Burning Love, ...) come out of the muzzle of the weapon in the hand; they followed the head.
-- The Pip-Boy no longer opens when the left forearm passes in front of the face with its screen turned away, nor while
-  the left hand holds a magazine or rounds.
