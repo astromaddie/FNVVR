@@ -28,6 +28,9 @@ namespace dxvk {
     using EmitParticlesFn = void (__fastcall*)(uint8_t* controller, void* unused,
       float time, float current, float last, float start, float stop, float rate);
 
+    // NiParticleSystem::UpdateSystem, virtual, __thiscall with the time
+    using UpdateSystemFn = void (__fastcall*)(uint8_t* system, void* unused, float time);
+
     // Particles per second of a lit fuse whose animation gives none
     constexpr float DefaultSparkRate = 30.0f;
 
@@ -576,6 +579,7 @@ namespace dxvk {
     m_heldSettleUpdated = false;
     m_drawSettleUpdated = false;
     m_idleLighterUpdated = false;
+    m_sparkUpdated      = false;
     m_magazineBlend     = std::min(m_magazineBlend + dt / MagazineBlendTime, 1.0f);
     m_actionSwing       = m_actionOpen
       ? std::min(m_actionSwing + dt / ActionSwingTime, 1.0f)
@@ -2787,20 +2791,17 @@ namespace dxvk {
     if (m_hasOtherHand)
       placeLighter(lighter, flame, otherHand, controller, shift, updateData);
 
-    emitSparks(sparks, model, updateData);
+    emitSparks(sparks, model);
   }
 
 
-  void VrWeaponHand::emitSparks(uint8_t* sparks, uint8_t* model, const void* updateData) {
+  void VrWeaponHand::emitSparks(uint8_t* sparks, uint8_t* model) {
     // The fuse burns from when it is lit until the weapon leaves the hand
     uint8_t* controller = m_canEmitSparks && sparks && m_throwArm.armed && m_thrown.shown
       ? emitterController(sparks) : nullptr;
-    float time = *static_cast<const float*>(updateData);
-
-    if (!controller || time < m_sparkLast)
-      m_sparking = false;
 
     if (!controller) {
+      m_sparking = false;
       hideSparks(sparks);
       return;
     }
@@ -2826,11 +2827,35 @@ namespace dxvk {
       }
     }
 
+    // Both eyes are drawn at the same time: the second gives none
+    if (m_sparkUpdated)
+      return;
+
+    m_sparkUpdated = true;
+
+    // The game updates the model in the hand at time 0 and without its
+    // controllers, so the sparks keep their own clock: the system's time
+    // if the game updates the system itself, else the last frame's moved
+    // by this frame's time, the system then updated here
+    float systemTime = field<float>(sparks, VrGame::PSysLastUpdateTime);
+    float time;
+
+    if (m_sparking) {
+      m_sparkGameClock = m_sparkGameClock || systemTime != m_sparkSeen;
+      time = m_sparkGameClock ? systemTime : m_sparkLast + m_frameTime;
+
+      if (time < m_sparkLast)
+        m_sparking = false;
+    }
+
     float rate = m_hasThrowAnimation && m_throwAnimation.sparkRate > 0.0f
       ? m_throwAnimation.sparkRate : DefaultSparkRate;
 
     if (!m_sparking) {
+      time = systemTime == -FLT_MAX ? 0.0f : systemTime;
+
       m_sparking   = true;
+      m_sparkGameClock = false;
       m_sparkStart = time;
       m_sparkLast  = time;
       m_sparkBegin = time;
@@ -2843,12 +2868,18 @@ namespace dxvk {
     }
 
     // The particles already given are dropped from the start, so that the
-    // game's counts stay small however long the fuse burns. Both eyes are
-    // drawn at the same time: the second gives none.
+    // game's counts stay small however long the fuse burns
     m_sparkStart += std::floor((m_sparkLast - m_sparkStart) * rate) / rate;
 
     reinterpret_cast<EmitParticlesFn>(VrGame::PSysEmitterCtlrEmit)(controller, nullptr,
       time, time, m_sparkLast, m_sparkStart, FLT_MAX, rate);
+
+    if (!m_sparkGameClock) {
+      auto vtable = field<const uint8_t*>(sparks, 0);
+      reinterpret_cast<UpdateSystemFn>(readField<uintptr_t>(vtable, VrGame::PSysUpdateSystemSlot))(sparks, nullptr, time);
+    }
+
+    m_sparkSeen = field<float>(sparks, VrGame::PSysLastUpdateTime);
     m_sparkLast = time;
 
     logSparks(sparks, controller, time);
@@ -2916,7 +2947,7 @@ namespace dxvk {
         field<float>(data, VrGame::PSysDataBoundRadius)) : std::string("no particle data"),
       ", drawn bound radius ", bound ? readField<float>(bound, sizeof(VrVector3)) : 0.0f,
       ", system updated ", last == -FLT_MAX ? std::string("never") : str::format(time - last, " s ago"),
-      ", update controller ", update,
+      ", update controller ", update, m_sparkGameClock ? ", updated by the game" : ", updated here",
       ", particle lifespan ", emitter ? field<float>(emitter, VrGame::PSysEmitterLifeSpan) : 0.0f, " s",
       ", culled: ", culled.empty() ? std::string("none") : culled));
   }

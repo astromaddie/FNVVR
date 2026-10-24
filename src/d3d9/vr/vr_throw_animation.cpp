@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cfloat>
+#include <cmath>
 #include <cstring>
 
 #include "../../util/log/log.h"
@@ -86,6 +87,31 @@ namespace dxvk {
 
       point = pose.translate + pose.rotate * local * pose.scale;
       return true;
+    }
+
+    /**
+     * \brief The nodes from a node up to the root at a time, for the log
+     *
+     * Each with where the sequence puts it in the root's frame, in
+     * centimetres, and whether the sequence moves it or it keeps its
+     * current transform.
+     */
+    std::string describeChain(const VrSequenceTracks& tracks, uint8_t* node, const uint8_t* root, float time) {
+      std::string chain;
+
+      for (; node && node != root; node = readField<uint8_t*>(node, VrGame::ObjectParent)) {
+        VrVector3 point;
+
+        if (!pointAt(tracks, node, root, VrVector3(), time, point))
+          break;
+
+        point = point * (100.0f / VrGameUnitsPerMetre);
+        chain += str::format(chain.empty() ? "" : " < ", "'", objectName(node), "' ",
+          int(std::lround(point.x)), ", ", int(std::lround(point.y)), ", ", int(std::lround(point.z)),
+          tracks.moves(node) ? "" : " (not animated)");
+      }
+
+      return chain;
     }
 
     /**
@@ -181,6 +207,11 @@ namespace dxvk {
 
       Logger::info(str::format("VR: Throw animation lighter", tracks.moves(nodes.lighter) ? " (animated)" : " (not animated)",
         " to the left hand bone, cm every ", LighterLogStep, " s: ", curve.empty() ? std::string("none") : curve));
+
+      // Where the two chains part, to see why the lighter is not in the hand
+      Logger::info(str::format("VR: Throw animation at ", hold, " s, cm in the first-person root: left hand ",
+        describeChain(tracks, nodes.leftHand, nodes.root, hold), "; lighter ",
+        describeChain(tracks, nodes.lighter, nodes.root, hold)));
       return hold;
     }
 

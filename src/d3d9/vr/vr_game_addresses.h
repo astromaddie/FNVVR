@@ -1855,7 +1855,12 @@ namespace dxvk {
      * +0x1C), +0x50 active (u16), +0x78 added (u16); NiParticleSystem
      * +0xD4 last update time (-FLT_MAX before the first); the controller's
      * flags are ControllerFlags (ControllerActive); NiPSysEmitter +0x48
-     * particle lifespan.
+     * particle lifespan. Do_UpdateSystem is the virtual UpdateSystem(float
+     * time) at +0xF0 of NiParticleSystem, NiMeshParticleSystem and
+     * BSStripParticleSystem (vtables 0x010BD450, 0x010BDD88, 0x010BE360);
+     * the update controller calls it there with its scaled time. The
+     * first-person model is updated with a NiUpdateData of time 0 without
+     * its controllers (PlaceCamera, 0x00874DD4).
      */
     constexpr uintptr_t GeometryModelData           = 0xB8;
     constexpr uintptr_t PSysDataMaxParticles        = 0x08;
@@ -1866,6 +1871,7 @@ namespace dxvk {
     constexpr uintptr_t PSysUpdateCtlrVtable        = 0x010BE6B4;
     constexpr uintptr_t PSysEmitterCtlrEmitter      = 0x3C;
     constexpr uintptr_t PSysEmitterLifeSpan         = 0x48;
+    constexpr uintptr_t PSysUpdateSystemSlot        = 0xF0;
 
     /**
      * TESAnimGroup: the sounds of the animation's "Sound:" text keys,

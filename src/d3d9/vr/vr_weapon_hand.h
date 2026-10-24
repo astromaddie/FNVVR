@@ -894,14 +894,19 @@ namespace dxvk {
     bool             m_loggedLighter = false;
     int32_t          m_loggedLighterSource = 0;
 
-    // Sparks of the lit fuse, see emitSparks: the game time they started
-    // from, less the particles already given, and of the last placement
+    // Sparks of the lit fuse, see emitSparks: the system's time they
+    // started from, less the particles already given, and of the last
+    // frame; the system's time as left after that frame, and whether the
+    // game updates the system itself
     bool             m_canEmitSparks = false;
     bool             m_sparking      = false;
     bool             m_loggedSparks  = false;
+    bool             m_sparkUpdated  = false;
+    bool             m_sparkGameClock = false;
     float            m_sparkStart    = 0.0f;
     float            m_sparkLast     = 0.0f;
     float            m_sparkBegin    = 0.0f;
+    float            m_sparkSeen     = 0.0f;
     bool             m_loggedSparkState = false;
 
     // The particle system's parts the model culls, shown while the fuse
@@ -1071,14 +1076,14 @@ namespace dxvk {
      * \brief Gives the lit fuse its sparks
      *
      * The particle system's emitter gives as many particles as the
-     * attack animation would since the last placement, while the weapon
-     * in the hand is armed by its fuse.
+     * attack animation would since the last frame, while the weapon in
+     * the hand is armed by its fuse. The system is updated here unless
+     * the game updates it.
      *
      * \param [in] sparks The particle system, or \c nullptr
      * \param [in] model The weapon's model the system is in
-     * \param [in] updateData The game's NiUpdateData of the model
      */
-    void emitSparks(uint8_t* sparks, uint8_t* model, const void* updateData);
+    void emitSparks(uint8_t* sparks, uint8_t* model);
 
     /**
      * \brief Culls again the parts of the particle system shown for the
