@@ -1,0 +1,269 @@
+#include <cfloat>
+#include <cstring>
+
+#include "../../util/log/log.h"
+#include "../../util/util_string.h"
+
+#include "vr_game_addresses.h"
+#include "vr_game_nodes.h"
+#include "vr_sound_keys.h"
+#include "vr_throw_animation.h"
+
+namespace dxvk {
+
+  namespace {
+
+    // How many times per second of the animation the hand is sampled
+    constexpr float SamplesPerSecond = 60.0f;
+
+    // How long before the hand acts on the part its sound may start, in
+    // seconds of the animation: the hand's own sounds before it are the
+    // preparation
+    constexpr float ActSoundLead = 0.1f;
+
+    // The parts below the lighter and the button are a few levels deep
+    constexpr uint32_t MaxPartDepth = 6;
+
+    // The weapon's attack animation when it has none of its own
+    constexpr uint32_t NoAttackAnimation = 0xFF;
+
+    template<typename T>
+    T readField(const uint8_t* base, uintptr_t offset) {
+      return *reinterpret_cast<const T*>(base + offset);
+    }
+
+    VrVector3 readVector(const uint8_t* object, uintptr_t offset) {
+      VrVector3 v;
+      std::memcpy(&v, object + offset, sizeof(v));
+      return v;
+    }
+
+    VrGameRotation readRotation(const uint8_t* object, uintptr_t offset) {
+      VrGameRotation r;
+      std::memcpy(r.m, object + offset, sizeof(r.m));
+      return r;
+    }
+
+    const char* objectName(const uint8_t* object) {
+      const char* name = object ? readField<const char*>(object, VrGame::ObjectName) : nullptr;
+      return name ? name : "";
+    }
+
+    /**
+     * \brief The centre of a part's meshes in its own frame
+     */
+    VrVector3 meshCentre(const uint8_t* part) {
+      float scale = readField<float>(part, VrGame::ObjectWorldScale);
+      auto bound  = readField<const uint8_t*>(part, VrGame::ObjectWorldBound);
+
+      if (!bound || scale <= 0.0f || readField<float>(bound, sizeof(VrVector3)) <= 0.0f)
+        return VrVector3();
+
+      return vrTranspose(readRotation(part, VrGame::ObjectWorldRotation))
+        * (readVector(bound, 0) - readVector(part, VrGame::ObjectWorldTranslation)) * (1.0f / scale);
+    }
+
+    /**
+     * \brief Where a point of a node is in the root's frame at a time
+     */
+    bool pointAt(const VrSequenceTracks& tracks, uint8_t* node, const uint8_t* root,
+        const VrVector3& local, float time, VrVector3& point) {
+      VrSequencePose pose;
+
+      if (!tracks.toAncestor(node, root, time, pose))
+        return false;
+
+      point = pose.translate + pose.rotate * local * pose.scale;
+      return true;
+    }
+
+    /**
+     * \brief The time the animation lets go of the weapon
+     *
+     * Its Release key, or its Hit key, or its end. Every key is logged.
+     */
+    float findRelease(const uint8_t* sequence, float end) {
+      auto textKeys  = readField<const uint8_t*>(sequence, VrGame::SequenceTextKeys);
+      auto keys      = textKeys ? readField<const uint8_t*>(textKeys, VrGame::TextKeyArray) : nullptr;
+      uint32_t count = textKeys ? readField<uint32_t>(textKeys, VrGame::TextKeyCount) : 0;
+
+      float release = -1.0f;
+      float hit     = -1.0f;
+      std::string list;
+
+      for (uint32_t i = 0; keys && i < count; i++) {
+        const uint8_t* key = keys + i * VrGame::TextKeySize;
+        const char* text = readField<const char*>(key, VrGame::TextKeyText);
+        float time = readField<float>(key, 0);
+
+        if (release < 0.0f && vrIsReleaseKey(text))
+          release = time;
+
+        if (hit < 0.0f && vrIsHitKey(text))
+          hit = time;
+
+        if (text)
+          list += str::format(list.empty() ? "" : ", ", "'", std::string(text, std::strcspn(text, "\r")), "' at ", time, " s");
+      }
+
+      Logger::info(str::format("VR: Throw animation keys: ", list.empty() ? std::string("none") : list));
+      return release >= 0.0f ? release : (hit >= 0.0f ? hit : end);
+    }
+
+    /**
+     * \brief The parts below a node the sequence moves, at a time
+     *
+     * \param [in] self Whether the node itself counts
+     */
+    std::vector<VrPartPose> readParts(const VrSequenceTracks& tracks, uint8_t* node, bool self, float time) {
+      std::vector<VrPartPose> parts;
+
+      vrVisitGameObjects(reinterpret_cast<uintptr_t>(node), MaxPartDepth,
+        [&tracks, &parts, node, self, time] (uintptr_t object, uint32_t) {
+          auto part = reinterpret_cast<uint8_t*>(object);
+
+          if ((part == node && !self) || !tracks.moves(part))
+            return;
+
+          VrSequencePose pose = tracks.local(part, time);
+          parts.push_back({ objectName(part), { pose.rotate, pose.translate }, pose.scale });
+        });
+
+      return parts;
+    }
+
+    void readSounds(const uint8_t* sequence, float act, float release, VrThrowAnimation& animation) {
+      auto group = readField<const uint8_t*>(sequence, VrGame::AnimSequenceGroup);
+
+      if (!group)
+        return;
+
+      uint32_t count = readField<uint32_t>(group, VrGame::AnimGroupSoundCount);
+      auto sounds    = readField<const uint8_t*>(group, VrGame::AnimGroupSounds);
+
+      float prepareStart = -1.0f;
+      float armStart     = -1.0f;
+
+      for (uint32_t i = 0; sounds && i < count; i++) {
+        const uint8_t* entry = sounds + i * VrGame::AnimGroupSoundSize;
+        float time = readField<float>(entry, 0);
+
+        VrThrowSound sound;
+        sound.sound.sound  = readField<const uint8_t*>(entry, VrGame::AnimGroupSoundForm);
+        sound.sound.volume = float(readField<uint8_t>(entry, VrGame::AnimGroupSoundVolume)) / 255.0f;
+        sound.sound.pitch  = readField<float>(entry, VrGame::AnimGroupSoundPitch);
+        sound.loops        = vrGameSoundLoops(sound.sound.sound);
+
+        // Entries without a sound are footsteps and other events
+        if (!sound.sound.sound)
+          continue;
+
+        const char* use = "after the release, not played";
+
+        if (time <= release) {
+          bool prepare = time < act - ActSoundLead;
+          float& start = prepare ? prepareStart : armStart;
+
+          // The keys are in time order
+          if (start < 0.0f)
+            start = time;
+
+          sound.delay = time - start;
+          (prepare ? animation.prepare : animation.arm).push_back(sound);
+          use = prepare ? "played as the left hand gets to the part" : "played when it is armed";
+        }
+
+        Logger::info(str::format("VR: Throw animation sound at ", time, " s: '", vrGameSoundFile(sound.sound.sound), "'",
+          sound.loops ? " (loops)" : "", ", ", use));
+      }
+    }
+
+  }
+
+
+  bool vrReadThrowAnimation(
+          uint8_t*              player,
+    const uint8_t*              weapon,
+          VrThrowArming         arming,
+    const VrThrowAnimationNodes& nodes,
+          VrThrowAnimation&     animation) {
+    animation = VrThrowAnimation();
+
+    uint32_t group = readField<uint8_t>(weapon, VrGame::WeaponAttackAnimation);
+    const uint8_t* sequence = group != NoAttackAnimation ? vrFindPlayerSequence(player, group) : nullptr;
+
+    if (!sequence) {
+      Logger::info(str::format("VR: The thrown weapon has no first-person attack animation (", group, ")"));
+      return false;
+    }
+
+    float begin   = readField<float>(sequence, VrGame::SequenceBeginKeyTime);
+    float end     = readField<float>(sequence, VrGame::SequenceEndKeyTime);
+    float release = findRelease(sequence, end);
+
+    VrSequenceTracks tracks(sequence);
+
+    // When the left hand acts on the part: the flame nearest the fuse, or
+    // the hand bone nearest the part
+    uint8_t* actor = arming == VrThrowArming::Fuse ? (nodes.flame ? nodes.flame : nodes.lighter) : nodes.leftHand;
+    float act      = release;
+    float nearest  = FLT_MAX;
+
+    if (actor && nodes.target && nodes.leftHand && nodes.root) {
+      VrVector3 centre = meshCentre(nodes.target);
+
+      for (uint32_t i = 0; begin + float(i) / SamplesPerSecond <= release; i++) {
+        float time = begin + float(i) / SamplesPerSecond;
+        VrVector3 from, to;
+
+        if (!pointAt(tracks, actor, nodes.root, VrVector3(), time, from)
+         || !pointAt(tracks, nodes.target, nodes.root, centre, time, to))
+          break;
+
+        float distance = vrLength(to - from);
+
+        if (distance < nearest) {
+          nearest = distance;
+          act     = time;
+        }
+      }
+    }
+
+    if (nodes.leftHand)
+      animation.fingers = vrReadSequenceFingers(tracks, nodes.leftHand, act);
+
+    // The lighter in the hand, lit
+    VrSequencePose hand, lighter;
+
+    if (nodes.lighter && nodes.leftHand && nodes.root
+     && tracks.toAncestor(nodes.leftHand, nodes.root, act, hand)
+     && tracks.toAncestor(nodes.lighter, nodes.root, act, lighter)
+     && hand.scale > 0.0f) {
+      VrGameRotation toHand = vrTranspose(hand.rotate);
+      animation.lighterInHand.rotate    = toHand * lighter.rotate;
+      animation.lighterInHand.translate = (toHand * (lighter.translate - hand.translate)) * (1.0f / hand.scale);
+      animation.hasLighter = true;
+      animation.lighterLit = readParts(tracks, nodes.lighter, false, act);
+    }
+
+    // A switch is left thrown
+    if (arming == VrThrowArming::Button && nodes.button)
+      animation.pressed = readParts(tracks, nodes.button, true, release);
+
+    readSounds(sequence, act, release, animation);
+
+    auto name = readField<const char*>(sequence, VrGame::ObjectName);
+
+    Logger::info(str::format("VR: Throw animation '", name ? name : "", "' (group ", group, ") from ", begin,
+      " to ", end, " s, released at ", release, " s; the left hand acts on '", objectName(nodes.target), "' at ", act,
+      nearest < FLT_MAX ? str::format(" s, ", nearest / VrGameUnitsPerMetre * 100.0f, " cm from ", actor == nodes.leftHand ? "the hand bone" : "the flame")
+                        : std::string(" s (not found)"),
+      ", with ", animation.fingers.size(), " finger bone(s)",
+      animation.hasLighter ? str::format(", the lighter ", vrLength(animation.lighterInHand.translate) / VrGameUnitsPerMetre * 100.0f,
+        " cm from the hand bone with ", animation.lighterLit.size(), " part(s) moved lit") : std::string(),
+      arming == VrThrowArming::Button ? str::format(", ", animation.pressed.size(), " part(s) moved once pressed") : std::string(),
+      "; ", animation.prepare.size(), " sound(s) on the way, ", animation.arm.size(), " when armed"));
+    return true;
+  }
+
+}

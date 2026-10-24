@@ -39,8 +39,9 @@ namespace dxvk {
    * \param [in] position Where the sound is, in game units, for 3D sounds
    * \param [in] volume Volume, from 0 to 1
    * \param [in] frequency Playback speed, 1 for the recorded one
+   * \returns The sound's ID, -1 if it could not be played
    */
-  void vrPlayGameSound(
+  int32_t vrPlayGameSound(
     const uint8_t*              sound,
           uint32_t              flags,
     const VrVector3&            position,
@@ -55,6 +56,13 @@ namespace dxvk {
   bool vrGameSoundLoops(const uint8_t* sound);
 
   /**
+   * \brief Stops a sound played earlier
+   *
+   * \param [in] id The sound's ID, nothing is done for -1
+   */
+  void vrStopGameSound(int32_t id);
+
+  /**
    * \brief Plays an animation's sound once for the player in first person
    *
    * As TESAnimGroup::PlaySounds plays the sounds of the player's
@@ -63,8 +71,9 @@ namespace dxvk {
    * \param [in] sound The sound
    * \param [in] position Where the sound is, in game units, for 3D sounds
    * \param [in] speed How fast the animation would play
+   * \returns The sound's ID, -1 if it could not be played
    */
-  void vrPlayFirstPersonSound(
+  int32_t vrPlayFirstPersonSound(
     const VrAnimationSound&     sound,
     const VrVector3&            position,
           float                 speed);

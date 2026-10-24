@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <memory>
+#include <vector>
 
 #include "vr_game_space.h"
 #include "vr_throw.h"
@@ -45,7 +46,8 @@ namespace dxvk {
    * throw animation never plays. The left hand arms the weapon (VrThrowArm:
    * pulls a grenade's pin, holds the lighter's flame to the dynamite's
    * fuse, presses a mine's button with the index finger), at the part of
-   * the model it acts on (VrWeaponHand measures them). A grenade or thrown
+   * the model it acts on (VrWeaponHand measures them), with the sounds of
+   * the game's attack animation (VrThrowAnimation). A grenade or thrown
    * weapon is thrown by letting go of the right trigger while the hand
    * moves fast enough, along the hand's fastest motion just before; a mine leaves the hand at a press of the trigger,
    * as fast as the hand moves, however slowly.
@@ -119,6 +121,14 @@ namespace dxvk {
     };
 
     /**
+     * \brief A sound of the attack animation waiting for its time
+     */
+    struct QueuedSound {
+      float        delay = 0.0f;
+      VrThrowSound sound;
+    };
+
+    /**
      * \brief A projectile thrown by hand, followed for the log
      */
     struct WatchedThrow {
@@ -149,6 +159,14 @@ namespace dxvk {
     // Time left until the next weapon is shown in the hand after a throw
     float          m_refill = 0.0f;
 
+    // The animation's sounds still to play, and those playing that loop
+    std::vector<QueuedSound> m_sounds;
+    std::vector<int32_t>     m_loopingSounds;
+
+    // The left grip and trigger on the previous frame, for the log
+    bool           m_gripHeld    = true;
+    bool           m_triggerHeld = true;
+
     bool           m_hasPending = false;
     PendingThrow   m_pending;
     WatchedThrow   m_watched;
@@ -157,6 +175,7 @@ namespace dxvk {
     uint32_t       m_loggedSlow    = 0;
     uint32_t       m_loggedUnarmed = 0;
     uint32_t       m_loggedArms    = 0;
+    uint32_t       m_loggedReaches = 0;
 
     void startWeapon(const VrHeldThrown& held, VrThrowArming arming);
 
@@ -171,6 +190,14 @@ namespace dxvk {
     void watchThrown();
 
     void logArm(VrArmEvent event);
+
+    void logPinReach(const VrThrowArmInput& arm, VrArmEvent event);
+
+    void queueSounds(const std::vector<VrThrowSound>& sounds);
+
+    void playSounds(const VrHandThrowInput& input);
+
+    void stopSounds();
 
     static void __fastcall postAnimationHook(
             uint8_t*              actor,

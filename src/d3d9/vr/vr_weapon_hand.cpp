@@ -120,6 +120,9 @@ namespace dxvk {
     constexpr uint32_t ReloadAnimationTries      = 3;
     constexpr uint32_t ReloadAnimationRetryDraws = 180;
 
+    // The same for the attack animation of a grenade or mine
+    constexpr uint32_t ThrowAnimationTries       = 3;
+
     // Bones of the free hand that take a pose: its fingers, the wrist and
     // the forearm's twist bone
     constexpr uint32_t MaxPosedBones = 48;
@@ -1092,6 +1095,8 @@ namespace dxvk {
         held = { magazinePose, &magazineInHand(), &m_reloadAnimation.fingers };
       else if (rack && holdsRack())
         held = { rackPose, &m_reloadAnimation.rack.partInHand, &m_reloadAnimation.rack.fingers };
+      else
+        thrownHeldPart(form, otherHand, shift, held);
 
       placeOtherHand(root, otherHand, shift, updateData, held.inHand ? &held : nullptr);
     }
@@ -1150,7 +1155,7 @@ namespace dxvk {
     }
 
     if (type >= WeaponTypeGrenade && type <= WeaponTypeThrown)
-      placeThrown(weapon, form, type, hand, shift, updateData);
+      placeThrown(root, weapon, otherHand, form, type, hand, shift, updateData);
 
     // The weapon's model is attached below the node once it is loaded
     uint32_t objects = vrCountWeaponObjects(weapon);
@@ -2512,7 +2517,9 @@ namespace dxvk {
 
 
   void VrWeaponHand::placeThrown(
+          uint8_t*              root,
           uint8_t*              weapon,
+          uint8_t*              otherHand,
     const uint8_t*              form,
           int8_t                type,
     const VrGameCameraPose&     hand,
@@ -2527,7 +2534,8 @@ namespace dxvk {
       m_thrown = VrHeldThrown();
       m_thrown.form = form;
       m_thrown.type = type;
-      m_hasPinInHand = false;
+      m_hasPinInHand  = false;
+      m_loggedLighter = false;
     }
 
     m_hasThrown = true;
@@ -2615,6 +2623,42 @@ namespace dxvk {
     if (uint8_t* pressed = button ? button : light)
       m_thrown.hasButton = partBound(pressed, m_thrown.button, m_thrown.buttonRadius) || m_thrown.hasButton;
 
+    // The lighter lights the largest mesh of the model besides itself: the
+    // stick of dynamite, the bottle
+    uint8_t* fuse = nullptr;
+    float fuseRadius = 0.0f;
+
+    if (lighter) {
+      forEachObject(model, MaxModelDepth, [&] (uint8_t* object) {
+        VrVector3 centre;
+        float radius = 0.0f;
+
+        if (asGeometry(object) && !isAncestor(lighter, object)
+         && partBound(object, centre, radius) && radius > fuseRadius) {
+          m_thrown.fuse = centre;
+          fuse          = object;
+          fuseRadius    = radius;
+        }
+      });
+    }
+
+    // What the game's animation does with the left hand, on the part it
+    // acts on, or the whole model without one
+    VrThrowAnimationNodes nodes;
+    nodes.root     = root;
+    nodes.leftHand = otherHand;
+    nodes.target   = pin ? pin : (lighter ? fuse : (button ? button : (light ? light : model)));
+    nodes.button   = button ? button : light;
+    nodes.lighter  = lighter;
+    nodes.flame    = flame;
+    readThrowAnimation(form, type, nodes);
+
+    const VrThrowAnimation* animation = throwAnimation();
+
+    // A switch is left as the animation leaves it once armed
+    if (animation && armed && (button || light))
+      poseParts(button ? button : light, animation->pressed, updateData);
+
     VrGameCameraPose controller = m_otherHand;
     controller.position = controller.position - shift;
 
@@ -2624,28 +2668,108 @@ namespace dxvk {
     if (!lighter)
       return;
 
-    // The lighter lights the largest mesh of the model besides itself: the
-    // stick of dynamite, the bottle
-    float fuseRadius = 0.0f;
-
-    forEachObject(model, MaxModelDepth, [&] (uint8_t* object) {
-      VrVector3 centre;
-      float radius = 0.0f;
-
-      if (asGeometry(object) && !isAncestor(lighter, object)
-       && partBound(object, centre, radius) && radius > fuseRadius) {
-        m_thrown.fuse = centre;
-        fuseRadius    = radius;
-      }
-    });
-
     if (fuseRadius > 0.0f) {
       m_thrown.hasFuse    = true;
       m_thrown.fuseRadius = fuseRadius;
     }
 
     if (m_hasOtherHand)
-      placeLighter(lighter, flame, controller, updateData);
+      placeLighter(lighter, flame, otherHand, controller, shift, updateData);
+  }
+
+
+  void VrWeaponHand::readThrowAnimation(
+    const uint8_t*              form,
+          int8_t                type,
+    const VrThrowAnimationNodes& nodes) {
+    if (form != m_throwAnimationForm) {
+      m_throwAnimationForm  = form;
+      m_hasThrowAnimation   = false;
+      m_throwAnimationTries = 0;
+      m_throwAnimationWait  = 0;
+    }
+
+    if (m_hasThrowAnimation || m_throwAnimationTries >= ThrowAnimationTries || !nodes.leftHand || !nodes.target)
+      return;
+
+    if (m_throwAnimationWait) {
+      m_throwAnimationWait -= 1;
+      return;
+    }
+
+    m_throwAnimationTries += 1;
+    m_throwAnimationWait   = ReloadAnimationRetryDraws;
+
+    // Thrown weapons have nothing to arm
+    VrThrowArming arming = vrThrowArming(type, readField<const char*>(form, VrGame::WeaponModelPath), m_thrown.parts);
+
+    if (arming == VrThrowArming::None) {
+      m_throwAnimationTries = ThrowAnimationTries;
+      return;
+    }
+
+    m_hasThrowAnimation = vrReadThrowAnimation(player(), form, arming, nodes, m_throwAnimation);
+  }
+
+
+  bool VrWeaponHand::thrownHeldPart(
+    const uint8_t*              form,
+          uint8_t*              otherHand,
+    const VrVector3&            shift,
+          HeldPart&             held) const {
+    if (!form || m_thrown.form != form || !m_hasThrowAnimation || m_throwAnimationForm != form)
+      return false;
+
+    VrGameCameraPose controller = m_otherHand;
+    controller.position = controller.position - shift;
+
+    // Where the free pose puts the hand bone
+    VrGameTransform hand = vrComputeHeldTransform(controller, FreeHandPose);
+    float handScale = field<float>(otherHand, VrGame::ObjectWorldScale);
+
+    // The lighter stays in the hand as the animation holds it lit, the
+    // fingers on it
+    if (m_throwAnimation.hasLighter) {
+      const VrGameTransform& inHand = m_throwAnimation.lighterInHand;
+      held.pose.rotate    = hand.rotate * inHand.rotate;
+      held.pose.translate = hand.translate + hand.rotate * inHand.translate * handScale;
+      held.inHand  = &inHand;
+      held.fingers = &m_throwAnimation.fingers;
+      return true;
+    }
+
+    // The fingers close on the pin as the animation's do
+    if (m_throwArm.pinHeld) {
+      held.pose    = hand;
+      held.inHand  = &m_atHandBone;
+      held.fingers = &m_throwAnimation.fingers;
+      return true;
+    }
+
+    return false;
+  }
+
+
+  void VrWeaponHand::posePart(uint8_t* part, const VrPartPose& pose, void* updateData) {
+    VrGameRotation rotation = readRotation(part, VrGame::ObjectLocalRotation);
+    VrVector3 translation   = readVector(part, VrGame::NodeLocalTranslate);
+
+    writeRotation(part, VrGame::ObjectLocalRotation, pose.pose.rotate);
+    writeVector(part, VrGame::NodeLocalTranslate, pose.pose.translate);
+    updateObject(part, updateData);
+
+    // The next eye's update starts from the game's pose again
+    writeRotation(part, VrGame::ObjectLocalRotation, rotation);
+    writeVector(part, VrGame::NodeLocalTranslate, translation);
+  }
+
+
+  void VrWeaponHand::poseParts(uint8_t* node, const std::vector<VrPartPose>& poses, void* updateData) {
+    // In the order they were read, parents first
+    for (const VrPartPose& pose : poses) {
+      if (uint8_t* part = findObject(node, pose.name.c_str()))
+        posePart(part, pose, updateData);
+    }
   }
 
 
@@ -2698,11 +2822,22 @@ namespace dxvk {
   void VrWeaponHand::placeLighter(
           uint8_t*              lighter,
           uint8_t*              flame,
+          uint8_t*              otherHand,
     const VrGameCameraPose&     controller,
+    const VrVector3&            shift,
           void*                 updateData) {
     // The game's animation holds the lighter in the left hand, which the
-    // model does not follow here: it stands in the left hand instead
-    drawPart(lighter, vrComputeHeldTransform(controller, LighterInHand), updateData);
+    // model does not follow here: it is held in the left hand as the
+    // animation holds it lit, or stands in it without the animation
+    HeldPart held = { };
+    const VrThrowAnimation* animation = throwAnimation();
+    bool animated = animation && animation->hasLighter && thrownHeldPart(m_thrown.form, otherHand, shift, held);
+
+    drawPart(lighter, animated ? held.pose : vrComputeHeldTransform(controller, LighterInHand), updateData);
+
+    // Lit, its cap is open
+    if (animated && m_throwArm.lit)
+      poseParts(lighter, animation->lighterLit, updateData);
 
     // Its flame burns while the left trigger is held. A culled object is
     // still placed, so the flame is found either way.
@@ -2718,8 +2853,8 @@ namespace dxvk {
     m_thrown.hasFlame = true;
 
     if (!m_loggedLighter) {
-      Logger::info(str::format("VR: The lighter is in the left hand, its flame ",
-        vrLength(m_thrown.flame) / VrGameUnitsPerMetre, " m from the controller"));
+      Logger::info(str::format("VR: The lighter is in the left hand", animated ? " as the attack animation holds it" : "",
+        ", its flame ", vrLength(m_thrown.flame) / VrGameUnitsPerMetre, " m from the controller"));
       m_loggedLighter = true;
     }
   }

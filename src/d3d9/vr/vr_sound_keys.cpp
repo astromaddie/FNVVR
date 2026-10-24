@@ -9,6 +9,28 @@ namespace dxvk {
 
     constexpr char SoundPrefix[] = "Sound: ";
     constexpr char HitKey[]      = "hit";
+    constexpr char ReleaseKey[]  = "release";
+
+    /**
+     * \brief Whether a key's text is a word, without case, up to a
+     *    carriage return
+     */
+    bool isKey(const char* text, const char* word, size_t wordLength) {
+      if (!text)
+        return false;
+
+      size_t length = std::strcspn(text, "\r");
+
+      if (length != wordLength)
+        return false;
+
+      for (size_t i = 0; i < length; i++) {
+        if (std::tolower(static_cast<unsigned char>(text[i])) != word[i])
+          return false;
+      }
+
+      return true;
+    }
 
   }
 
@@ -40,20 +62,12 @@ namespace dxvk {
 
 
   bool vrIsHitKey(const char* text) {
-    if (!text)
-      return false;
+    return isKey(text, HitKey, sizeof(HitKey) - 1);
+  }
 
-    size_t length = std::strcspn(text, "\r");
 
-    if (length != sizeof(HitKey) - 1)
-      return false;
-
-    for (size_t i = 0; i < length; i++) {
-      if (std::tolower(static_cast<unsigned char>(text[i])) != HitKey[i])
-        return false;
-    }
-
-    return true;
+  bool vrIsReleaseKey(const char* text) {
+    return isKey(text, ReleaseKey, sizeof(ReleaseKey) - 1);
   }
 
 }

@@ -169,6 +169,23 @@ TEST_CASE(throw_arm_pin_let_go_stays_in) {
 }
 
 
+TEST_CASE(throw_arm_pin_is_pinched_with_the_trigger) {
+  VrThrowConfig config;
+  VrThrowArm arm;
+  arm.reset(VrThrowArming::Pin);
+
+  arm.update(armInput(Near, false, false), config);
+  CHECK(arm.update(armInput(Near, false, true), config) == VrArmEvent::PinTaken);
+
+  VrVector3 out = { Near.x + config.pinPull * 1.1f, 1.0f, 0.0f };
+  CHECK(arm.update(armInput(out, false, true), config) == VrArmEvent::Armed);
+  CHECK(arm.holdsPin());
+
+  arm.update(armInput(out, false, false), config);
+  CHECK(!arm.holdsPin());
+}
+
+
 TEST_CASE(throw_arm_fuse_is_lit_by_the_flame) {
   VrThrowConfig config;
   VrThrowArm arm;

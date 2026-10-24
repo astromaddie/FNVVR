@@ -169,8 +169,8 @@ namespace dxvk {
   /**
    * \brief Arms the thrown weapon in the right hand with the left hand
    *
-   * A pin is taken with the left grip at the pin and pulled away from
-   * where it sits; the lighter's flame, lit by the left trigger, is held
+   * A pin is taken with the left grip, or pinched with the left trigger,
+   * at the pin and pulled away from where it sits; the lighter's flame, lit by the left trigger, is held
    * at the fuse for a moment; a button is pressed by the left index
    * fingertip, or by a click of the left trigger with the hand at it. A
    * weapon with nothing to act on is armed from the start.
@@ -200,7 +200,7 @@ namespace dxvk {
     /**
      * \brief Whether the left hand holds the pin
      *
-     * Once the pin is out, until the grip lets go of it.
+     * Once the pin is out, until the grip or trigger lets go of it.
      */
     bool holdsPin() const {
       return m_holdsPin;

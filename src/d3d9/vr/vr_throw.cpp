@@ -202,8 +202,11 @@ namespace dxvk {
     m_grip    = input.grip;
     m_trigger = input.trigger;
 
-    // A pin pulled out stays in the hand until the grip lets it go
-    if (m_holdsPin && m_armed && !input.grip)
+    // The pin is held by the grip, or pinched with the trigger
+    bool holding = input.grip || input.trigger;
+
+    // A pin pulled out stays in the hand until it is let go of
+    if (m_holdsPin && m_armed && !holding)
       m_holdsPin = false;
 
     if (m_armed)
@@ -213,7 +216,7 @@ namespace dxvk {
 
     switch (m_arming) {
       case VrThrowArming::Pin:
-        if (m_holdsPin && !input.grip) {
+        if (m_holdsPin && !holding) {
           m_holdsPin = false;
           return VrArmEvent::PinDropped;
         }
@@ -223,7 +226,7 @@ namespace dxvk {
           return VrArmEvent::Armed;
         }
 
-        if (!m_holdsPin && gripPressed && handDistance <= input.radius + config.pinReach) {
+        if (!m_holdsPin && (gripPressed || triggerPressed) && handDistance <= input.radius + config.pinReach) {
           m_holdsPin = true;
           m_pinTaken = handDistance;
           return VrArmEvent::PinTaken;

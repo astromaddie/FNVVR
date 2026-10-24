@@ -1842,7 +1842,9 @@ namespace dxvk {
      * animation are paused while a menu is open
      * (InterfaceManager::PreIdleStuff calls BSAudio::PauseAnimationSounds,
      * 0x0070BBA0); the interface's own sounds are 2D, system and one shot
-     * only (InterfaceManager::PlayMenuSound, 0x00717280).
+     * only (InterfaceManager::PlayMenuSound, 0x00717280). A looping sound
+     * plays until BSSoundHandle::Stop (__thiscall, no argument, GOG
+     * database) is called on a handle holding its ID.
      */
     constexpr uintptr_t AudioSingleton             = 0x011F6D98;
     constexpr uintptr_t AudioGetSoundByFilename    = 0x00AD7480;
@@ -1852,6 +1854,7 @@ namespace dxvk {
     constexpr uintptr_t SoundHandleSetVolume       = 0x00AD89E0;
     constexpr uintptr_t SoundHandleSetFrequency    = 0x00AD8A90;
     constexpr uintptr_t SoundHandlePlay            = 0x00AD8830;
+    constexpr uintptr_t SoundHandleStop            = 0x00AD88F0;
     constexpr uintptr_t SoundFormFlags             = 0x48;
     constexpr uint32_t  SoundForm2D                = 0x40;
     constexpr uint32_t  SoundFlag2D                = 0x1;

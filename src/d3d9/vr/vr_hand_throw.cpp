@@ -8,6 +8,7 @@
 
 #include "vr_game_addresses.h"
 #include "vr_game_memory.h"
+#include "vr_game_sound.h"
 #include "vr_hand_throw.h"
 #include "vr_math.h"
 #include "vr_melee.h"
@@ -46,6 +47,7 @@ namespace dxvk {
     constexpr uint32_t MaxLoggedThrows = 50;
     constexpr uint32_t MaxLoggedMisses = 20;
     constexpr uint32_t MaxLoggedArms   = 50;
+    constexpr uint32_t MaxLoggedReaches = 20;
 
     constexpr float CentimetresPerUnit = 100.0f / VrGameUnitsPerMetre;
     constexpr float DegreesPerRadian   = 57.2957795f;
@@ -175,6 +177,7 @@ namespace dxvk {
       m_holding = false;
       m_lit     = false;
       m_tracker.reset();
+      stopSounds();
 
       // V.A.T.S. throws with the game's animation, which brings the next
       // one unarmed. Elsewhere (Pip-Boy, menus) the weapon stays as it was.
@@ -198,11 +201,29 @@ namespace dxvk {
     bool ready = held->shown && m_refill <= 0.0f && !m_hasPending;
 
     if (ready && input.otherHand) {
-      events.arm = m_arm.update(armInput(input, *held), m_config);
+      VrThrowArmInput arm = armInput(input, *held);
+      events.arm = m_arm.update(arm, m_config);
       logArm(events.arm);
+      logPinReach(arm, events.arm);
     }
 
-    m_lit = held->parts.lighter && input.otherHand && input.trigger;
+    m_gripHeld    = input.grip;
+    m_triggerHeld = input.trigger;
+
+    bool lit = held->parts.lighter && input.otherHand && input.trigger;
+
+    // The animation's sounds: the lighter struck, the hand on the pin, then
+    // the fuse catching, the pin out, the button pressed
+    if (const VrThrowAnimation* animation = m_weaponHand.throwAnimation()) {
+      if ((lit && !m_lit) || events.arm == VrArmEvent::PinTaken)
+        queueSounds(animation->prepare);
+
+      if (events.arm == VrArmEvent::Armed)
+        queueSounds(animation->arm.empty() && m_arm.arming() == VrThrowArming::Button ? animation->prepare : animation->arm);
+    }
+
+    m_lit = lit;
+    playSounds(input);
 
     VrThrowArmState state;
     state.pinHeld = m_arm.holdsPin();
@@ -285,6 +306,10 @@ namespace dxvk {
       fire(pending);
     }
 
+    // A fuse burning in the hand stops with the throw: the projectile has
+    // its own sounds
+    stopSounds();
+
     // The pin stays out, and in the left hand while the grip holds it,
     // until the next one comes
     m_holding = false;
@@ -298,6 +323,8 @@ namespace dxvk {
 
   void VrHandThrow::startWeapon(const VrHeldThrown& held, VrThrowArming arming) {
     const char* model = readField<const char*>(held.form, VrGame::WeaponModelPath);
+
+    stopSounds();
 
     m_form    = held.form;
     m_holding = false;
@@ -479,6 +506,57 @@ namespace dxvk {
 
     Logger::info(str::format("VR: ", what, " (", vrThrowArmingName(m_arm.arming()), ")"));
     m_loggedArms++;
+  }
+
+
+  void VrHandThrow::logPinReach(const VrThrowArmInput& arm, VrArmEvent event) {
+    bool pressed = (arm.grip && !m_gripHeld) || (arm.trigger && !m_triggerHeld);
+
+    if (!pressed || event != VrArmEvent::None || m_arm.arming() != VrThrowArming::Pin
+     || m_arm.armed() || m_arm.holdsPin() || m_loggedReaches >= MaxLoggedReaches)
+      return;
+
+    Logger::info(str::format("VR: The left hand closed ", vrLength(arm.hand - arm.target) * 100.0f,
+      " cm from the pin's centre, it takes it within ", (arm.radius + m_config.pinReach) * 100.0f, " cm"));
+    m_loggedReaches++;
+  }
+
+
+  void VrHandThrow::queueSounds(const std::vector<VrThrowSound>& sounds) {
+    for (const VrThrowSound& sound : sounds)
+      m_sounds.push_back({ sound.delay, sound });
+  }
+
+
+  void VrHandThrow::playSounds(const VrHandThrowInput& input) {
+    // From the left hand, which acts on the weapon
+    const VrGameCameraPose* hand = input.otherHand ? input.otherHand : input.hand;
+
+    for (size_t i = 0; i < m_sounds.size(); ) {
+      QueuedSound& queued = m_sounds[i];
+      queued.delay -= input.dt;
+
+      if (queued.delay > 0.0f || !hand) {
+        i++;
+        continue;
+      }
+
+      int32_t id = vrPlayFirstPersonSound(queued.sound.sound, hand->position, 1.0f);
+
+      if (queued.sound.loops && id != -1)
+        m_loopingSounds.push_back(id);
+
+      m_sounds.erase(m_sounds.begin() + i);
+    }
+  }
+
+
+  void VrHandThrow::stopSounds() {
+    for (int32_t id : m_loopingSounds)
+      vrStopGameSound(id);
+
+    m_loopingSounds.clear();
+    m_sounds.clear();
   }
 
 

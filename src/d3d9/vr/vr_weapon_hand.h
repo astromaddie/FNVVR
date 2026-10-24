@@ -10,6 +10,7 @@
 #include "vr_pipboy_size.h"
 #include "vr_reload_animation.h"
 #include "vr_throw.h"
+#include "vr_throw_animation.h"
 #include "vr_weapon_aim.h"
 
 namespace dxvk {
@@ -582,6 +583,18 @@ namespace dxvk {
     }
 
     /**
+     * \brief What the game's attack animation of the grenade or mine in
+     *    the hand does with the left hand
+     *
+     * \returns The animation, or \c nullptr until it is read, or if the
+     *    weapon is not armed by hand or has none
+     */
+    const VrThrowAnimation* throwAnimation() const {
+      return m_hasThrown && m_hasThrowAnimation && m_throwAnimationForm == m_thrown.form
+        ? &m_throwAnimation : nullptr;
+    }
+
+    /**
      * \brief Shows the next thrown weapon in the hand
      *
      * The game hides the model in the hand when it launches the weapon and
@@ -872,6 +885,18 @@ namespace dxvk {
     bool             m_loggedPin = false;
     bool             m_loggedLighter = false;
 
+    // The game's attack animation of the grenade or mine in the hand, read
+    // once its model is in the hand, and the weapon it was read for,
+    // compared but not dereferenced
+    VrThrowAnimation m_throwAnimation;
+    bool             m_hasThrowAnimation   = false;
+    const uint8_t*   m_throwAnimationForm  = nullptr;
+    uint32_t         m_throwAnimationTries = 0;
+    uint32_t         m_throwAnimationWait  = 0;
+
+    // The identity, for a part held at the hand bone itself
+    VrGameTransform  m_atHandBone;
+
     // Weapon node whose barrel angle was last logged, compared but not
     // dereferenced
     const uint8_t*   m_loggedBarrelWeapon = nullptr;
@@ -988,19 +1013,32 @@ namespace dxvk {
     void measureBlade(const uint8_t* weapon, const VrGameCameraPose& hand);
 
     void placeThrown(
+            uint8_t*              root,
             uint8_t*              weapon,
+            uint8_t*              otherHand,
       const uint8_t*              form,
             int8_t                type,
       const VrGameCameraPose&     hand,
       const VrVector3&            shift,
             void*                 updateData);
 
+    void readThrowAnimation(
+      const uint8_t*              form,
+            int8_t                type,
+      const VrThrowAnimationNodes& nodes);
+
+    void posePart(uint8_t* part, const VrPartPose& pose, void* updateData);
+
+    void poseParts(uint8_t* node, const std::vector<VrPartPose>& poses, void* updateData);
+
     void placeThrownPin(uint8_t* pin, const VrGameCameraPose& hand, const VrGameTransform& controller, void* updateData);
 
     void placeLighter(
             uint8_t*              lighter,
             uint8_t*              flame,
+            uint8_t*              otherHand,
       const VrGameCameraPose&     controller,
+      const VrVector3&            shift,
             void*                 updateData);
 
     void setThrowSpeed(uint8_t* projectile);
@@ -1032,6 +1070,19 @@ namespace dxvk {
       const VrVector3&            shift,
             void*                 updateData,
       const HeldPart*             held);
+
+    /**
+     * \brief The part the left hand holds while a thrown weapon is in the
+     *    right hand, as the game's attack animation holds it
+     *
+     * The lighter, or the pin while the hand holds it.
+     *
+     * \param [in] form The weapon in the right hand
+     * \param [in] otherHand The left hand bone
+     * \param [out] held Where the part is drawn and how the hand holds it
+     * \returns \c false if the hand holds nothing
+     */
+    bool thrownHeldPart(const uint8_t* form, uint8_t* otherHand, const VrVector3& shift, HeldPart& held) const;
 
     /**
      * \brief Finds how the action of the weapon opens
