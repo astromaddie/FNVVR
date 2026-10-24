@@ -1,5 +1,7 @@
 #include <cmath>
+#include <cstdio>
 #include <cstring>
+#include <limits>
 
 #include "../../util/log/log.h"
 #include "../../util/util_string.h"
@@ -18,15 +20,35 @@ namespace dxvk {
     // TESObjectWEAP::Fire, __thiscall with the actor
     using WeaponFireFn = void (__fastcall*)(uint8_t* weapon, void* unused, uint8_t* actor);
 
+    // Actor::HandlePostAnimationActions, __thiscall without arguments
+    using HandlePostAnimationFn = void (__fastcall*)(uint8_t* actor, void* unused);
+
+    // TESForm::GetFormByNumericID
+    using FormByIdFn = uint8_t* (__cdecl*)(uint32_t id);
+
+    VrHandThrow* g_handThrow = nullptr;
+
     // How long the hand stays empty after a throw before the next weapon
     // is shown in it, about the game's throw animation from its release
     constexpr float RefillTime = 0.5f;
 
+    // A throw the game's update of the player has not fired by then, while
+    // a menu stops it, is dropped
+    constexpr float PendingTimeout = 0.5f;
+
+    // Where the left index fingertip is in its controller's frame, as the
+    // interaction prompt takes it (VrHandHudLayout::FingertipOffset)
+    constexpr VrVector3 Fingertip = { 0.08f * VrGameUnitsPerMetre, 0.0f, 0.0f };
+
+    // When a projectile thrown by hand is looked at again for the log
+    constexpr float WatchTimes[] = { 0.1f, 0.5f, 2.0f };
+
     constexpr uint32_t MaxLoggedThrows = 50;
-    constexpr uint32_t MaxLoggedMisses = 10;
+    constexpr uint32_t MaxLoggedMisses = 20;
     constexpr uint32_t MaxLoggedArms   = 50;
 
-    constexpr float DegreesPerRadian = 57.2957795f;
+    constexpr float CentimetresPerUnit = 100.0f / VrGameUnitsPerMetre;
+    constexpr float DegreesPerRadian   = 57.2957795f;
 
     uint8_t* player() {
       return *reinterpret_cast<uint8_t* const*>(VrGame::Player);
@@ -44,6 +66,18 @@ namespace dxvk {
       return value;
     }
 
+    VrVector3 readVector(const uint8_t* object, uintptr_t offset) {
+      VrVector3 v;
+      std::memcpy(&v, object + offset, sizeof(v));
+      return v;
+    }
+
+    std::string hexId(uint32_t id) {
+      char text[16];
+      std::snprintf(text, sizeof(text), "%08X", id);
+      return text;
+    }
+
     const char* weaponName(const uint8_t* form) {
       const char* name = readField<const char*>(form, VrGame::WeaponFullName);
       return name ? name : "";
@@ -56,15 +90,55 @@ namespace dxvk {
       return vrPointToHand(body, world) * (1.0f / VrGameUnitsPerMetre);
     }
 
+    /**
+     * \brief A point of the right hand's frame, in metres in the game world
+     */
+    VrVector3 inMetres(const VrGameCameraPose& hand, const VrVector3& local) {
+      return vrPointFromHand(hand, local) * (1.0f / VrGameUnitsPerMetre);
+    }
+
+    /**
+     * \brief Level direction of a pose's forward axis
+     *
+     * \returns The unit direction, or the pose's forward if it points
+     *    straight up or down
+     */
+    VrVector3 levelForward(const VrGameCameraPose& pose) {
+      VrVector3 level = { pose.forward.x, pose.forward.y, 0.0f };
+      float length = vrLength(level);
+      return length > 1e-3f ? level * (1.0f / length) : pose.forward;
+    }
+
+  }
+
+
+  VrHandThrow::~VrHandThrow() {
+    // The patched call stays in place and falls through to the game's function
+    g_handThrow = nullptr;
   }
 
 
   std::unique_ptr<VrHandThrow> VrHandThrow::install(VrWeaponHand& weaponHand) {
-    if (!VrGameMemory::matches(VrGame::WeaponFire, VrGame::WeaponFirePrologue, sizeof(VrGame::WeaponFirePrologue)))
+    if (g_handThrow)
       return nullptr;
 
+    if (!VrGameMemory::matches(VrGame::WeaponFire, VrGame::WeaponFirePrologue, sizeof(VrGame::WeaponFirePrologue))
+     || !VrGameMemory::matches(VrGame::FormById, VrGame::FormByIdPrologue, sizeof(VrGame::FormByIdPrologue)))
+      return nullptr;
+
+    // Without it, throws are fired while the frame is drawn, as the AI
+    // threads step Havok
+    bool firesInUpdate = VrGameMemory::redirectCall(VrGame::PlayerPostAnimationCallSite,
+      VrGame::HandlePostAnimationActions, reinterpret_cast<const void*>(&VrHandThrow::postAnimationHook));
+
     Logger::info("VR: Grenades, mines and thrown weapons are armed with the left hand and thrown with the right");
-    return std::unique_ptr<VrHandThrow>(new VrHandThrow(weaponHand));
+
+    if (!firesInUpdate)
+      Logger::warn("VR: The player's update could not be patched, throws by hand are fired while the frame is drawn");
+
+    std::unique_ptr<VrHandThrow> handThrow(new VrHandThrow(weaponHand, firesInUpdate));
+    g_handThrow = handThrow.get();
+    return handThrow;
   }
 
 
@@ -75,6 +149,16 @@ namespace dxvk {
     bool vats = *reinterpret_cast<const uint32_t*>(VrGame::VatsCameraState) != 0;
 
     m_throwsWithHand = held && input.hand && !vats;
+
+    if (m_hasPending) {
+      m_pending.age += input.dt;
+
+      if (m_pending.age > PendingTimeout || vats) {
+        Logger::info(str::format("VR: The throw of '", weaponName(m_pending.form),
+          "' was not fired by the game's update of the player, it is dropped"));
+        m_hasPending = false;
+      }
+    }
 
     // The next one comes into the hand, unarmed, even if the Pip-Boy was
     // opened meanwhile
@@ -89,12 +173,13 @@ namespace dxvk {
 
     if (!m_throwsWithHand) {
       m_holding = false;
+      m_lit     = false;
       m_tracker.reset();
 
       // V.A.T.S. throws with the game's animation, which brings the next
       // one unarmed. Elsewhere (Pip-Boy, menus) the weapon stays as it was.
       if (vats) {
-        m_weaponHand.setThrowArmed(false);
+        m_weaponHand.setThrowArmState(VrThrowArmState());
         m_form   = nullptr;
         m_refill = 0.0f;
       }
@@ -102,30 +187,44 @@ namespace dxvk {
       return events;
     }
 
-    if (held->form != m_form)
-      startWeapon(*held);
+    // The model's parts are known once it is loaded, which may be after
+    // the weapon came into the hand
+    const char* model = readField<const char*>(held->form, VrGame::WeaponModelPath);
+    VrThrowArming arming = vrThrowArming(held->type, model, held->parts);
 
-    VrVector3 centre = vrPointFromHand(*input.hand, held->centre);
-    bool ready = held->shown && m_refill <= 0.0f;
+    if (held->form != m_form || (arming != m_arm.arming() && held->loaded && !m_arm.busy() && !m_holding))
+      startWeapon(*held, arming);
+
+    bool ready = held->shown && m_refill <= 0.0f && !m_hasPending;
 
     if (ready && input.otherHand) {
-      events.arm = m_arm.update(*input.otherHand * (1.0f / VrGameUnitsPerMetre), centre * (1.0f / VrGameUnitsPerMetre),
-        held->radius / VrGameUnitsPerMetre, input.grip, input.trigger, input.dt, m_config);
+      events.arm = m_arm.update(armInput(input, *held), m_config);
       logArm(events.arm);
     }
 
-    m_weaponHand.setThrowArmed(m_arm.armed() && m_arm.arming() == VrThrowArming::Pin);
+    m_lit = held->parts.lighter && input.otherHand && input.trigger;
 
-    // The motion counts from the press of the trigger
-    if (input.attack && !m_holding)
+    VrThrowArmState state;
+    state.pinHeld = m_arm.holdsPin();
+    state.pinOut  = m_arm.arming() == VrThrowArming::Pin && m_arm.armed();
+    state.lit     = m_lit;
+    state.armed   = m_arm.armed();
+    m_weaponHand.setThrowArmState(state);
+
+    // A grenade's motion counts from the press of the trigger; a mine
+    // leaves at the press, moving as the hand did just before
+    bool placed  = vrThrowIsPlaced(held->type);
+    bool pressed = input.attack && !m_holding;
+    bool acts    = placed ? pressed : (m_holding && !input.attack);
+
+    if (pressed && !placed)
       m_tracker.reset();
 
+    VrVector3 centre = vrPointFromHand(*input.hand, held->centre);
     m_tracker.add(inBody(input.body, centre), input.dt);
-
-    bool released = m_holding && !input.attack;
     m_holding = input.attack;
 
-    if (!released || !ready)
+    if (!acts || !ready)
       return events;
 
     if (!m_arm.armed()) {
@@ -139,39 +238,58 @@ namespace dxvk {
 
     VrVector3 velocity  = m_tracker.velocity(m_config.velocityWindow);
     float     handSpeed = vrLength(velocity);
-    float     speed     = vrComputeThrowSpeed(handSpeed, m_config);
 
-    if (!(speed > 0.0f)) {
-      if (m_loggedSlow < MaxLoggedMisses) {
-        Logger::info(str::format("VR: The hand let go at ", handSpeed, " m/s, slower than ", m_config.minSpeed,
-          " m/s: '", weaponName(held->form), "' stays in the hand"));
-        m_loggedSlow++;
+    PendingThrow pending;
+    pending.form      = held->form;
+    pending.handSpeed = handSpeed;
+    pending.player    = readVector(player(), VrGame::RefLocation);
+    pending.release.origin = centre;
+
+    if (placed) {
+      // As fast as the hand moves, along its motion, or straight ahead of
+      // the hand when it is still
+      pending.release.share    = 1.0f;
+      pending.release.maxSpeed = handSpeed * VrGameUnitsPerMetre;
+      pending.release.direction = handSpeed >= m_config.placeDirectionSpeed
+        ? vrPointFromHand(input.body, velocity * (1.0f / handSpeed)) - input.body.position
+        : levelForward(*input.hand);
+    } else {
+      pending.release.share    = vrComputeThrowShare(handSpeed, m_config);
+      pending.release.maxSpeed = std::numeric_limits<float>::max();
+
+      if (!(pending.release.share > 0.0f)) {
+        if (m_loggedSlow < MaxLoggedMisses) {
+          Logger::info(str::format("VR: The hand let go at ", handSpeed, " m/s, slower than ", m_config.minSpeed,
+            " m/s: '", weaponName(held->form), "' stays in the hand"));
+          m_loggedSlow++;
+        }
+        return events;
       }
-      return events;
+
+      // From the body's frame back to the world
+      pending.release.direction = vrPointFromHand(input.body, velocity * (1.0f / handSpeed)) - input.body.position;
     }
 
-    // From the body's frame back to the world, in game units per second
-    VrVector3 direction = vrPointFromHand(input.body, velocity * (1.0f / handSpeed)) - input.body.position;
-    fire(*held, centre, direction * (speed * VrGameUnitsPerMetre));
-
-    if (m_loggedThrows < MaxLoggedThrows) {
-      const VrThrowSpeeds& speeds = m_weaponHand.throwSpeeds();
-      VrHeadAngles angles = vrComputeAimAngles(direction);
-
-      Logger::info(str::format("VR: Threw '", weaponName(held->form), "', hand at ", handSpeed, " m/s, ",
-        -angles.pitch * DegreesPerRadian, " degrees up: ", speeds.given / VrGameUnitsPerMetre,
-        " m/s (game's full throw ", speeds.full / VrGameUnitsPerMetre, " m/s)"));
-      m_loggedThrows++;
+    if (m_firesInUpdate) {
+      m_pending    = pending;
+      m_hasPending = true;
+    } else {
+      fire(pending);
     }
+
+    // The pin stays out, and in the left hand while the grip holds it,
+    // until the next one comes
+    m_holding = false;
+    m_refill  = RefillTime;
+    m_tracker.reset();
 
     events.thrown = true;
     return events;
   }
 
 
-  void VrHandThrow::startWeapon(const VrHeldThrown& held) {
+  void VrHandThrow::startWeapon(const VrHeldThrown& held, VrThrowArming arming) {
     const char* model = readField<const char*>(held.form, VrGame::WeaponModelPath);
-    VrThrowArming arming = vrThrowArming(held.type, model);
 
     m_form    = held.form;
     m_holding = false;
@@ -180,13 +298,65 @@ namespace dxvk {
     m_tracker.reset();
 
     Logger::info(str::format("VR: '", weaponName(held.form), "' (", model ? model : "", ", type ", held.type,
-      ") is armed by hand: ", vrThrowArmingName(arming)));
+      ") is armed by hand: ", vrThrowArmingName(arming),
+      vrThrowIsPlaced(held.type) ? ", placed at a press of the trigger" : ", thrown by letting go of the trigger",
+      held.loaded ? "" : " (model not loaded yet)"));
   }
 
 
-  void VrHandThrow::fire(const VrHeldThrown& held, const VrVector3& origin, const VrVector3& velocity) {
+  VrThrowArmInput VrHandThrow::armInput(
+    const VrHandThrowInput&     input,
+    const VrHeldThrown&         held) const {
+    const VrGameCameraPose& hand  = *input.hand;
+    const VrGameCameraPose& other = *input.otherHand;
+
+    VrThrowArmInput arm;
+    arm.hand      = other.position * (1.0f / VrGameUnitsPerMetre);
+    arm.fingertip = inMetres(other, Fingertip);
+    arm.flame     = held.hasFlame ? inMetres(other, held.flame) : arm.hand;
+    arm.grip      = input.grip;
+    arm.trigger   = input.trigger;
+    arm.dt        = input.dt;
+
+    // The part acted on, or the whole model when it has none
+    VrVector3 target = held.centre;
+    float     radius = held.radius;
+
+    switch (m_arm.arming()) {
+      case VrThrowArming::Pin:
+        if (held.parts.pin) {
+          target = held.pin;
+          radius = held.pinRadius;
+        }
+        break;
+
+      case VrThrowArming::Fuse:
+        if (held.hasFuse) {
+          target = held.fuse;
+          radius = held.fuseRadius;
+        }
+        break;
+
+      case VrThrowArming::Button:
+        if (held.hasButton) {
+          target = held.button;
+          radius = held.buttonRadius;
+        }
+        break;
+
+      case VrThrowArming::None:
+        break;
+    }
+
+    arm.target = inMetres(hand, target);
+    arm.radius = radius / VrGameUnitsPerMetre;
+    return arm;
+  }
+
+
+  void VrHandThrow::fire(const PendingThrow& pending) {
     uint8_t* actor  = player();
-    auto     weapon = const_cast<uint8_t*>(held.form);
+    auto     weapon = const_cast<uint8_t*>(pending.form);
 
     // Thrown weapons get the power of a throw held to the end, as the game
     // gives V.A.T.S. throws: the hand's speed decides instead
@@ -194,17 +364,93 @@ namespace dxvk {
     float  timer = releaseTimer;
     releaseTimer = VrGame::ThrowReleaseTimerFull;
 
-    VrThrowRelease release = { origin, velocity };
-    m_weaponHand.setThrowRelease(&release);
+    m_weaponHand.setThrowRelease(&pending.release);
     reinterpret_cast<WeaponFireFn>(VrGame::WeaponFire)(weapon, nullptr, actor);
     m_weaponHand.setThrowRelease(nullptr);
 
     releaseTimer = timer;
 
-    m_holding = false;
-    m_refill  = RefillTime;
-    m_tracker.reset();
-    m_weaponHand.setThrowArmed(false);
+    if (m_loggedThrows >= MaxLoggedThrows)
+      return;
+
+    m_loggedThrows++;
+
+    const VrThrowSpeeds& speeds = m_weaponHand.throwSpeeds();
+    VrHeadAngles angles = vrComputeAimAngles(pending.release.direction);
+    uint8_t* projectile = m_weaponHand.thrownProjectile();
+
+    Logger::info(str::format("VR: Threw '", weaponName(pending.form), "', hand at ", pending.handSpeed, " m/s, ",
+      -angles.pitch * DegreesPerRadian, " degrees up: ", speeds.given / VrGameUnitsPerMetre,
+      " m/s (game's full throw ", speeds.full / VrGameUnitsPerMetre, " m/s)",
+      m_firesInUpdate ? ", in the player's update" : ", while the frame is drawn",
+      projectile ? "" : ", no projectile was launched"));
+
+    if (projectile) {
+      m_watched.id     = readField<uint32_t>(projectile, VrGame::FormId);
+      m_watched.origin = pending.release.origin;
+      m_watched.start  = std::chrono::steady_clock::now();
+      m_watched.logged = 0;
+    }
+  }
+
+
+  void VrHandThrow::firePending() {
+    if (!m_hasPending)
+      return;
+
+    m_hasPending = false;
+
+    // The weapon may have changed while the throw waited
+    const VrHeldThrown* held = m_weaponHand.heldThrown();
+
+    if (!held || held->form != m_pending.form)
+      return;
+
+    // The player has moved since: the hand moved with it
+    PendingThrow pending = m_pending;
+    pending.release.origin = pending.release.origin
+      + (readVector(player(), VrGame::RefLocation) - pending.player);
+
+    fire(pending);
+  }
+
+
+  void VrHandThrow::watchThrown() {
+    constexpr uint32_t WatchCount = sizeof(WatchTimes) / sizeof(WatchTimes[0]);
+
+    if (!m_watched.id)
+      return;
+
+    float age = std::chrono::duration<float>(std::chrono::steady_clock::now() - m_watched.start).count();
+
+    if (age < WatchTimes[m_watched.logged])
+      return;
+
+    // Looked up by its id: the game may have deleted it
+    uint8_t* projectile = reinterpret_cast<FormByIdFn>(VrGame::FormById)(m_watched.id);
+
+    if (!projectile) {
+      Logger::info(str::format("VR: The projectile thrown by hand is gone after ", WatchTimes[m_watched.logged], " s"));
+      m_watched.id = 0;
+      return;
+    }
+
+    VrVector3 position = readVector(projectile, VrGame::RefLocation);
+    bool impacted = readField<uint8_t>(projectile, VrGame::ProjectileHasImpacted) != 0;
+
+    // The first impact's reference
+    auto impact = readField<const uint8_t*>(projectile, VrGame::ProjectileImpacts);
+    auto target = impact ? readField<const uint8_t*>(impact, 0) : nullptr;
+    uint32_t targetId = target ? readField<uint32_t>(target, VrGame::FormId) : 0;
+
+    Logger::info(str::format("VR: The projectile thrown by hand after ", WatchTimes[m_watched.logged], " s: ",
+      vrLength(position - m_watched.origin) * CentimetresPerUnit, " cm from where it left, ",
+      (position.z - m_watched.origin.z) * CentimetresPerUnit, " cm higher, impacted: ", impacted ? "yes" : "no",
+      impact ? str::format(", first impact on reference ", hexId(targetId),
+        targetId == VrGame::PlayerRefId ? " (the player)" : "") : std::string()));
+
+    if (++m_watched.logged == WatchCount)
+      m_watched.id = 0;
   }
 
 
@@ -217,13 +463,26 @@ namespace dxvk {
     switch (event) {
       case VrArmEvent::PinTaken:   what = "The left hand took the pin"; break;
       case VrArmEvent::PinDropped: what = "The left hand let go of the pin"; break;
-      case VrArmEvent::Lighting:   what = "The lighter is at the fuse"; break;
+      case VrArmEvent::Lighting:   what = "The lighter's flame is at the fuse"; break;
       case VrArmEvent::Armed:      what = "Armed"; break;
       case VrArmEvent::None:       break;
     }
 
     Logger::info(str::format("VR: ", what, " (", vrThrowArmingName(m_arm.arming()), ")"));
     m_loggedArms++;
+  }
+
+
+  void __fastcall VrHandThrow::postAnimationHook(
+          uint8_t*              actor,
+          void*                 unused) {
+    // The game fires the player's own throws in this call
+    if (g_handThrow && actor == player()) {
+      g_handThrow->firePending();
+      g_handThrow->watchThrown();
+    }
+
+    reinterpret_cast<HandlePostAnimationFn>(VrGame::HandlePostAnimationActions)(actor, nullptr);
   }
 
 }

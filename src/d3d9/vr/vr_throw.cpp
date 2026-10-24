@@ -14,12 +14,12 @@ namespace dxvk {
     constexpr int32_t TypeGrenade      = 10;
     constexpr int32_t TypeMine         = 11;
     constexpr int32_t TypeLunchboxMine = 12;
-    constexpr int32_t TypeThrown       = 13;
 
     /**
      * \brief Words of a grenade model's file name and how it is armed
      *
-     * The first match wins. Grenades matching none are thrown as they are.
+     * Used when the model shows no part to act on. The first match wins.
+     * Grenades matching none are thrown as they are.
      */
     struct GrenadeModel {
       const char*   word;
@@ -31,6 +31,32 @@ namespace dxvk {
       { "frag",     VrThrowArming::Pin    },
       { "plasma",   VrThrowArming::Button },
       { "pulse",    VrThrowArming::Button },
+    };
+
+    /**
+     * \brief Words of a part's name and what the part is
+     *
+     * Matched against the name in lower case without its leading '#'
+     * marks and geometry index, as the whole name or anywhere in it; the
+     * first match wins: the lighter's switch is part of the lighter, not a
+     * button.
+     */
+    struct PartName {
+      const char* word;
+      bool        contains;
+      VrThrowPart part;
+    };
+
+    constexpr PartName PartNames[] = {
+      { "lighterflame", true,  VrThrowPart::Flame    },
+      { "lighter",      false, VrThrowPart::Lighter  },
+      { "lighter",      true,  VrThrowPart::None     },
+      { "lighton",      true,  VrThrowPart::LightOn  },
+      { "lightoff",     true,  VrThrowPart::LightOff },
+      { "button",       true,  VrThrowPart::Button   },
+      { "switch",       true,  VrThrowPart::Button   },
+      { "dial",         true,  VrThrowPart::Button   },
+      { "plunger",      true,  VrThrowPart::Button   },
     };
 
     std::string lowerCase(std::string text) {
@@ -49,14 +75,84 @@ namespace dxvk {
       return lowerCase(std::move(name));
     }
 
+    /**
+     * \brief A part's name without its marks and geometry index
+     */
+    std::string partName(const char* name) {
+      std::string text = lowerCase(name);
+      size_t start = text.find_first_not_of('#');
+      size_t colon = text.find(':');
+
+      if (start == std::string::npos)
+        return std::string();
+
+      if (colon != std::string::npos)
+        text.erase(colon);
+
+      return text.substr(std::min(start, text.size()));
+    }
+
+    /**
+     * \brief Whether a part's name holds the pin
+     *
+     * "pin" as the end of a name or followed by digits (the Nuka grenade's
+     * "NGPin"), but not inside a word such as "spine" or "spinner".
+     */
+    bool isPinName(const std::string& name) {
+      size_t at = name.find("pin");
+
+      while (at != std::string::npos) {
+        bool afterS = at > 0 && name[at - 1] == 's';
+        size_t end = at + 3;
+        bool wordEnd = end == name.size() || !std::isalpha(static_cast<unsigned char>(name[end]));
+
+        if (!afterS && wordEnd)
+          return true;
+
+        at = name.find("pin", at + 1);
+      }
+
+      return false;
+    }
+
   }
 
 
-  VrThrowArming vrThrowArming(int32_t type, const char* model) {
-    if (type == TypeMine || type == TypeLunchboxMine)
+  VrThrowPart vrThrowPartKind(const char* name) {
+    if (!name)
+      return VrThrowPart::None;
+
+    std::string part = partName(name);
+
+    for (const PartName& entry : PartNames) {
+      bool match = entry.contains
+        ? part.find(entry.word) != std::string::npos
+        : part == entry.word;
+
+      if (match)
+        return entry.part;
+    }
+
+    return isPinName(part) ? VrThrowPart::Pin : VrThrowPart::None;
+  }
+
+
+  VrThrowArming vrThrowArming(int32_t type, const char* model, const VrThrowParts& parts) {
+    bool mine = vrThrowIsPlaced(type);
+
+    if (type != TypeGrenade && !mine)
+      return VrThrowArming::None;
+
+    if (parts.pin)
+      return VrThrowArming::Pin;
+
+    if (parts.lighter)
+      return VrThrowArming::Fuse;
+
+    if (parts.button || mine)
       return VrThrowArming::Button;
 
-    if (type != TypeGrenade || !model)
+    if (!model)
       return VrThrowArming::None;
 
     std::string name = fileName(model);
@@ -67,6 +163,11 @@ namespace dxvk {
     }
 
     return VrThrowArming::None;
+  }
+
+
+  bool vrThrowIsPlaced(int32_t type) {
+    return type == TypeMine || type == TypeLunchboxMine;
   }
 
 
@@ -82,15 +183,11 @@ namespace dxvk {
   }
 
 
-  bool vrNameContains(const char* name, const char* word) {
-    return name && word && lowerCase(name).find(lowerCase(word)) != std::string::npos;
-  }
-
-
   void VrThrowArm::reset(VrThrowArming arming) {
     m_arming   = arming;
     m_armed    = arming == VrThrowArming::None;
     m_holdsPin = false;
+    m_pinTaken = 0.0f;
     m_lighting = false;
     m_lit      = 0.0f;
     m_grip     = true;
@@ -98,57 +195,54 @@ namespace dxvk {
   }
 
 
-  VrArmEvent VrThrowArm::update(
-    const VrVector3&            hand,
-    const VrVector3&            centre,
-          float                 radius,
-          bool                  grip,
-          bool                  trigger,
-          float                 dt,
-    const VrThrowConfig&        config) {
-    bool gripPressed    = grip && !m_grip;
-    bool triggerPressed = trigger && !m_trigger;
+  VrArmEvent VrThrowArm::update(const VrThrowArmInput& input, const VrThrowConfig& config) {
+    bool gripPressed    = input.grip && !m_grip;
+    bool triggerPressed = input.trigger && !m_trigger;
 
-    m_grip    = grip;
-    m_trigger = trigger;
+    m_grip    = input.grip;
+    m_trigger = input.trigger;
+
+    // A pin pulled out stays in the hand until the grip lets it go
+    if (m_holdsPin && m_armed && !input.grip)
+      m_holdsPin = false;
 
     if (m_armed)
       return VrArmEvent::None;
 
-    float distance = vrLength(hand - centre);
-    float reach    = radius + config.reach;
-    bool  near     = distance <= reach;
+    float handDistance = vrLength(input.hand - input.target);
 
     switch (m_arming) {
       case VrThrowArming::Pin:
-        if (m_holdsPin && !grip) {
+        if (m_holdsPin && !input.grip) {
           m_holdsPin = false;
           return VrArmEvent::PinDropped;
         }
 
-        if (m_holdsPin && distance > reach + config.pinPull) {
-          m_holdsPin = false;
-          m_armed    = true;
+        if (m_holdsPin && handDistance >= m_pinTaken + config.pinPull) {
+          m_armed = true;
           return VrArmEvent::Armed;
         }
 
-        if (!m_holdsPin && gripPressed && near) {
+        if (!m_holdsPin && gripPressed && handDistance <= input.radius + config.pinReach) {
           m_holdsPin = true;
+          m_pinTaken = handDistance;
           return VrArmEvent::PinTaken;
         }
 
         return VrArmEvent::None;
 
       case VrThrowArming::Fuse: {
-        if (!trigger || !near) {
+        bool atFuse = vrLength(input.flame - input.target) <= input.radius + config.fuseReach;
+
+        if (!input.trigger || !atFuse) {
           m_lighting = false;
           m_lit      = 0.0f;
           return VrArmEvent::None;
         }
 
-        // The frame the lighter reaches the fuse starts the count
+        // The frame the flame reaches the fuse starts the count
         bool started = !m_lighting;
-        m_lit      = started ? 0.0f : m_lit + dt;
+        m_lit      = started ? 0.0f : m_lit + input.dt;
         m_lighting = true;
 
         if (m_lit >= config.fuseTime) {
@@ -161,13 +255,17 @@ namespace dxvk {
         return started ? VrArmEvent::Lighting : VrArmEvent::None;
       }
 
-      case VrThrowArming::Button:
-        if (triggerPressed && near) {
+      case VrThrowArming::Button: {
+        bool touched = vrLength(input.fingertip - input.target) <= input.radius + config.buttonTouch;
+        bool clicked = triggerPressed && handDistance <= input.radius + config.buttonReach;
+
+        if (touched || clicked) {
           m_armed = true;
           return VrArmEvent::Armed;
         }
 
         return VrArmEvent::None;
+      }
 
       case VrThrowArming::None:
         break;
@@ -217,11 +315,11 @@ namespace dxvk {
   }
 
 
-  float vrComputeThrowSpeed(float handSpeed, const VrThrowConfig& config) {
+  float vrComputeThrowShare(float handSpeed, const VrThrowConfig& config) {
     if (!(handSpeed >= config.minSpeed))
       return 0.0f;
 
-    return handSpeed * config.speedScale;
+    return std::min(handSpeed / config.fullThrowHandSpeed, 1.0f);
   }
 
 }

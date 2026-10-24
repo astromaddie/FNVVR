@@ -9,6 +9,7 @@
 #include "vr_melee.h"
 #include "vr_pipboy_size.h"
 #include "vr_reload_animation.h"
+#include "vr_throw.h"
 #include "vr_weapon_aim.h"
 
 namespace dxvk {
@@ -28,20 +29,53 @@ namespace dxvk {
 
   /**
    * \brief The thrown or placed weapon in the right hand, as last drawn
+   *
+   * Points are in the right hand's frame (forward, up, right, see
+   * vrPointFromHand) and lengths in game units, unless noted.
    */
   struct VrHeldThrown {
     /// The weapon (TESObjectWEAP*)
     const uint8_t* form = nullptr;
     /// Its type, 10 to 13
     int32_t        type = 0;
-    /// Centre of its model's bound in the hand's frame (forward, up,
-    /// right), in game units
+    /// Centre and radius of its model's bound
     VrVector3      centre;
-    /// Radius of that bound, in game units
     float          radius = 0.0f;
     /// Whether its model is drawn: the game hides it once it is thrown,
     /// until the next one is shown
     bool           shown = false;
+    /// Whether its model is loaded, and the parts found in it
+    bool           loaded = false;
+    VrThrowParts   parts;
+    /// Where the pin sits in the grenade, with parts.pin
+    VrVector3      pin;
+    float          pinRadius = 0.0f;
+    /// The button, or a mine's light, which is pressed to arm it
+    bool           hasButton = false;
+    VrVector3      button;
+    float          buttonRadius = 0.0f;
+    /// The stick or bottle the lighter lights, with parts.lighter
+    bool           hasFuse = false;
+    VrVector3      fuse;
+    float          fuseRadius = 0.0f;
+    /// The lighter's flame in the left controller's frame, with
+    /// parts.lighter
+    bool           hasFlame = false;
+    VrVector3      flame;
+  };
+
+  /**
+   * \brief What the left hand did to the thrown weapon in the right hand
+   */
+  struct VrThrowArmState {
+    /// The left hand holds the pin
+    bool pinHeld = false;
+    /// The pin is out of the grenade
+    bool pinOut  = false;
+    /// The lighter is lit
+    bool lit     = false;
+    /// The weapon is armed: a mine's light is lit
+    bool armed   = false;
   };
 
   /**
@@ -50,9 +84,12 @@ namespace dxvk {
   struct VrThrowRelease {
     /// Start of the projectile in the game world
     VrVector3 origin;
-    /// Its velocity in game units per second; its length is the speed
-    /// asked for, which the game's own full throw caps
-    VrVector3 velocity;
+    /// Unit direction it leaves along
+    VrVector3 direction;
+    /// Share of the game's full throw it gets, from 0 to 1
+    float     share = 1.0f;
+    /// Fastest it leaves, in game units per second, whatever the share
+    float     maxSpeed = 0.0f;
   };
 
   /**
@@ -119,8 +156,11 @@ namespace dxvk {
    *   fast as the hand let it go, not from the game's animation: while it
    *   is fired, the projectile starts at the release, along the hand's
    *   motion, and Projectile::AddInitialVelocity's speed (and a missile's
-   *   speed multiplier) gives it the hand's speed, at most the game's own
-   *   throw. The pin of a grenade is hidden once it is pulled out.
+   *   speed multiplier) gives it a share of the game's own throw. A
+   *   grenade's pin follows the left hand that holds it and is hidden once
+   *   pulled out, the lighter of the dynamite and the fire bomb is in the
+   *   left hand, its flame lit while the left trigger is held, and a
+   *   mine's light is lit once it is armed.
    *
    * Only used on the game's main thread.
    */
@@ -533,13 +573,12 @@ namespace dxvk {
     }
 
     /**
-     * \brief Tells whether the thrown weapon in the hand is armed
+     * \brief Sets what the left hand did to the thrown weapon in the hand
      *
-     * A grenade's pin, a part of its model whose name holds "pin", is
-     * hidden while it is armed, from the next time it is drawn.
+     * Applied when the model is next drawn.
      */
-    void setThrowArmed(bool armed) {
-      m_throwArmed = armed;
+    void setThrowArmState(const VrThrowArmState& state) {
+      m_throwArm = state;
     }
 
     /**
@@ -567,6 +606,16 @@ namespace dxvk {
      */
     const VrThrowSpeeds& throwSpeeds() const {
       return m_throwSpeeds;
+    }
+
+    /**
+     * \brief The last projectile launched with setThrowRelease
+     *
+     * \returns The projectile, or \c nullptr if none was launched: only
+     *    valid while the game keeps it, look it up by its form id
+     */
+    uint8_t* thrownProjectile() const {
+      return m_thrownProjectile;
     }
 
   private:
@@ -798,8 +847,16 @@ namespace dxvk {
     // next one is to be shown
     VrHeldThrown     m_thrown;
     bool             m_hasThrown  = false;
-    bool             m_throwArmed = false;
+    VrThrowArmState  m_throwArm;
     bool             m_showThrown = false;
+
+    // Where the pin is in the left controller's frame while the hand
+    // holds it, taken when it took it
+    VrGameTransform  m_pinInHand;
+    bool             m_hasPinInHand = false;
+
+    // Last projectile thrown by hand, compared but not dereferenced
+    uint8_t*         m_thrownProjectile = nullptr;
 
     // Set while the game fires a weapon thrown by hand, and the projectile
     // whose speed was set, compared but not dereferenced
@@ -813,6 +870,7 @@ namespace dxvk {
     const uint8_t*   m_loggedThrownForm = nullptr;
     uint32_t         m_loggedThrownObjects = 0;
     bool             m_loggedPin = false;
+    bool             m_loggedLighter = false;
 
     // Weapon node whose barrel angle was last logged, compared but not
     // dereferenced
@@ -929,7 +987,21 @@ namespace dxvk {
 
     void measureBlade(const uint8_t* weapon, const VrGameCameraPose& hand);
 
-    void placeThrown(uint8_t* weapon, const uint8_t* form, int8_t type, const VrGameCameraPose& hand);
+    void placeThrown(
+            uint8_t*              weapon,
+      const uint8_t*              form,
+            int8_t                type,
+      const VrGameCameraPose&     hand,
+      const VrVector3&            shift,
+            void*                 updateData);
+
+    void placeThrownPin(uint8_t* pin, const VrGameCameraPose& hand, const VrGameTransform& controller, void* updateData);
+
+    void placeLighter(
+            uint8_t*              lighter,
+            uint8_t*              flame,
+      const VrGameCameraPose&     controller,
+            void*                 updateData);
 
     void setThrowSpeed(uint8_t* projectile);
 

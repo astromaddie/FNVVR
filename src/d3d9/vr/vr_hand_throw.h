@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <memory>
 
 #include "vr_game_space.h"
@@ -15,9 +16,8 @@ namespace dxvk {
     /// Right hand in the game world, or \c nullptr if it is not tracked,
     /// or not in game
     const VrGameCameraPose* hand = nullptr;
-    /// Left hand's position in the game world, or \c nullptr if it is not
-    /// tracked
-    const VrVector3*        otherHand = nullptr;
+    /// Left hand in the game world, or \c nullptr if it is not tracked
+    const VrGameCameraPose* otherHand = nullptr;
     /// Pose the eyes and hands are placed on in the game world, which moves
     /// and turns with the player
     VrGameCameraPose        body;
@@ -43,15 +43,23 @@ namespace dxvk {
    * The game's attack control is held back while such a weapon is in the
    * right hand, as for melee weapons swung with the hand, and the game's
    * throw animation never plays. The left hand arms the weapon (VrThrowArm:
-   * pulls a grenade's pin, holds the lighter to the dynamite's fuse,
-   * presses a mine's button). While the right trigger is held the hand's
-   * motion is followed; letting go of it while the hand moves fast enough
-   * fires the weapon with TESObjectWEAP::Fire, which spends one and hides
-   * the model in the hand, or unequips the weapon after the last one. The
-   * projectile leaves from where the model was, along the hand's motion,
-   * as fast as the hand threw it but no faster than the game's own throw
+   * pulls a grenade's pin, holds the lighter's flame to the dynamite's
+   * fuse, presses a mine's button with the index finger), at the part of
+   * the model it acts on (VrWeaponHand measures them). A grenade or thrown
+   * weapon is thrown by letting go of the right trigger while the hand
+   * moves fast enough; a mine leaves the hand at a press of the trigger,
+   * as fast as the hand moves, however slowly.
+   *
+   * The weapon is fired with TESObjectWEAP::Fire, which spends one and
+   * hides the model in the hand, or unequips the weapon after the last
+   * one. The game fires its own throws while it updates the player, before
+   * the AI threads step Havok alongside the rendering, so a throw by hand
+   * is fired there too, on the next update of the player. The projectile
+   * leaves from where the model was, along the hand's motion, with a share
+   * of the game's own throw that grows with the hand's speed
    * (VrWeaponHand::setThrowRelease). A moment later the next one is shown
-   * in the hand, unarmed. See findings/throw.md.
+   * in the hand, unarmed. Where the projectile is a moment after it left
+   * is logged. See findings/throw.md.
    *
    * V.A.T.S. keeps the game's own throw.
    *
@@ -60,6 +68,8 @@ namespace dxvk {
   class VrHandThrow {
 
   public:
+
+    ~VrHandThrow();
 
     /**
      * \brief Finds the game's functions
@@ -83,41 +93,85 @@ namespace dxvk {
     }
 
     /**
-     * \brief Whether the left hand is busy arming the weapon
+     * \brief Whether the left hand is busy with the weapon
+     *
+     * Holding its pin, or holding the lighter lit.
      */
     bool leftHandBusy() const {
-      return m_throwsWithHand && m_arm.busy();
+      return m_throwsWithHand && (m_arm.busy() || m_lit);
     }
 
   private:
 
-    explicit VrHandThrow(VrWeaponHand& weaponHand)
-    : m_weaponHand(weaponHand) { }
+    /**
+     * \brief A throw waiting for the game's update of the player
+     */
+    struct PendingThrow {
+      const uint8_t* form = nullptr;
+      VrThrowRelease release;
+      /// Where the player was when the hand let go, in the game world
+      VrVector3      player;
+      float          handSpeed = 0.0f;
+      float          age = 0.0f;
+    };
+
+    /**
+     * \brief A projectile thrown by hand, followed for the log
+     */
+    struct WatchedThrow {
+      uint32_t       id = 0;
+      VrVector3      origin;
+      std::chrono::steady_clock::time_point start;
+      uint32_t       logged = 0;
+    };
+
+    VrHandThrow(VrWeaponHand& weaponHand, bool firesInUpdate)
+    : m_weaponHand(weaponHand), m_firesInUpdate(firesInUpdate) { }
 
     VrWeaponHand&  m_weaponHand;
     VrThrowConfig  m_config;
     VrThrowArm     m_arm;
     VrThrowTracker m_tracker;
 
+    // Whether throws are fired in the game's update of the player
+    bool           m_firesInUpdate = false;
+
     // The weapon armed, compared but not dereferenced
     const uint8_t* m_form = nullptr;
 
     bool           m_throwsWithHand = false;
     bool           m_holding = false;
+    bool           m_lit     = false;
 
     // Time left until the next weapon is shown in the hand after a throw
     float          m_refill = 0.0f;
 
-    uint32_t       m_loggedThrows = 0;
-    uint32_t       m_loggedSlow   = 0;
+    bool           m_hasPending = false;
+    PendingThrow   m_pending;
+    WatchedThrow   m_watched;
+
+    uint32_t       m_loggedThrows  = 0;
+    uint32_t       m_loggedSlow    = 0;
     uint32_t       m_loggedUnarmed = 0;
-    uint32_t       m_loggedArms   = 0;
+    uint32_t       m_loggedArms    = 0;
 
-    void startWeapon(const VrHeldThrown& held);
+    void startWeapon(const VrHeldThrown& held, VrThrowArming arming);
 
-    void fire(const VrHeldThrown& held, const VrVector3& origin, const VrVector3& velocity);
+    VrThrowArmInput armInput(
+      const VrHandThrowInput&     input,
+      const VrHeldThrown&         held) const;
+
+    void fire(const PendingThrow& pending);
+
+    void firePending();
+
+    void watchThrown();
 
     void logArm(VrArmEvent event);
+
+    static void __fastcall postAnimationHook(
+            uint8_t*              actor,
+            void*                 unused);
 
   };
 

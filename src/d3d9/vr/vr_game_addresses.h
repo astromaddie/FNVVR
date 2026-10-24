@@ -212,6 +212,32 @@ namespace dxvk {
     constexpr uintptr_t WeaponAttackAnimation      = 0x11D;
 
     /**
+     * Where a throw by hand is fired, see findings/throw.md §4 (GOG
+     * database). PlayerCharacter::Update (0x0093E860) calls
+     * Actor::HandlePostAnimationActions (__thiscall, no argument), which
+     * fires the player's weapon when its animation releases it, at the
+     * site below: on the main thread, before the AI threads that step
+     * Havok run alongside the rendering.
+     */
+    constexpr uintptr_t PlayerPostAnimationCallSite = 0x0094380E;
+    constexpr uintptr_t HandlePostAnimationActions  = 0x008BA600;
+
+    /**
+     * TESForm::GetFormByNumericID (cdecl, the form id, returns the form or
+     * null), checked by its prologue. A form's id is at +0x0C. A
+     * projectile's impacts are a BSSimpleList at +0x88 (item, next) of
+     * Projectile::ImpactData whose first field is the reference hit, with
+     * bHasImpacted at +0x90; the player's reference id is 0x14.
+     */
+    constexpr uintptr_t FormById              = 0x004839C0;
+    constexpr uint8_t   FormByIdPrologue[]    = { 0x55, 0x8B, 0xEC, 0x51, 0xC7, 0x45, 0xFC, 0x00, 0x00, 0x00, 0x00,
+                                                  0x83, 0x3D, 0xC0, 0x54, 0x1C };
+    constexpr uintptr_t FormId                = 0x0C;
+    constexpr uintptr_t ProjectileImpacts     = 0x88;
+    constexpr uintptr_t ProjectileHasImpacted = 0x90;
+    constexpr uint32_t  PlayerRefId           = 0x14;
+
+    /**
      * FlameProjectile vtable entries (table 0x0108F2F4), both __thiscall:
      * Process3D (no argument) stores the flame's rotation relative to the
      * shooter's projectile node in Projectile::kFollowOffset (+0x94), and

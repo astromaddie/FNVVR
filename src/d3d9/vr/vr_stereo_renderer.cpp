@@ -1106,8 +1106,7 @@ namespace dxvk {
     const VrControllerState& left  = input.controllers[uint32_t(VrHand::Left)];
 
     VrHandThrowInput hands;
-    VrGameCameraPose rightHand;
-    VrVector3 leftHand;
+    VrGameCameraPose rightHand, leftHand;
 
     hands.body = m_gameCameraPose;
     hands.dt   = dt;
@@ -1120,7 +1119,7 @@ namespace dxvk {
       hands.trigger = input.actions.isPressed(VrAction::Magazine);
 
       if (left.isActive) {
-        leftHand        = handInGame(left).position;
+        leftHand        = handInGame(left);
         hands.otherHand = &leftHand;
       }
     }
