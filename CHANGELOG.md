@@ -8,6 +8,13 @@
 - **Lighter** (dynamite, fire bomb): it stands upright in the left fist and its cap opens when it is lit; the
   fingers no longer close through it.
 - **Lit fuse**: the fuse of the dynamite and of the fire bomb sparks once lit until it leaves the hand.
+- **Sneak by crouching**: **Settings > VR > Sneak** chooses between the stick click (the default, as before) and
+  **Real crouch**: lowering the head about 35 cm below its standing height sneaks, standing up stops sneaking, with
+  the game's own sounds and rules; the stick click then no longer sneaks. The view stays at the real head's height
+  (the game does not lower it a second time). The depth is `d3d9.vrCrouchDepth` in `dxvk.conf` (metres), the
+  starting choice `d3d9.vrPhysicalSneak`.
+- **Sneak meter**: [HIDDEN], [CAUTION], [DANGER] and [DETECTED] are shown in front of the head while sneaking, just
+  below the line of sight.
 
 ## v0.8.0 (2026-10-24, since v0.7.0 `b6c9aca`)
 
