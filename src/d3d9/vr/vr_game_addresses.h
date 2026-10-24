@@ -1814,6 +1814,36 @@ namespace dxvk {
     constexpr uintptr_t InterpolatorIsTransformSlot     = 0xB8;
 
     /**
+     * A track's IDTag also names the controller type (+0x08), a NiFixedString
+     * like the object's name. A NiInterpolator's virtual UpdateFloat
+     * (__thiscall with the time, the target and a float to fill, returns a
+     * bool in AL) and IsFloatValueSupported read a float track, such as a
+     * particle emitter's birth rate (NiInterpolator_vtbl, GOG database).
+     */
+    constexpr uintptr_t SequenceIdTagControllerType = 0x08;
+    constexpr uintptr_t InterpolatorUpdateFloatSlot = 0x9C;
+    constexpr uintptr_t InterpolatorIsFloatSlot     = 0xA8;
+
+    /**
+     * Particles, see findings/throw.md §7 (GOG database): a NiObjectNET's
+     * controllers are a list (NiTimeController, next at +0x30, target at
+     * +0x2C). A NiPSysEmitterCtlr (vtable below) emits the particles of its
+     * target NiParticleSystem through its emitter (+0x3C) while an
+     * animation drives its birth rate; without the animation it emits
+     * nothing. NiPSysEmitterCtlr::EmitParticles (__thiscall, ret 0x18:
+     * update time, current and last times, emission start and stop times,
+     * birth rate per second) emits floor((min(current, stop) - start) *
+     * rate) - floor((last - start) * rate) particles, aged from the start,
+     * where the emitter object puts them. NiUpdateData starts with its time.
+     */
+    constexpr uintptr_t ObjectControllers           = 0x0C;
+    constexpr uintptr_t ControllerTarget            = 0x2C;
+    constexpr uintptr_t ControllerNext              = 0x30;
+    constexpr uintptr_t PSysEmitterCtlrVtable       = 0x010BD594;
+    constexpr uintptr_t PSysEmitterCtlrEmit         = 0x00C1C3C0;
+    constexpr uint8_t   PSysEmitterCtlrEmitPrologue[] = { 0x51, 0xD9, 0xEE, 0x8B, 0xD1, 0xD9, 0x44, 0x24, 0x1C, 0x89, 0x14, 0x24 };
+
+    /**
      * TESAnimGroup: the sounds of the animation's "Sound:" text keys,
      * read when it is loaded (GetSound 0x005F3710): their count and an
      * array of AnimGroupSound (0x10 bytes: the time, the volume as a byte

@@ -62,6 +62,9 @@ namespace dxvk {
     /// The button and the parts below it that the animation moves, as
     /// they are once it is armed (a switch thrown)
     std::vector<VrPartPose>   pressed;
+    /// The most particles per second the animation has the lit fuse's
+    /// emitter give, 0 without such a track
+    float                     sparkRate = 0.0f;
   };
 
   /**
@@ -80,6 +83,8 @@ namespace dxvk {
     /// The lighter and its flame, or \c nullptr
     uint8_t* lighter  = nullptr;
     uint8_t* flame    = nullptr;
+    /// The particle system of the lit fuse's sparks, or \c nullptr
+    uint8_t* sparks   = nullptr;
   };
 
   /**

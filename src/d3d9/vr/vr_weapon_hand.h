@@ -892,6 +892,14 @@ namespace dxvk {
     bool             m_loggedPin = false;
     bool             m_loggedLighter = false;
 
+    // Sparks of the lit fuse, see emitSparks: the game time they started
+    // from, less the particles already given, and of the last placement
+    bool             m_canEmitSparks = false;
+    bool             m_sparking      = false;
+    bool             m_loggedSparks  = false;
+    float            m_sparkStart    = 0.0f;
+    float            m_sparkLast     = 0.0f;
+
     // The game's attack animation of the grenade or mine in the hand, read
     // once its model is in the hand, and the weapon it was read for,
     // compared but not dereferenced
@@ -1039,6 +1047,18 @@ namespace dxvk {
     void poseParts(uint8_t* node, const std::vector<VrPartPose>& poses, void* updateData);
 
     void placeThrownPin(uint8_t* pin, const VrGameCameraPose& hand, const VrGameTransform& controller, void* updateData);
+
+    /**
+     * \brief Gives the lit fuse its sparks
+     *
+     * The particle system's emitter gives as many particles as the
+     * attack animation would since the last placement, while the weapon
+     * in the hand is armed by its fuse.
+     *
+     * \param [in] sparks The particle system, or \c nullptr
+     * \param [in] updateData The game's NiUpdateData of the model
+     */
+    void emitSparks(uint8_t* sparks, const void* updateData);
 
     void placeLighter(
             uint8_t*              lighter,

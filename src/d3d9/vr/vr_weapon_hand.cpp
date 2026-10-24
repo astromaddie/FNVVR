@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <cfloat>
 #include <cmath>
 #include <cstring>
 #include <iterator>
@@ -22,6 +23,13 @@ namespace dxvk {
 
     // NiAVObject::Update is __thiscall with one stack argument
     using ObjectUpdateFn = void (__fastcall*)(uint8_t* object, void* unused, void* updateData);
+
+    // NiPSysEmitterCtlr::EmitParticles, __thiscall with six stack arguments
+    using EmitParticlesFn = void (__fastcall*)(uint8_t* controller, void* unused,
+      float time, float current, float last, float start, float stop, float rate);
+
+    // Particles per second of a lit fuse whose animation gives none
+    constexpr float DefaultSparkRate = 30.0f;
 
     // Projectile::Create is __cdecl with 16 arguments and returns the projectile
     using ProjectileCreateFn = void* (__cdecl*)(
@@ -207,6 +215,24 @@ namespace dxvk {
     uint8_t* findObject(uint8_t* root, const char* name) {
       return reinterpret_cast<uint8_t*>(
         vrFindGameObject(reinterpret_cast<uintptr_t>(root), name, MaxModelDepth));
+    }
+
+    /**
+     * \brief The particle emitter controller of an object, or \c nullptr
+     */
+    uint8_t* emitterController(uint8_t* object) {
+      // A model's objects carry a handful of controllers at most
+      constexpr uint32_t MaxControllers = 16;
+      auto controller = field<uint8_t*>(object, VrGame::ObjectControllers);
+
+      for (uint32_t i = 0; controller && i < MaxControllers; i++) {
+        if (field<uintptr_t>(controller, 0) == VrGame::PSysEmitterCtlrVtable)
+          return controller;
+
+        controller = field<uint8_t*>(controller, VrGame::ControllerNext);
+      }
+
+      return nullptr;
     }
 
     bool isAncestor(const uint8_t* ancestor, uint8_t* object) {
@@ -524,6 +550,14 @@ namespace dxvk {
 
     std::unique_ptr<VrWeaponHand> weaponHand(new VrWeaponHand());
     g_weaponHand = weaponHand.get();
+
+    // If this one fails, a lit fuse shows no sparks
+    weaponHand->m_canEmitSparks = VrGameMemory::matches(VrGame::PSysEmitterCtlrEmit,
+      VrGame::PSysEmitterCtlrEmitPrologue, sizeof(VrGame::PSysEmitterCtlrEmitPrologue));
+
+    if (!weaponHand->m_canEmitSparks)
+      Logger::warn("VR: The particle emitter function was not found, a lit fuse shows no sparks");
+
     return weaponHand;
   }
 
@@ -2586,6 +2620,8 @@ namespace dxvk {
       m_thrown.type = type;
       m_hasPinInHand  = false;
       m_loggedLighter = false;
+      m_sparking      = false;
+      m_loggedSparks  = false;
     }
 
     m_hasThrown = true;
@@ -2674,8 +2710,10 @@ namespace dxvk {
       m_thrown.hasButton = partBound(pressed, m_thrown.button, m_thrown.buttonRadius) || m_thrown.hasButton;
 
     // The lighter lights the largest mesh of the model besides itself: the
-    // stick of dynamite, the bottle
-    uint8_t* fuse = nullptr;
+    // stick of dynamite, the bottle. A particle system besides the
+    // lighter's gives the lit fuse's sparks, which the animation emits.
+    uint8_t* fuse   = nullptr;
+    uint8_t* sparks = nullptr;
     float fuseRadius = 0.0f;
 
     if (lighter) {
@@ -2683,8 +2721,15 @@ namespace dxvk {
         VrVector3 centre;
         float radius = 0.0f;
 
-        if (asGeometry(object) && !isAncestor(lighter, object)
-         && partBound(object, centre, radius) && radius > fuseRadius) {
+        if (isAncestor(lighter, object))
+          return;
+
+        if (emitterController(object)) {
+          sparks = sparks ? sparks : object;
+          return;
+        }
+
+        if (asGeometry(object) && partBound(object, centre, radius) && radius > fuseRadius) {
           m_thrown.fuse = centre;
           fuse          = object;
           fuseRadius    = radius;
@@ -2701,6 +2746,7 @@ namespace dxvk {
     nodes.button   = button ? button : light;
     nodes.lighter  = lighter;
     nodes.flame    = flame;
+    nodes.sparks   = sparks;
     readThrowAnimation(form, type, nodes);
 
     const VrThrowAnimation* animation = throwAnimation();
@@ -2725,6 +2771,46 @@ namespace dxvk {
 
     if (m_hasOtherHand)
       placeLighter(lighter, flame, otherHand, controller, shift, updateData);
+
+    emitSparks(sparks, updateData);
+  }
+
+
+  void VrWeaponHand::emitSparks(uint8_t* sparks, const void* updateData) {
+    // The fuse burns from when it is lit until the weapon leaves the hand
+    uint8_t* controller = m_canEmitSparks && sparks && m_throwArm.armed && m_thrown.shown
+      ? emitterController(sparks) : nullptr;
+    float time = *static_cast<const float*>(updateData);
+
+    if (!controller || time < m_sparkLast)
+      m_sparking = false;
+
+    if (!controller)
+      return;
+
+    float rate = m_hasThrowAnimation && m_throwAnimation.sparkRate > 0.0f
+      ? m_throwAnimation.sparkRate : DefaultSparkRate;
+
+    if (!m_sparking) {
+      m_sparking   = true;
+      m_sparkStart = time;
+      m_sparkLast  = time;
+
+      if (!m_loggedSparks) {
+        Logger::info(str::format("VR: The lit fuse gives sparks from '", field<const char*>(sparks, VrGame::ObjectName),
+          "', ", rate, " per second", m_hasThrowAnimation && m_throwAnimation.sparkRate > 0.0f ? " as the attack animation does" : ""));
+        m_loggedSparks = true;
+      }
+    }
+
+    // The particles already given are dropped from the start, so that the
+    // game's counts stay small however long the fuse burns. Both eyes are
+    // drawn at the same time: the second gives none.
+    m_sparkStart += std::floor((m_sparkLast - m_sparkStart) * rate) / rate;
+
+    reinterpret_cast<EmitParticlesFn>(VrGame::PSysEmitterCtlrEmit)(controller, nullptr,
+      time, time, m_sparkLast, m_sparkStart, FLT_MAX, rate);
+    m_sparkLast = time;
   }
 
 

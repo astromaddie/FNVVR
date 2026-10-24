@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cfloat>
 #include <cstring>
 
@@ -33,6 +34,13 @@ namespace dxvk {
 
     // How often the lighter's distance to the hand is logged, in seconds
     constexpr float LighterLogStep = 0.1f;
+
+    // NiInterpolator::IsFloatValueSupported, __thiscall without arguments
+    using IsFloatFn = uint32_t (__fastcall*)(uint8_t* interpolator, void* unused);
+
+    // NiInterpolator::UpdateFloat, __thiscall with three stack arguments
+    using UpdateFloatFn = uint32_t (__fastcall*)(uint8_t* interpolator, void* unused,
+      float time, uint8_t* target, float* value);
 
     template<typename T>
     T readField(const uint8_t* base, uintptr_t offset) {
@@ -180,6 +188,60 @@ namespace dxvk {
       return hold;
     }
 
+    /**
+     * \brief The most particles per second the sequence has the emitter
+     *    of a particle system give, 0 without such a track
+     *
+     * Its float tracks on the particle system, the emitter's birth rate,
+     * sampled from \p begin to \p end. Each is logged.
+     */
+    float readParticleRate(const uint8_t* sequence, uint8_t* system, float begin, float end) {
+      uint32_t count = readField<uint32_t>(sequence, VrGame::SequenceArraySize);
+      auto interps   = readField<const uint8_t*>(sequence, VrGame::SequenceInterpolators);
+      auto tags      = readField<const uint8_t*>(sequence, VrGame::SequenceIdTags);
+      const char* name = objectName(system);
+
+      float rate = 0.0f;
+
+      for (uint32_t i = 0; interps && tags && i < count; i++) {
+        auto interpolator = readField<uint8_t*>(interps + i * VrGame::SequenceInterpolatorSize, 0);
+        auto target       = readField<const char*>(tags + i * VrGame::SequenceIdTagSize, 0);
+        auto controller   = readField<const char*>(tags + i * VrGame::SequenceIdTagSize, VrGame::SequenceIdTagControllerType);
+
+        if (!interpolator || !target || std::strcmp(target, name))
+          continue;
+
+        auto vtable    = readField<const uint8_t*>(interpolator, 0);
+        auto isFloat   = reinterpret_cast<IsFloatFn>(readField<uintptr_t>(vtable, VrGame::InterpolatorIsFloatSlot));
+        auto readFloat = reinterpret_cast<UpdateFloatFn>(readField<uintptr_t>(vtable, VrGame::InterpolatorUpdateFloatSlot));
+
+        if (!(isFloat(interpolator, nullptr) & 0xFF))
+          continue;
+
+        float highest = 0.0f;
+        float first   = -1.0f;
+
+        for (uint32_t j = 0; begin + float(j) / SamplesPerSecond <= end; j++) {
+          float time  = begin + float(j) / SamplesPerSecond;
+          float value = 0.0f;
+
+          if (!(readFloat(interpolator, nullptr, time, system, &value) & 0xFF))
+            continue;
+
+          if (value > 0.0f && first < 0.0f)
+            first = time;
+
+          highest = std::max(highest, value);
+        }
+
+        Logger::info(str::format("VR: Throw animation particles of '", name, "' (", controller ? controller : "",
+          "): up to ", highest, " per second", first >= 0.0f ? str::format(" from ", first, " s") : std::string()));
+        rate = std::max(rate, highest);
+      }
+
+      return rate;
+    }
+
     void readSounds(const uint8_t* sequence, float act, float release, VrThrowAnimation& animation) {
       auto group = readField<const uint8_t*>(sequence, VrGame::AnimSequenceGroup);
 
@@ -319,6 +381,9 @@ namespace dxvk {
     // A switch is left thrown
     if (arming == VrThrowArming::Button && nodes.button)
       animation.pressed = readParts(tracks, nodes.button, true, release);
+
+    if (nodes.sparks)
+      animation.sparkRate = readParticleRate(sequence, nodes.sparks, begin, end);
 
     readSounds(sequence, act, release, animation);
 
