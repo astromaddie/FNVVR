@@ -8,6 +8,16 @@
 namespace dxvk {
 
   /**
+   * \brief A sound of one of the game's animations
+   */
+  struct VrAnimationSound {
+    /// The TESSound form, or \c nullptr if the animation has none there
+    const uint8_t* sound  = nullptr;
+    float          volume = 1.0f;
+    float          pitch  = 1.0f;
+  };
+
+  /**
    * \brief Finds a sound form by its editor ID
    *
    * \param [in] editorId The TESSound's editor ID
@@ -36,5 +46,27 @@ namespace dxvk {
     const VrVector3&            position,
           float                 volume,
           float                 frequency);
+
+  /**
+   * \brief Whether a sound form loops
+   *
+   * A looping sound played once goes on until it is stopped.
+   */
+  bool vrGameSoundLoops(const uint8_t* sound);
+
+  /**
+   * \brief Plays an animation's sound once for the player in first person
+   *
+   * As TESAnimGroup::PlaySounds plays the sounds of the player's
+   * first-person animations.
+   *
+   * \param [in] sound The sound
+   * \param [in] position Where the sound is, in game units, for 3D sounds
+   * \param [in] speed How fast the animation would play
+   */
+  void vrPlayFirstPersonSound(
+    const VrAnimationSound&     sound,
+    const VrVector3&            position,
+          float                 speed);
 
 }

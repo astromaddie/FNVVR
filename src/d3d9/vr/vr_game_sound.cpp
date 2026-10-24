@@ -78,4 +78,32 @@ namespace dxvk {
     reinterpret_cast<PlayFn>(VrGame::SoundHandlePlay)(&handle, nullptr, loop != 0);
   }
 
+
+  bool vrGameSoundLoops(const uint8_t* sound) {
+    if (!sound)
+      return false;
+
+    uint32_t soundFlags;
+    std::memcpy(&soundFlags, sound + VrGame::SoundFormFlags, sizeof(soundFlags));
+    return reinterpret_cast<ConvertLoopFlagFn>(VrGame::SoundConvertLoopFlag)(soundFlags) != 0;
+  }
+
+
+  void vrPlayFirstPersonSound(
+    const VrAnimationSound&     sound,
+    const VrVector3&            position,
+          float                 speed) {
+    if (!sound.sound)
+      return;
+
+    uint32_t soundFlags;
+    std::memcpy(&soundFlags, sound.sound + VrGame::SoundFormFlags, sizeof(soundFlags));
+
+    uint32_t flags = ((soundFlags & VrGame::SoundForm2D) ? VrGame::SoundFlag2D : VrGame::SoundFlag3D)
+      | VrGame::SoundFlagOneShot | VrGame::SoundFlagFirstPerson
+      | VrGame::SoundFlagIgnoreTimescale | VrGame::SoundFlagAnimationDriven;
+
+    vrPlayGameSound(sound.sound, flags, position, sound.volume, sound.pitch * speed);
+  }
+
 }

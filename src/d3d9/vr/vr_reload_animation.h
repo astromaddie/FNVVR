@@ -4,28 +4,12 @@
 #include <string>
 #include <vector>
 
+#include "vr_game_sequence.h"
+#include "vr_game_sound.h"
 #include "vr_magazine.h"
 #include "vr_weapon_aim.h"
 
 namespace dxvk {
-
-  /**
-   * \brief A sound of the game's reload animation
-   */
-  struct VrReloadSound {
-    /// The TESSound form, or \c nullptr if the animation has none there
-    const uint8_t* sound  = nullptr;
-    float          volume = 1.0f;
-    float          pitch  = 1.0f;
-  };
-
-  /**
-   * \brief Rotation of a bone in its parent, by the bone's name
-   */
-  struct VrBonePose {
-    std::string    name;
-    VrGameRotation rotate;
-  };
 
   /**
    * \brief The rack part at a point of its way back
@@ -55,7 +39,7 @@ namespace dxvk {
     /// Rotations of the bones below the left hand in their parents then
     std::vector<VrBonePose> fingers;
     /// The weapon chambering a round
-    VrReloadSound           sound;
+    VrAnimationSound        sound;
   };
 
   /**
@@ -76,8 +60,8 @@ namespace dxvk {
     /// Axis it turns about to open, unit, in the weapon node's frame
     VrVector3       axis;
     /// The action opening and closing
-    VrReloadSound   openSound;
-    VrReloadSound   closeSound;
+    VrAnimationSound openSound;
+    VrAnimationSound closeSound;
   };
 
   /**
@@ -86,7 +70,7 @@ namespace dxvk {
   struct VrRoundLoopSound {
     /// When it plays, in seconds from the start of the loop
     float         time = 0.0f;
-    VrReloadSound sound;
+    VrAnimationSound sound;
   };
 
   /**
@@ -136,8 +120,8 @@ namespace dxvk {
     VrVector3               axis;
     /// The magazine going out and going in (a round has no sound going
     /// out)
-    VrReloadSound           out;
-    VrReloadSound           in;
+    VrAnimationSound        out;
+    VrAnimationSound        in;
     /// How the animation racks the weapon, valid if \c hasRack
     VrRackAnimation         rack;
     bool                    hasRack = false;
@@ -227,7 +211,7 @@ namespace dxvk {
    * \param [in] position Where it is played from, in the game world
    */
   void vrPlayReloadSound(
-    const VrReloadSound&        sound,
+    const VrAnimationSound&     sound,
     const VrVector3&            position);
 
 }

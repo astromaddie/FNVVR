@@ -390,7 +390,7 @@ namespace dxvk {
 
     // The trigger was pulled and nothing fired: the dry click
     if (events.jammed && input.rightHand) {
-      VrReloadSound click;
+      VrAnimationSound click;
       click.sound = readField<const uint8_t*>(weapon, VrGame::WeaponAttackFailSound);
       vrPlayReloadSound(click, rack.active ? rack.rack : input.rightHand->position);
     }
@@ -540,7 +540,7 @@ namespace dxvk {
         break;
 
       case VrRackEvent::Racked: {
-        const VrReloadSound* sound = input.animation && input.animation->hasRack ? &input.animation->rack.sound : nullptr;
+        const VrAnimationSound* sound = input.animation && input.animation->hasRack ? &input.animation->rack.sound : nullptr;
 
         if (looping)
           cycleAction(character, weapon, sound, rack.rack);
@@ -605,7 +605,7 @@ namespace dxvk {
   }
 
 
-  void VrManualReload::ejectMagazine(uint8_t* player, const uint8_t* weapon, const VrReloadSound* sound,
+  void VrManualReload::ejectMagazine(uint8_t* player, const uint8_t* weapon, const VrAnimationSound* sound,
       const VrVector3& well, bool chamber) {
     // The rounds of the clip are still counted in the inventory: emptying
     // it loses none (findings/reload.md §1). A chambered round stays.
@@ -625,7 +625,7 @@ namespace dxvk {
   }
 
 
-  void VrManualReload::openAction(uint8_t* player, const uint8_t* weapon, const VrReloadSound* sound,
+  void VrManualReload::openAction(uint8_t* player, const uint8_t* weapon, const VrAnimationSound* sound,
       const VrVector3& breech, bool cylinder) {
     // The shells or cases are thrown out, spent or not: the rounds of the
     // clip are still counted in the inventory, so none is lost
@@ -652,7 +652,7 @@ namespace dxvk {
   }
 
 
-  void VrManualReload::insertMagazine(uint8_t* player, uint8_t* weapon, const VrReloadSound* sound,
+  void VrManualReload::insertMagazine(uint8_t* player, uint8_t* weapon, const VrAnimationSound* sound,
       const VrVector3& well, bool chambered) {
     if (!chambered) {
       // The clip is filled when the weapon is racked
@@ -671,7 +671,7 @@ namespace dxvk {
   }
 
 
-  void VrManualReload::rackWeapon(uint8_t* player, uint8_t* weapon, const VrReloadSound* sound, const VrVector3& rack) {
+  void VrManualReload::rackWeapon(uint8_t* player, uint8_t* weapon, const VrAnimationSound* sound, const VrVector3& rack) {
     if (sound)
       vrPlayReloadSound(*sound, rack);
 
@@ -786,7 +786,7 @@ namespace dxvk {
   }
 
 
-  void VrManualReload::cycleAction(uint8_t* player, uint8_t* weapon, const VrReloadSound* sound, const VrVector3& rack) {
+  void VrManualReload::cycleAction(uint8_t* player, uint8_t* weapon, const VrAnimationSound* sound, const VrVector3& rack) {
     if (sound)
       vrPlayReloadSound(*sound, rack);
 
