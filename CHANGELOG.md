@@ -2,11 +2,13 @@
 
 ## Unreleased (since v0.8.0)
 
-- **Drawing a heavy weapon**: the arms and the weapon are hidden for the moment the game still blends the right hand
-  away from the weapon, instead of showing the hand far in front of the controller.
-- **Lighter** (dynamite, fire bomb): it stands upright in the left fist, the fingers holding it as in the game's
-  animation.
-- **Lit fuse**: the dynamite's fuse throws sparks once lit, as in the game's animation, until it leaves the hand.
+- **Drawing a heavy weapon**: the arms and the weapon are hidden until the game has brought the right hand onto the
+  weapon (the minigun and the grenade machine gun hold it still far away for a moment first), instead of showing the
+  hand far in front of the controller.
+- **Lighter** (dynamite, fire bomb): it stands upright in the left fist, held and gripped as the game's own pose holds
+  it, and its cap opens when it is lit; the fingers no longer close through it.
+- **Lit fuse**: the dynamite's fuse is given sparks once lit until it leaves the hand (whether they show is still
+  being checked).
 
 ## v0.8.0 (2026-10-24, since v0.7.0 `b6c9aca`)
 
