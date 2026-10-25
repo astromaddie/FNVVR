@@ -42,6 +42,9 @@ namespace dxvk {
     using NotifyGuardsFn     = void (__fastcall*)(void* extraData, void* unused, uint8_t* ref, uint8_t* player);
     using RemoveExtraFn      = void (__fastcall*)(void* extraData, void* unused, uint8_t type);
     using FormByIdFn         = uint8_t* (__cdecl*)(uint32_t id);
+    using GetActivateRefFn   = uint8_t* (__cdecl*)();
+    using Get3DFn            = uint8_t* (__fastcall*)(uint8_t* ref, void* unused);
+    using FindCollisionFn    = uint8_t* (__cdecl*)(uint8_t* object);
 
     static_assert(sizeof(VrVector3) == 12, "The game's NiPoint3 is three floats");
 
@@ -181,6 +184,10 @@ namespace dxvk {
         VrGame::PickDataConstructPrologue, sizeof(VrGame::PickDataConstructPrologue))
       && VrGameMemory::matches(VrGame::FindReferenceFor3D,
         VrGame::FindReferenceFor3DPrologue, sizeof(VrGame::FindReferenceFor3DPrologue))
+      && VrGameMemory::matches(VrGame::GetActivateRef,
+        VrGame::GetActivateRefPrologue, sizeof(VrGame::GetActivateRefPrologue))
+      && VrGameMemory::matches(VrGame::FindFirstCollisionObject,
+        VrGame::FindFirstCollisionObjectPrologue, sizeof(VrGame::FindFirstCollisionObjectPrologue))
       && VrGameMemory::matches(VrGame::WorldUpdateFilter,
         VrGame::WorldUpdateFilterPrologue, sizeof(VrGame::WorldUpdateFilterPrologue))
       && VrGameMemory::matches(VrGame::SpringInfoConstruct,
@@ -203,7 +210,7 @@ namespace dxvk {
     std::unique_ptr<VrPhysicsGrab> grab(new VrPhysicsGrab());
     g_physicsGrab = grab.get();
 
-    Logger::info("VR: Each free hand holds what it touches with its grip");
+    Logger::info("VR: Each free hand holds what it touches or pulls what it points at with its grip");
     return grab;
   }
 
@@ -212,11 +219,13 @@ namespace dxvk {
           VrHand                hand,
     const VrGameCameraPose*     pose,
           bool                  grip,
-          bool                  free) {
+          bool                  free,
+          bool                  aimed) {
     HandInput& input = m_input[uint32_t(hand)];
     input.tracked = pose != nullptr;
     input.grip    = grip;
     input.free    = free;
+    input.aimed   = aimed;
 
     if (pose)
       input.pose = *pose;
@@ -307,19 +316,32 @@ namespace dxvk {
   bool VrPhysicsGrab::grab(uint8_t* player, VrHand hand, const VrGameCameraPose& pose) {
     Candidate best;
 
-    if (!probe(player, hand, pose.position, best))
+    bool found = probe(player, hand, pose.position, best)
+      || (m_input[uint32_t(hand)].aimed && aimTarget(hand, pose.position, best));
+
+    if (!found) {
+      if (m_loggedMisses < MaxLoggedMisses) {
+        Logger::info(str::format("VR: The ", handName(hand), " hand touches nothing it can hold",
+          m_input[uint32_t(hand)].aimed ? " and points at nothing it can pull" : ""));
+        m_loggedMisses++;
+      }
+
       return false;
+    }
 
     Held& held = m_hands[uint32_t(hand)];
 
     if (!attach(player, held, best))
       return false;
 
-    held.grab.hold(pose, best.point);
+    if (best.pulled)
+      held.grab.pull(pose, best.point);
+    else
+      held.grab.hold(pose, best.point);
 
     if (m_loggedGrabs < MaxLoggedGrabs) {
-      Logger::info(str::format("VR: The ", handName(hand), " hand holds ", hexId(held.refId),
-        " (", best.mass, " kg), ", int32_t(best.distance * 100.0f / VrGameUnitsPerMetre),
+      Logger::info(str::format("VR: The ", handName(hand), best.pulled ? " hand pulls " : " hand holds ",
+        hexId(held.refId), " (", best.mass, " kg), ", int32_t(best.distance * 100.0f / VrGameUnitsPerMetre),
         " cm from the hand's centre", held.grouped ? "" : ", still colliding with the player"));
       m_loggedGrabs++;
     }
@@ -376,12 +398,32 @@ namespace dxvk {
       found = true;
     }
 
-    if (!found && m_loggedMisses < MaxLoggedMisses) {
-      Logger::info(str::format("VR: The ", handName(hand), " hand touches nothing it can hold"));
-      m_loggedMisses++;
-    }
-
     return found;
+  }
+
+
+  bool VrPhysicsGrab::aimTarget(VrHand hand, const VrVector3& centre, Candidate& candidate) {
+    uint8_t* ref = reinterpret_cast<GetActivateRefFn>(VrGame::GetActivateRef)();
+
+    if (!ref)
+      return false;
+
+    // The body the game's grab key would take
+    uint8_t* scene     = virtualFunction<Get3DFn>(ref, VrGame::RefGet3DSlot)(ref, nullptr);
+    uint8_t* collision = scene ? reinterpret_cast<FindCollisionFn>(VrGame::FindFirstCollisionObject)(scene) : nullptr;
+    uint8_t* bhkBody   = collision ? reinterpret_cast<GetPartFn>(VrGame::CollisionObjectGetBody)(collision, nullptr) : nullptr;
+    uint8_t* body      = bhkBody ? readField<uint8_t*>(bhkBody, VrGame::RefObjectHavok) : nullptr;
+
+    if (!body || body == m_hands[uint32_t(hand) ^ 1u].body)
+      return false;
+
+    if (!holdable(body, settingFloat(VrGame::GrabMaxWeightSetting), candidate) || candidate.ref != ref)
+      return false;
+
+    candidate.point    = readField<VrVector3>(body, VrGame::BodyCentreOfMass) * (1.0f / havokScale());
+    candidate.distance = vrLength(candidate.point - centre);
+    candidate.pulled   = true;
+    return true;
   }
 
 

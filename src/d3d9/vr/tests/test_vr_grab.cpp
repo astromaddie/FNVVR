@@ -169,3 +169,56 @@ TEST_CASE(grab_held_point_follows_the_hand_and_turns_with_it) {
   CHECK_NEAR(moved.y, 0.0f, 1e-4f);
   CHECK_NEAR(moved.z, 2.0f, 1e-4f);
 }
+
+
+TEST_CASE(grab_pulled_point_comes_to_the_hand_and_stays) {
+  VrGameCameraPose hand = northHand({ 0.0f, 0.0f, 0.0f });
+  VrGrabHand grab;
+
+  float distance = 2.0f * VrGameUnitsPerMetre;
+  grab.update(input(&hand, true));
+  grab.pull(hand, { 0.0f, distance, 0.0f });
+  CHECK(grab.pulling());
+  CHECK_NEAR(grab.target(hand).y, distance, 1e-3f);
+
+  // Straight along the line from the hand, at the set speed
+  CHECK(grab.update(input(&hand, true)) == VrGrabRequest::None);
+  CHECK_NEAR(grab.target(hand).y, distance - VrGrabHand::PullSpeed * Frame, 1e-2f);
+  CHECK_NEAR(grab.target(hand).x, 0.0f, 1e-4f);
+
+  uint32_t frames = 1;
+
+  while (grab.pulling() && frames < 1000) {
+    grab.update(input(&hand, true));
+    frames++;
+  }
+
+  CHECK(frames <= uint32_t(distance / (VrGrabHand::PullSpeed * Frame)) + 1);
+  CHECK_NEAR(vrLength(grab.target(hand)), 0.0f, 1e-4f);
+
+  // Then held in the hand's centre wherever the hand goes
+  VrGameCameraPose moved = eastHand({ 50.0f, 20.0f, 10.0f });
+  CHECK(grab.update(input(&moved, true)) == VrGrabRequest::None);
+  CHECK_NEAR(vrLength(grab.target(moved) - moved.position), 0.0f, 1e-4f);
+}
+
+
+TEST_CASE(grab_pulled_point_follows_the_hand_on_its_way) {
+  VrGameCameraPose hand = northHand({ 0.0f, 0.0f, 0.0f });
+  VrGrabHand grab;
+
+  grab.update(input(&hand, true));
+  grab.pull(hand, { 0.0f, 100.0f, 0.0f });
+  grab.update(input(&hand, true));
+
+  // Turned to the east, the point is in front of the hand there
+  VrGameCameraPose turned = eastHand({ 0.0f, 0.0f, 0.0f });
+  VrVector3 target = grab.target(turned);
+  CHECK(target.x > 90.0f);
+  CHECK_NEAR(target.y, 0.0f, 1e-3f);
+
+  // Letting go stops the pull
+  CHECK(grab.update(input(&turned, false)) == VrGrabRequest::Release);
+  grab.drop();
+  CHECK(!grab.pulling());
+}

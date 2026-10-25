@@ -26,8 +26,11 @@ namespace dxvk {
    * a press of a free hand's grip holds the object the hand touches (the
    * nearest hit of short rays around the hand, see vrGrabProbeRays) by the
    * point touched, and the spring pulls that point to where it belongs in
-   * the hand. Objects too heavy for the game's grab, fixed and keyframed
-   * bodies, and actors (living or dead) are not held.
+   * the hand. When the hand touches nothing, the press pulls the object
+   * the hand points at, the game's activation target named by this hand
+   * (VrHandActivatePick), by its centre of mass into the hand's centre.
+   * Objects too heavy for the game's grab, fixed and keyframed bodies, and
+   * actors (living or dead) are not held.
    *
    * Havok steps on another thread while the frame is drawn, so the springs
    * are worked in the game's update of the player, after the game's own
@@ -64,12 +67,14 @@ namespace dxvk {
      *    not tracked or the player is not in game; copied
      * \param [in] grip The hand's grip is held
      * \param [in] free The hand may hold an object
+     * \param [in] aimed The hand named the game's activation target
      */
     void setHand(
             VrHand                hand,
       const VrGameCameraPose*     pose,
             bool                  grip,
-            bool                  free);
+            bool                  free,
+            bool                  aimed);
 
     /**
      * \brief Whether a hand holds an object
@@ -90,6 +95,7 @@ namespace dxvk {
       bool             tracked = false;
       bool             grip    = false;
       bool             free    = false;
+      bool             aimed   = false;
     };
 
     /**
@@ -129,6 +135,8 @@ namespace dxvk {
       VrVector3 point;
       float     distance = 0.0f;
       float     mass     = 0.0f;
+      /// Pulled from where the hand points rather than touched
+      bool      pulled   = false;
     };
 
     VrPhysicsGrab() = default;
@@ -151,6 +159,8 @@ namespace dxvk {
     bool grab(uint8_t* player, VrHand hand, const VrGameCameraPose& pose);
 
     bool probe(uint8_t* player, VrHand hand, const VrVector3& centre, Candidate& best);
+
+    bool aimTarget(VrHand hand, const VrVector3& centre, Candidate& candidate);
 
     bool holdable(uint8_t* body, float maxMass, Candidate& candidate) const;
 

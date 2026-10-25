@@ -44,8 +44,15 @@ namespace dxvk {
     bool pressed = input.grip && !m_gripDown;
     m_gripDown = input.grip;
 
-    if (m_holding)
-      return input.hand && input.grip && input.free ? VrGrabRequest::None : VrGrabRequest::Release;
+    if (m_holding) {
+      if (!input.hand || !input.grip || !input.free)
+        return VrGrabRequest::Release;
+
+      if (m_pulled)
+        advancePull(input.dt);
+
+      return VrGrabRequest::None;
+    }
 
     if (!input.hand || !input.grip || !input.free) {
       m_window = 0.0f;
@@ -65,14 +72,36 @@ namespace dxvk {
 
   void VrGrabHand::hold(const VrGameCameraPose& hand, const VrVector3& point) {
     m_holding = true;
+    m_pulled  = false;
     m_window  = 0.0f;
     m_offset  = vrPointToHand(hand, point);
   }
 
 
+  void VrGrabHand::pull(const VrGameCameraPose& hand, const VrVector3& point) {
+    hold(hand, point);
+    m_pulled = true;
+  }
+
+
   void VrGrabHand::drop() {
     m_holding = false;
+    m_pulled  = false;
     m_window  = 0.0f;
+  }
+
+
+  void VrGrabHand::advancePull(float dt) {
+    float distance = vrLength(m_offset);
+    float step     = PullSpeed * dt;
+
+    if (distance <= step) {
+      m_offset = VrVector3();
+      m_pulled = false;
+      return;
+    }
+
+    m_offset = m_offset * ((distance - step) / distance);
   }
 
 

@@ -2200,13 +2200,25 @@ namespace dxvk {
     constexpr uintptr_t CellGetWorld               = 0x004543C0;
     constexpr uintptr_t RefObjectHavok             = 0x08;
     constexpr uintptr_t RefGetBaseForm             = 0x007AF430;
+
+    /**
+     * From a reference to its first body, as HandlePhysicsGrab finds the
+     * body of the activation target: the reference's 3D (RefGet3DSlot),
+     * FindFirstCollisionObject (__cdecl, the scene object, walks the
+     * children) and bhkCollisionObject::GetRigidBody (__thiscall, the
+     * bhkRigidBody, whose hkpRigidBody is at RefObjectHavok).
+     */
+    constexpr uintptr_t FindFirstCollisionObject   = 0x004B5260;
+    constexpr uint8_t   FindFirstCollisionObjectPrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x10, 0xC7, 0x45, 0xFC, 0x00, 0x00, 0x00 };
+    constexpr uintptr_t CollisionObjectGetBody     = 0x006FA820;
     constexpr uintptr_t AshPileForm1               = 0x011CA27C;
     constexpr uintptr_t AshPileForm2               = 0x011CA280;
 
     /**
      * Havok 7.1 bodies (hkpRigidBody): the world (null outside of one), the
      * collision filter, the motion type (4 keyframed, 5 fixed), the
-     * inverse mass, the rotation's three columns and the position, all
+     * inverse mass, the rotation's three columns, the position and the
+     * centre of mass (the swept transform's m_centerOfMass1), all
      * hkVector4 in Havok units. An action's world is at +0x08 too.
      * hkpEntity::activate (__thiscall) wakes the body;
      * hkpWorld::updateCollisionFilterOnEntity (__thiscall, entity, update
@@ -2220,6 +2232,7 @@ namespace dxvk {
     constexpr uintptr_t BodyInverseMass            = 0x1AC;
     constexpr uintptr_t BodyRotation               = 0xF0;
     constexpr uintptr_t BodyPosition               = 0x120;
+    constexpr uintptr_t BodyCentreOfMass           = 0x140;
     constexpr uintptr_t EntityActivate             = 0x00C9C1D0;
     constexpr uintptr_t WorldUpdateFilter          = 0x00C946E0;
     constexpr uint8_t   WorldUpdateFilterPrologue[] = { 0x81, 0xEC, 0x30, 0x08, 0x00, 0x00, 0x53, 0x8B, 0xD9, 0x83, 0xBB, 0x94 };

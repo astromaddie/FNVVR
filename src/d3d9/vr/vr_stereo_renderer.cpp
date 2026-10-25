@@ -724,7 +724,7 @@ namespace dxvk {
     // Nor held
     if (m_physicsGrab) {
       for (uint32_t i = 0; i < VrHandCount; i++)
-        m_physicsGrab->setHand(VrHand(i), nullptr, false, false);
+        m_physicsGrab->setHand(VrHand(i), nullptr, false, false, false);
     }
 
     if (m_npcGaze)
@@ -1152,10 +1152,15 @@ namespace dxvk {
     if (inGame && left.isActive)
       leftHand = handInGame(left);
 
+    // The hand whose ray named the game's activation target may pull it;
+    // the target stays the game's until its next pick, after this frame
+    bool aimedRight = m_handPick && m_handPick->pickedWithHands() && m_handPick->hand() == VrHand::Right;
+    bool aimedLeft  = m_handPick && m_handPick->pickedWithHands() && m_handPick->hand() == VrHand::Left;
+
     m_physicsGrab->setHand(VrHand::Right, inGame && right.isActive ? &rightHand : nullptr,
-      input.actions.isPressed(VrAction::Grab), rightFree);
+      input.actions.isPressed(VrAction::Grab), rightFree, aimedRight);
     m_physicsGrab->setHand(VrHand::Left, inGame && left.isActive ? &leftHand : nullptr,
-      input.actions.isPressed(VrAction::TwoHandGrip), leftFree);
+      input.actions.isPressed(VrAction::TwoHandGrip), leftFree, aimedLeft);
 
     // What the player's last update did
     VrPhysicsGrabEvents events = m_physicsGrab->takeEvents();

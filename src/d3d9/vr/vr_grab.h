@@ -87,7 +87,9 @@ namespace dxvk {
    * lost.
    *
    * The held point keeps its place in the hand's frame, so that the object
-   * follows the hand's moves and turns.
+   * follows the hand's moves and turns. A point pulled from a distance
+   * comes to the hand's centre at a set speed, along the line it had from
+   * the hand in the hand's frame, and is then held there.
    */
   class VrGrabHand {
 
@@ -96,11 +98,15 @@ namespace dxvk {
     /// How long a press keeps looking for something to hold, in seconds
     constexpr static float GrabWindow = 0.25f;
 
+    /// How fast a pulled point comes to the hand, in game units per second
+    constexpr static float PullSpeed = 4.0f * VrGameUnitsPerMetre;
+
     /**
      * \brief Decides what the hand does in a frame
      *
      * After a Release, the caller lets go and calls \ref drop. After a
-     * Grab, it calls \ref hold if it found something.
+     * Grab, it calls \ref hold or \ref pull if it found something. While
+     * the hand holds, moves a pulled point closer to the hand.
      */
     VrGrabRequest update(const VrGrabHandInput& input);
 
@@ -111,6 +117,14 @@ namespace dxvk {
      * \param [in] point Point held, in the game world
      */
     void hold(const VrGameCameraPose& hand, const VrVector3& point);
+
+    /**
+     * \brief Starts pulling a point to the hand's centre
+     *
+     * \param [in] hand The hand in the game world
+     * \param [in] point Point pulled, in the game world
+     */
+    void pull(const VrGameCameraPose& hand, const VrVector3& point);
 
     /**
      * \brief Stops holding
@@ -125,6 +139,13 @@ namespace dxvk {
     }
 
     /**
+     * \brief Whether the held point is still on its way to the hand
+     */
+    bool pulling() const {
+      return m_holding && m_pulled;
+    }
+
+    /**
      * \brief Where the held point belongs for a hand pose
      */
     VrVector3 target(const VrGameCameraPose& hand) const;
@@ -133,8 +154,11 @@ namespace dxvk {
 
     bool      m_holding  = false;
     bool      m_gripDown = false;
+    bool      m_pulled   = false;
     float     m_window   = 0.0f;
     VrVector3 m_offset;
+
+    void advancePull(float dt);
 
   };
 
