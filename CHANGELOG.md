@@ -1,26 +1,9 @@
 # Changelog
 
-## Unreleased (since v0.8.0)
+## v0.9.0 (2026-10-25, since v0.8.0 `66809af`)
 
-- **Drawing a heavy weapon**: the arms and the weapon are hidden until the game has brought the right hand onto the
-  weapon (the minigun and the grenade machine gun hold it still far away for a moment first), instead of showing the
-  hand far in front of the controller.
-- **Lighter** (dynamite, fire bomb): it stands upright in the left fist and its cap opens when it is lit; the
-  fingers no longer close through it.
-- **Lit fuse**: the fuse of the dynamite and of the fire bomb sparks once lit until it leaves the hand.
-- **Sneak by crouching**: **Settings > VR > Sneak** chooses between the stick click (the default, as before) and
-  **Real crouch**: lowering the head about 35 cm below its standing height sneaks, standing up stops sneaking, with
-  the game's own sounds and rules; the stick click then no longer sneaks. The view stays at the real head's height
-  (the game does not lower it a second time). The depth is `d3d9.vrCrouchDepth` in `dxvk.conf` (metres), the
-  starting choice `d3d9.vrPhysicalSneak`.
-- **Sneak meter**: [HIDDEN], [CAUTION], [DANGER] and [DETECTED] are shown in front of the head while sneaking, just
-  below the line of sight.
-- **No ammunition left** (manual reload): reaching behind the back for a magazine, shells or rounds with none left in
-  the inventory now shows the game's "You don't have enough ammo." message in front of the head and gives a long, dull
-  pulse on the left controller, unlike every other reload pulse.
-- **Long HUD messages**: messages such as being overencumbered or a discovered location with a long name, and long
-  objectives, are no longer cut on the right; the radiation and XP meters stop moving towards the centre where they
-  would cover them.
+### Quick wheel, holsters and ammunition types
+
 - **Holsters**: the weapon is put away by bringing it to its holster and pressing the right grip: one-handed weapons,
   grenades and mines at the right hip, rifles, heavy weapons and two-handed melee weapons behind the back over the
   right shoulder. The empty right hand at the holster and the right grip draw it again. A light pulse tells the hand
@@ -29,13 +12,48 @@
 - **Quick wheel**: pushing the right stick down and holding it shows the hotkeys on a wheel in front of the right
   hand, with each item's icon (equipped items marked with a dot). Moving the hand towards a cell picks it (a light
   tick), letting go of the stick uses it as the game's hotkeys do (equip, unequip, use an aid item); letting go in the
-  middle does nothing. A weapon chosen on the wheel comes straight into the hand, out of its holster. The top cell is
-  the ammunition: with the manual reload off it swaps to the next type held.
-- **Hotkeys from the Pip-Boy**: in the inventory, with the laser on an item, holding the right stick click shows the
-  same wheel; letting go on a cell gives the item that hotkey, with the game's own sound and refusals.
+  middle does nothing. A weapon chosen on the wheel comes straight into the hand, out of its holster. The right stick
+  does not turn while the wheel is open. The top cell is the ammunition: with the manual reload off it swaps to the
+  next type held.
+- **Hotkeys from the Pip-Boy**: in the inventory, holding RB shows the game's own hotkey wheel; the left stick
+  towards a slot, diagonals included, gives the highlighted item that hotkey, with the game's own sound and refusals.
+  The item list does not scroll while the wheel is shown.
 - **Ammunition types** (manual reload): a magazine, shells or rounds taken behind the back are of the weapon's current
   type while some are left, otherwise of the next type held. While the left hand holds them, X switches to the next
   type held (a label above the hand shows its name and count); pushing them into the weapon loads that type.
+
+### Sneak
+
+- **Sneak by crouching**: **Settings > VR > Sneak** chooses between the stick click (the default, as before) and
+  **Real crouch**: lowering the head about 35 cm below its standing height sneaks, standing up stops sneaking, with
+  the game's own sounds and rules; the stick click then no longer sneaks. The view stays at the real head's height
+  (the game does not lower it a second time). The depth is `d3d9.vrCrouchDepth` in `dxvk.conf` (metres), the
+  starting choice `d3d9.vrPhysicalSneak`.
+- **Sneak meter**: [HIDDEN], [CAUTION], [DANGER] and [DETECTED] are shown in front of the head while sneaking, just
+  below the line of sight.
+
+### Grenades and thrown weapons
+
+- **Lighter** (dynamite, fire bomb): it stands upright in the left fist and its cap opens when it is lit; the
+  fingers no longer close through it.
+- **Lit fuse**: the fuse of the dynamite and of the fire bomb sparks once lit until it leaves the hand.
+
+### Manual reload
+
+- **No ammunition left**: reaching behind the back for a magazine, shells or rounds with none left in the inventory
+  now shows the game's "You don't have enough ammo." message in front of the head and gives a long, dull pulse on the
+  left controller, unlike every other reload pulse.
+
+### Fixes
+
+- **Drawing a heavy weapon**: the arms and the weapon are hidden until the game has brought the right hand onto the
+  weapon (the minigun and the grenade machine gun hold it still far away for a moment first), instead of showing the
+  hand far in front of the controller.
+- **Long HUD messages**: messages such as being overencumbered or a discovered location with a long name, and long
+  objectives, are no longer cut on the right; the radiation and XP meters stop moving towards the centre where they
+  would cover them.
+- The console's keyboards, the power attack ring and the other images the mod draws itself are drawn by the GPU
+  instead of the CPU.
 
 ## v0.8.0 (2026-10-24, since v0.7.0 `b6c9aca`)
 
