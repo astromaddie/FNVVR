@@ -37,6 +37,7 @@
 #include "vr_pipboy_animation.h"
 #include "vr_weapon_drawn.h"
 #include "vr_pipboy_control.h"
+#include "vr_physics_grab.h"
 #include "vr_pipboy_gaze.h"
 #include "vr_pipboy_size.h"
 #include "vr_power_attack_rules.h"
@@ -395,6 +396,9 @@ namespace dxvk {
     // Reloading with the hands
     std::unique_ptr<VrManualReload> m_manualReload;
 
+    // World objects held with the hands
+    std::unique_ptr<VrPhysicsGrab> m_physicsGrab;
+
     // Makes the parts of the weapon the reload needs worked glow
     std::unique_ptr<VrPartHighlight> m_partHighlight;
 
@@ -549,6 +553,10 @@ namespace dxvk {
     void updateManualReload(const VrInputState& input, VrGameStateKind state, float dt);
 
     void updateHolster(const VrInputState& input, VrGameStateKind state);
+
+    void updatePhysicsGrab(const VrInputState& input, VrGameStateKind state);
+
+    bool leftGripOnWeapon(const VrInputState& input) const;
 
     void updateQuickWheel(const VrInputState& input, VrGameStateKind state);
 

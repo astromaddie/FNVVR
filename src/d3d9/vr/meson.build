@@ -108,6 +108,7 @@ vr_dxvk_src = files([
   'vr_game_ammo.cpp',
   'vr_quick_wheel.cpp',
   'vr_ammo_label.cpp',
+  'vr_physics_grab.cpp',
 ])
 
 # Unit tests for the VR layer. They are built with the host compiler so they

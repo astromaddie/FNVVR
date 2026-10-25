@@ -2147,6 +2147,140 @@ namespace dxvk {
      */
     constexpr uintptr_t HudColorSetting            = 0x011D8AD4;
 
+    /**
+     * Physics grab with the hands, see findings/grab.md §8. The VR springs
+     * are worked from the call to PlayerCharacter::HandlePhysicsGrab
+     * (__thiscall, frame time, ret 4) in PlayerCharacter::Update, on the
+     * main thread before the AI threads step Havok.
+     */
+    constexpr uintptr_t PhysicsGrabCallSite        = 0x0094363C;
+    constexpr uintptr_t HandlePhysicsGrab          = 0x0095F6C0;
+
+    /**
+     * Havok ray picks as PlayerCharacter::CreateMouseSpring casts them:
+     * bhkPickData (0xB0 bytes, 16-aligned, no destructor) built by its
+     * constructor and setters (__thiscall; positions in game units, the
+     * filter by value), cast by bhkWorld::PickObject (vtable slot, returns
+     * a bool). GethkRigidBody returns the body hit or null; the hit fraction
+     * is a float in the pick. The ray's filter is the item pick layer with
+     * the player's collision group (MobileObject::GetCollisionFilter,
+     * __thiscall, writes the filter to its argument), so it skips the
+     * player and what the player holds. NI2HK scales game units to Havok
+     * units, set when the game starts.
+     */
+    constexpr uintptr_t PickDataConstruct          = 0x004A3C20;
+    constexpr uint8_t   PickDataConstructPrologue[] = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x8B, 0x4D, 0xFC, 0xE8, 0x91 };
+    constexpr uintptr_t PickDataSetFilter          = 0x004A3F70;
+    constexpr uintptr_t PickDataSetFrom            = 0x004A3DA0;
+    constexpr uintptr_t PickDataSetLength          = 0x007F68A0;
+    constexpr uintptr_t PickDataGetRigidBody       = 0x00C66FD0;
+    constexpr uintptr_t PickDataHitFraction        = 0x40;
+    constexpr size_t    PickDataSize               = 0xB0;
+    constexpr uintptr_t WorldPickObjectSlot        = 0xC8;
+    constexpr uintptr_t GetCollisionFilter         = 0x00931ED0;
+    constexpr uint32_t  LayerItemPick              = 0x24;
+    constexpr uint32_t  FilterGroupShift           = 16;
+    constexpr uint32_t  FilterKeptBits             = 0x7FFF;
+    constexpr uintptr_t HavokScale                 = 0x011C582C;
+
+    /**
+     * From a body to its reference: bhkCollisionObject::Getbhk (__cdecl,
+     * the hkpRigidBody), whose scene object is at NiCollisionObject+0x08,
+     * then TESObjectREFR::FindReferenceFor3D (__cdecl). A reference's cell
+     * (TESObjectREFR::GetParentCell, __thiscall) and the cell's bhkWorld
+     * (TESObjectCELL::GetbhkWorld, __thiscall); a bhkRefObject's Havok
+     * object is at +0x08. TESObjectREFR::GetObjectReference (__thiscall)
+     * is compared with the two ash pile forms, which the game never grabs.
+     */
+    constexpr uintptr_t CollisionObjectForBody     = 0x004B5A20;
+    constexpr uintptr_t CollisionSceneObject       = 0x08;
+    constexpr uintptr_t FindReferenceFor3D         = 0x0056F930;
+    constexpr uint8_t   FindReferenceFor3DPrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x14, 0x8B, 0x45, 0x08, 0x89, 0x45, 0xFC };
+    constexpr uintptr_t RefGetParentCell           = 0x008D6F30;
+    constexpr uintptr_t CellGetWorld               = 0x004543C0;
+    constexpr uintptr_t RefObjectHavok             = 0x08;
+    constexpr uintptr_t RefGetBaseForm             = 0x007AF430;
+    constexpr uintptr_t AshPileForm1               = 0x011CA27C;
+    constexpr uintptr_t AshPileForm2               = 0x011CA280;
+
+    /**
+     * Havok 7.1 bodies (hkpRigidBody): the world (null outside of one), the
+     * collision filter, the motion type (4 keyframed, 5 fixed), the
+     * inverse mass, the rotation's three columns and the position, all
+     * hkVector4 in Havok units. An action's world is at +0x08 too.
+     * hkpEntity::activate (__thiscall) wakes the body;
+     * hkpWorld::updateCollisionFilterOnEntity (__thiscall, entity, update
+     * mode 0, shape collections 1, ret 0xC) applies a new filter.
+     */
+    constexpr uintptr_t HavokObjectWorld           = 0x08;
+    constexpr uintptr_t BodyFilter                 = 0x2C;
+    constexpr uintptr_t BodyMotionType             = 0xE8;
+    constexpr uint8_t   MotionKeyframed            = 4;
+    constexpr uint8_t   MotionFixed                = 5;
+    constexpr uintptr_t BodyInverseMass            = 0x1AC;
+    constexpr uintptr_t BodyRotation               = 0xF0;
+    constexpr uintptr_t BodyPosition               = 0x120;
+    constexpr uintptr_t EntityActivate             = 0x00C9C1D0;
+    constexpr uintptr_t WorldUpdateFilter          = 0x00C946E0;
+    constexpr uint8_t   WorldUpdateFilterPrologue[] = { 0x81, 0xEC, 0x30, 0x08, 0x00, 0x00, 0x53, 0x8B, 0xD9, 0x83, 0xBB, 0x94 };
+
+    /**
+     * A mouse spring as CreateMouseSpring makes one: the info's constructor
+     * (__thiscall, 0x40 bytes, 16-aligned: +0x04 body, +0x10 point in the
+     * body's frame and +0x20 target, Havok units, +0x30 damping, +0x34
+     * elasticity, +0x38 maximum relative force, +0x3C object damping), the
+     * game's NiNew (__cdecl size), bhkMouseSpringAction's constructor
+     * (__thiscall, the info) and NiPointer assignment (__thiscall on the
+     * pointer). bhkUnaryAction::Add (vtable, the bhkWorld) and
+     * bhkAction::Remove (vtable, nothing when out of a world).
+     * SetMousePosition (__thiscall, a point in game units) moves the
+     * target. The Z grab's settings (values at SettingValue) give the
+     * spring's constants and the heaviest body a hand lifts.
+     */
+    constexpr uintptr_t SpringInfoConstruct        = 0x004B4F40;
+    constexpr uint8_t   SpringInfoConstructPrologue[] = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x8B, 0x4D, 0xFC, 0xE8, 0x61 };
+    constexpr size_t    SpringInfoSize             = 0x40;
+    constexpr uintptr_t SpringInfoBody             = 0x04;
+    constexpr uintptr_t SpringInfoLocalPoint       = 0x10;
+    constexpr uintptr_t SpringInfoTarget           = 0x20;
+    constexpr uintptr_t SpringInfoDamping          = 0x30;
+    constexpr uintptr_t SpringInfoElasticity       = 0x34;
+    constexpr uintptr_t SpringInfoMaxForce         = 0x38;
+    constexpr uintptr_t SpringInfoObjectDamping    = 0x3C;
+    constexpr uintptr_t NiNew                      = 0x00AA13E0;
+    constexpr uint8_t   NiNewPrologue[]            = { 0x51, 0x8B, 0x44, 0x24, 0x08, 0x85, 0xC0, 0x75, 0x05, 0xB8, 0x01, 0x00 };
+    constexpr size_t    SpringSize                 = 0x10;
+    constexpr uintptr_t SpringConstruct            = 0x004B5040;
+    constexpr uint8_t   SpringConstructPrologue[]  = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0xF8, 0xAA, 0xF1, 0x00, 0x64, 0xA1 };
+    constexpr uintptr_t SpringAssign               = 0x0066B0D0;
+    constexpr uintptr_t SpringAddSlot              = 0x9C;
+    constexpr uintptr_t SpringRemoveSlot           = 0xA0;
+    constexpr uintptr_t SpringSetTarget            = 0x008C5D90;
+    constexpr uint8_t   SpringSetTargetPrologue[]  = { 0x53, 0x8B, 0xDC, 0x51, 0x83, 0xE4, 0xF0, 0x83, 0xC4, 0x04, 0x55, 0x8B };
+    constexpr uintptr_t SpringDampingSetting       = 0x011D0358;
+    constexpr uintptr_t SpringElasticitySetting    = 0x011CFEEC;
+    constexpr uintptr_t SpringObjectDampingSetting = 0x011D08C8;
+    constexpr uintptr_t SpringMaxForceSetting      = 0x011D0FFC;
+    constexpr uintptr_t GrabMaxWeightSetting       = 0x011D1230;
+
+    /**
+     * What the game does around its own grab: the OnGrab and OnRelease
+     * script blocks (Script::SetActionFlag, __cdecl with no form, the
+     * reference's extra data at +0x44 and the flag),
+     * TESObjectREFR::AddChange (vtable, 4 so the new position is saved),
+     * ExtraDataList::NotifyGuardsAboutActivation (__thiscall, the
+     * reference and the player) and RemoveExtra (__thiscall, type 0x7C).
+     */
+    constexpr uintptr_t SetActionFlag              = 0x005AC750;
+    constexpr uintptr_t RefExtraData               = 0x44;
+    constexpr uint32_t  ActionOnGrab               = 0x80000;
+    constexpr uint32_t  ActionOnRelease            = 0x100000;
+    constexpr uintptr_t RefAddChangeSlot           = 0x48;
+    constexpr uint32_t  ChangeMoved                = 4;
+    constexpr uintptr_t NotifyGuards               = 0x004213C0;
+    constexpr uintptr_t RemoveExtra                = 0x00410140;
+    constexpr uint8_t   ExtraGuarded               = 0x7C;
+
   }
 
 }
