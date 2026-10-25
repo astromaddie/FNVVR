@@ -90,13 +90,15 @@ namespace dxvk {
     constexpr int64_t ThrowHapticDuration = 25'000'000;
 
     // Pulses of the manual reload: on the left controller when it takes a
-    // magazine, on both when the magazine goes in, and a faint one when no
-    // rounds are left behind the back or the magazine enters or leaves its
-    // well
+    // magazine, on both when the magazine goes in, a faint one when the
+    // magazine enters or leaves its well, and a long dull one when no
+    // rounds are left behind the back, unlike any other
     constexpr float   MagazineTakenHaptic    = 0.4f;
     constexpr float   MagazineInsertedHaptic = 0.7f;
     constexpr float   MagazineFaintHaptic    = 0.15f;
     constexpr int64_t MagazineHapticDuration = 25'000'000;
+    constexpr float   NoRoundsHaptic         = 0.3f;
+    constexpr int64_t NoRoundsHapticDuration = 150'000'000;
 
     /**
      * \brief Checks whether a state has no 3D scene and is shown on the panel
@@ -972,6 +974,9 @@ namespace dxvk {
         break;
 
       case VrMagazineEvent::NoRounds:
+        m_backend.applyHaptic(VrHand::Left, NoRoundsHaptic, NoRoundsHapticDuration);
+        break;
+
       case VrMagazineEvent::Cleared:
       case VrMagazineEvent::Engaged:
         m_backend.applyHaptic(VrHand::Left, MagazineFaintHaptic, MagazineHapticDuration);
@@ -992,6 +997,9 @@ namespace dxvk {
         break;
 
       case VrRoundEvent::NoRounds:
+        m_backend.applyHaptic(VrHand::Left, NoRoundsHaptic, NoRoundsHapticDuration);
+        break;
+
       case VrRoundEvent::Started:
       case VrRoundEvent::Full:
         m_backend.applyHaptic(VrHand::Left, MagazineFaintHaptic, MagazineHapticDuration);
