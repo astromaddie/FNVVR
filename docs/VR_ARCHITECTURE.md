@@ -43,11 +43,14 @@ Compiled source: `c2b0eaa4fbdaa4526ea73ca07e0b3485e0c642a6` from
 | Native VR unit tests | Passed: 1/1 Meson test target (`dxvk:vr`), zero failures |
 | Installed game identity | Download completed through Steam: AppID 22380, build 1510068, executable 1.4.0.525, 7,273,048,270 bytes on disk |
 | Installed executable SHA-256 | `3a87f92f011e5dc9179ddf733cf08be2b39ea6e5b7a8a9e3a9a72dafcc1b104d` |
-| Mod installed on Frame | DLL hash verified against the Mac baseline; action JSON files installed; `d3d9.vrBackend = off` remains the last confirmed configuration |
+| Mod installed on Frame | DLL hash verified against the Mac baseline; action JSON files installed; current configuration is `d3d9.vrBackend = openvr` |
 | Flat Vulkan initialization | Passed under Proton Experimental ARM64/FEX: Turnip Adreno 750, device creation and a 1280x720, four-image BGRA8 Vulkan swapchain; this proves graphics initialization, not visual correctness or gameplay |
-| Stereo/head tracking/controllers on Frame | Pending: the Frame went offline before the OpenVR configuration/90 Hz request could run |
-| Sustained 90 Hz / 120 Hz | Not measured |
-| Gameplay and comfort acceptance | Pending |
+| OpenVR initialization | Passed through a normal Steam launch: loaded Proton's `openvr_api_dxvk.dll`, recognized Steam Frame and reported both eye projections with a 1728x1728 recommended eye size |
+| Per-app refresh request | `steam.app.22380.preferredRefreshRate = 90` persisted in the correct settings section; SteamVR and the mod reported 90 Hz |
+| Menu startup | Reached the main menu; logged a `fnvvr.panel` overlay with a 2304x1728 image, two metres wide, and a matching four-image BGRA8 Vulkan swapchain |
+| Stereo/head tracking/controllers on Frame | Pending: controller actions loaded successfully, but physical input was not exercised; the first sampled head pose was untracked while idle, and no stereo frame-submission marker was captured |
+| Sustained 90 Hz / 120 Hz | Not measured in gameplay |
+| Gameplay and comfort validation | Pending |
 | Audio cleanup | Nine host tests passed; real Frame success, timeout and SIGTERM runs restored both named outputs' exact mute and raw per-channel volume states; no watchdog timers remained |
 
 The built DLL, hash manifest and compact build summary are retained locally in
@@ -74,9 +77,18 @@ device remains Adreno 750. The initial preferences had zero adapter GUID fields
 and no display dimensions. Preferences were backed up, then matched to the actual
 probe identity and a 1280x720 window before the successful initialization run.
 
-Network access is the current blocker. No OpenVR/90 Hz result exists yet. Temporary
-on-device probe files/logs still need removal once the Frame is reachable; keep
-the installed DLL, scripts, original-preferences backup and rollback metadata.
+The guarded OpenVR launch ran for approximately 110 seconds before stopping
+through Steam. Ten-second main-menu timer windows contained 889-900 game frames,
+with average intervals of 11.11-11.25 ms. These are game-timer diagnostics, not
+proof of rendered stereo frames, sustained gameplay performance or the 90 Hz
+target. SteamVR's missing-binding warning named `frame_hmd`; that alone does not
+establish a hand-controller binding failure. The mod accepted the action manifest.
+
+The game is stopped, both speaker outputs' original mute and raw volume states
+were verified after restoration, no audio watchdog timer remains, and the Frame
+booking was released. Temporary on-device probes, logs and the raw capture were
+removed, recovering 233,048 bytes. The installed DLL, scripts, original-preferences
+backup and rollback metadata remain available.
 Temporary Mac diagnostic logs, raw captures, probe binaries and Python caches
 were consolidated into the compact local summary and removed, recovering 556 KiB.
 
@@ -99,13 +111,12 @@ i686 MinGW GCC 16.2.0 and Apple Clang 21.0.0 for native tests. No source changes
 were needed. The temporary environment and build tree were removed after saving
 the DLL and summary; this and log cleanup recovered 64,084 KiB (62.6 MiB).
 
-## First device evidence required
+## Next device evidence required
 
-Recheck idle state and the shared Frame booking, then enable `openvr` in
-`dxvk.conf` and request a 90 Hz per-app rate. The last attempt to do so failed at
-SSH connection time, so do not assume either setting was applied. Use a Steam
-launch and allow for cold startup. Preserve the original preference backup and
-all saves throughout testing.
+OpenVR and the per-app 90 Hz request are configured. Recheck idle state and the
+shared Frame booking before another automated launch. Use Steam and allow for
+cold startup. Preserve the original preference backup and all saves throughout
+testing.
 
 Verify stereo, head tracking, menu interaction and controller bindings before
 performance work. Compare repeatable interior and busy exterior scenes at fixed
