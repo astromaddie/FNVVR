@@ -23,10 +23,12 @@ upload the game's executable, assets, saves, or account data.
 - DXVK translates D3D9 to Vulkan. `VrStereoRenderer` hooks the game's swap path,
   renders each eye, and passes the Vulkan-backed images through `VrD3D9Bridge`.
 - The real-headset backend uses OpenVR and its compositor; the emulator backend
-  supports host development. Compatibility between the translated 32-bit client,
-  Vulkan device and Frame's SteamVR runtime remains to be checked on the device.
-- Menus/HUD use panels. The shipped action manifest provides Oculus Touch default
-  bindings; Frame controller poses, buttons and prompts need direct verification.
+  supports host development. The translated 32-bit client initializes OpenVR and
+  Vulkan on Frame; stereo gameplay still needs separate validation.
+- Menus/HUD use panels. The action manifest provides a native `frame_controller`
+  default and an Oculus Touch fallback. The Frame profile uses its `thumbstick`
+  inputs and routes A/B/X/Y to the physical right controller. See the
+  [controller guide](FRAME_CONTROLS.md) for the complete context-specific map.
 - CPU translation/draw submission and the two eye passes are separate potential
   costs. Foveation or reduced resolution must not be assumed to solve CPU costs.
 
@@ -45,9 +47,10 @@ Compiled source: `c2b0eaa4fbdaa4526ea73ca07e0b3485e0c642a6` from
 | Installed executable SHA-256 | `3a87f92f011e5dc9179ddf733cf08be2b39ea6e5b7a8a9e3a9a72dafcc1b104d` |
 | Mod installed on Frame | DLL hash verified against the Mac baseline; action JSON files installed; current configuration is `d3d9.vrBackend = openvr` |
 | Flat Vulkan initialization | Passed under Proton Experimental ARM64/FEX: Turnip Adreno 750, device creation and a 1280x720, four-image BGRA8 Vulkan swapchain; this proves graphics initialization, not visual correctness or gameplay |
-| OpenVR initialization | Passed through a normal Steam launch: loaded Proton's `openvr_api_dxvk.dll`, recognized Steam Frame and reported both eye projections with a 1728x1728 recommended eye size |
-| Per-app refresh request | `steam.app.22380.preferredRefreshRate = 90` persisted in the correct settings section; SteamVR and the mod reported 90 Hz |
-| Menu startup | Reached the main menu; logged a `fnvvr.panel` overlay with a 2304x1728 image, two metres wide, and a matching four-image BGRA8 Vulkan swapchain |
+| OpenVR initialization | Passed through normal Steam launches: loaded Proton's `openvr_api_dxvk.dll`, recognized Steam Frame and reported both eye projections; recommended eye size was initially 1728x1728, later 2160x2160 during the binding check |
+| Per-app refresh request | Initial startup verified 90 Hz; the later binding check found a 120 Hz preference and preserved it, with OpenVR reporting 120 Hz. Neither setting establishes gameplay frame rate |
+| Menu startup | Reached the main menu; logged a two-metre-wide `fnvvr.panel` overlay, initially 2304x1728 with a four-image BGRA8 Vulkan swapchain, later 2880x2160 during the binding check |
+| Frame controller profile | Native `frame_controller` binding installed and loaded directly by SteamVR; all 28 input, pose, skeleton and haptic routes match the installed controller profile. FNVVR accepts the actions and reports that the VR controllers reach the game's gamepad input |
 | Stereo/head tracking/controllers on Frame | Pending: controller actions loaded successfully, but physical input was not exercised; the first sampled head pose was untracked while idle, and no stereo frame-submission marker was captured |
 | Sustained 90 Hz / 120 Hz | Not measured in gameplay |
 | Gameplay and comfort validation | Pending |
@@ -84,11 +87,20 @@ proof of rendered stereo frames, sustained gameplay performance or the 90 Hz
 target. SteamVR's missing-binding warning named `frame_hmd`; that alone does not
 establish a hand-controller binding failure. The mod accepted the action manifest.
 
+The native Frame binding avoids Touch auto-remapping, which routed Touch X/Y to
+the left D-pad and could route multiple right face buttons through the Touch B
+mapping. The native profile routes each physical right A/B/X/Y button separately,
+uses Frame's `thumbstick` sources, and preserves the existing VR actions. Both
+grips, both triggers, aim poses, finger skeletons and haptics retain their routes.
+This external JSON update needs no DLL rebuild. The controller guide covers the
+gameplay and menu contexts; physical action responses need a separate check.
+
 The game is stopped, both speaker outputs' original mute and raw volume states
 were verified after restoration, no audio watchdog timer remains, and the Frame
 booking was released. Temporary on-device probes, logs and the raw capture were
-removed, recovering 233,048 bytes. The installed DLL, scripts, original-preferences
-backup and rollback metadata remain available.
+removed, recovering 253,534 bytes across the startup and binding checks. The
+installed DLL, scripts, original-preferences backup and rollback metadata remain
+available.
 Temporary Mac diagnostic logs, raw captures, probe binaries and Python caches
 were consolidated into the compact local summary and removed, recovering 556 KiB.
 
@@ -113,10 +125,10 @@ the DLL and summary; this and log cleanup recovered 64,084 KiB (62.6 MiB).
 
 ## Next device evidence required
 
-OpenVR and the per-app 90 Hz request are configured. Recheck idle state and the
-shared Frame booking before another automated launch. Use Steam and allow for
-cold startup. Preserve the original preference backup and all saves throughout
-testing.
+OpenVR and the per-app refresh preference (currently 120 Hz) are configured.
+Recheck idle state and the shared Frame booking before another automated launch.
+Use Steam and allow for cold startup. Preserve the original preference backup and
+all saves throughout testing.
 
 Verify stereo, head tracking, menu interaction and controller bindings before
 performance work. Compare repeatable interior and busy exterior scenes at fixed

@@ -7,6 +7,7 @@ The original FNVVR was Windows-only: it shared frames between the game's DirectX
 The output is a single 32-bit `d3d9.dll`, which the game loads in place of the stock one. It runs under Proton on Linux and under Wine or Windows.
 
 Steam Frame development: [current status, build baseline and 90/120 Hz targets](docs/VR_ARCHITECTURE.md).
+Steam Frame controller reference: [controls and menu bindings](docs/FRAME_CONTROLS.md).
 
 ## Status
 
