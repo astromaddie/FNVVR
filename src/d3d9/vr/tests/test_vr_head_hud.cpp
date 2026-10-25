@@ -37,7 +37,7 @@ TEST_CASE(xp_meter_crop_stays_on_screen) {
 
 
 TEST_CASE(head_hud_without_xp_meter_shifts_the_upper_half) {
-  VrHeadHudLayout layout = vrComputeHeadHudLayout(Image, 400.0f, nullptr);
+  VrHeadHudLayout layout = vrComputeHeadHudLayout(Image, 400.0f, nullptr, 0.0f);
   CHECK(layout.count == 2);
 
   // Lower half unchanged
@@ -54,7 +54,7 @@ TEST_CASE(head_hud_without_xp_meter_shifts_the_upper_half) {
 
 TEST_CASE(head_hud_moves_the_xp_meter_towards_the_centre) {
   const VrInterfaceRect xp = { 1756.0f, 50.0f, 2560.0f, 562.0f };
-  VrHeadHudLayout layout = vrComputeHeadHudLayout(Image, 400.0f, &xp);
+  VrHeadHudLayout layout = vrComputeHeadHudLayout(Image, 400.0f, &xp, 0.0f);
   CHECK(layout.count == 3);
 
   // The upper half stops before the meter, so the meter is copied once
@@ -76,9 +76,60 @@ TEST_CASE(head_hud_moves_the_xp_meter_towards_the_centre) {
 
 TEST_CASE(head_hud_keeps_the_xp_meter_in_the_upper_half) {
   const VrInterfaceRect xp = { 1756.0f, 800.0f, 2560.0f, 1312.0f };
-  VrHeadHudLayout layout = vrComputeHeadHudLayout(Image, 400.0f, &xp);
+  VrHeadHudLayout layout = vrComputeHeadHudLayout(Image, 400.0f, &xp, 0.0f);
   CHECK(layout.count == 3);
   CHECK_NEAR(layout.copies[2].source.bottom, 960.0f, 1e-3f);
+}
+
+
+TEST_CASE(head_hud_corner_right_covers_messages_and_objectives) {
+  // The game's positions with a safe zone of 15 units
+  const VrInterfaceRect messages = { 25.0f, 55.0f, 485.0f, 145.0f };
+  const VrInterfaceRect objectives = { 30.0f, 150.0f, 430.0f, 350.0f };
+
+  CHECK_NEAR(vrComputeHudCornerRight(&messages, &objectives), 495.0f, 1e-3f);
+  CHECK_NEAR(vrComputeHudCornerRight(nullptr, &objectives), 440.0f, 1e-3f);
+  CHECK_NEAR(vrComputeHudCornerRight(nullptr, nullptr), 0.0f, 1e-3f);
+}
+
+
+TEST_CASE(head_hud_meters_stop_before_long_messages) {
+  // Safe zone of 15 units: the messages from 25 to 485 units, the meters'
+  // column from 848 units, in the messages' row; the default offset of
+  // 0.25 m on a 1.5 m panel moves the corners by 427 pixels
+  const VrInterfaceRect meters = { 1696.0f, 110.0f, 2560.0f, 862.0f };
+  const VrInterfaceRect messages = { 25.0f, 55.0f, 485.0f, 145.0f };
+
+  float cornerRight = 2.0f * vrComputeHudCornerRight(&messages, nullptr);
+  VrHeadHudLayout layout = vrComputeHeadHudLayout(Image, 427.0f, &meters, cornerRight);
+  CHECK(layout.count == 3);
+
+  // The messages keep the whole shift
+  CHECK_NEAR(layout.copies[1].target.left, 427.0f, 1e-3f);
+
+  VrInterfaceRect movedMessages = {
+    2.0f * messages.left  + 427.0f, 2.0f * messages.top,
+    2.0f * messages.right + 427.0f, 2.0f * messages.bottom };
+
+  // The meters move less, and their copy leaves the messages alone
+  const VrHudCopy& column = layout.copies[2];
+  CHECK_NEAR(column.target.left, 970.0f + 20.0f + 427.0f, 1e-3f);
+  CHECK(column.target.left < meters.left);
+  CHECK(!overlaps(column.target, movedMessages));
+}
+
+
+TEST_CASE(head_hud_meters_keep_the_shift_with_room) {
+  const VrInterfaceRect meters = { 1696.0f, 110.0f, 2560.0f, 862.0f };
+  VrHeadHudLayout layout = vrComputeHeadHudLayout(Image, 400.0f, &meters, 600.0f);
+  CHECK_NEAR(layout.copies[2].target.left, 1296.0f, 1e-3f);
+}
+
+
+TEST_CASE(head_hud_meters_stay_with_no_room) {
+  const VrInterfaceRect meters = { 1696.0f, 110.0f, 2560.0f, 862.0f };
+  VrHeadHudLayout layout = vrComputeHeadHudLayout(Image, 400.0f, &meters, 1500.0f);
+  CHECK_NEAR(layout.copies[2].target.left, 1696.0f, 1e-3f);
 }
 
 

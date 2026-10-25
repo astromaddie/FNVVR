@@ -15,6 +15,10 @@ namespace dxvk {
     // group, so a long number reaches slightly past its left side
     constexpr float XpMeterMarginLeft = 12.0f;
 
+    // Space kept between the messages or objectives and the meters, in
+    // interface units
+    constexpr float HudCornerGap = 10.0f;
+
   }
 
 
@@ -66,10 +70,29 @@ namespace dxvk {
   }
 
 
+  float vrComputeHudCornerRight(
+    const VrInterfaceRect*      messages,
+    const VrInterfaceRect*      objectives) {
+    if (!messages && !objectives)
+      return 0.0f;
+
+    float right = 0.0f;
+
+    if (messages)
+      right = std::max(right, messages->right);
+
+    if (objectives)
+      right = std::max(right, objectives->right);
+
+    return right + HudCornerGap;
+  }
+
+
   VrHeadHudLayout vrComputeHeadHudLayout(
     const VrVector2&            size,
           float                 shift,
-    const VrInterfaceRect*      meters) {
+    const VrInterfaceRect*      meters,
+          float                 cornerRight) {
     VrHeadHudLayout layout;
 
     float split = std::floor(0.5f * size.y);
@@ -95,9 +118,13 @@ namespace dxvk {
         meters->left, std::max(meters->top, 0.0f),
         std::min(meters->right, size.x), std::min(meters->bottom, split) };
 
+      // The meters' copy replaces what lies under it, so it must not reach
+      // the messages and objectives moved the other way
+      float metersShift = std::clamp(meters->left - (cornerRight + shift), 0.0f, shift);
+
       if (!source.isEmpty()) {
         layout.copies[layout.count++] = { source,
-          { source.left - shift, source.top, source.right - shift, source.bottom } };
+          { source.left - metersShift, source.top, source.right - metersShift, source.bottom } };
       }
     }
 

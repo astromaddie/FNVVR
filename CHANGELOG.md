@@ -15,6 +15,9 @@
   starting choice `d3d9.vrPhysicalSneak`.
 - **Sneak meter**: [HIDDEN], [CAUTION], [DANGER] and [DETECTED] are shown in front of the head while sneaking, just
   below the line of sight.
+- **Long HUD messages**: messages such as being overencumbered or a discovered location with a long name, and long
+  objectives, are no longer cut on the right; the radiation and XP meters stop moving towards the centre where they
+  would cover them.
 
 ## v0.8.0 (2026-10-24, since v0.7.0 `b6c9aca`)
 
