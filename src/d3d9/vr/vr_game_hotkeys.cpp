@@ -16,20 +16,11 @@ namespace dxvk {
     using EntryNameFn      = const char* (__fastcall*)(uint8_t* entry, void* unused);
     using EntryIconFn      = const char* (__fastcall*)(uint8_t* entry, void* unused, void* reference);
     using EntryWornFn      = uint32_t (__fastcall*)(uint8_t* entry, void* unused, uint32_t locked);
-    using EntryHealthFn    = float (__fastcall*)(uint8_t* entry, void* unused, uint32_t percent);
     using WheelSelectFn    = void (__fastcall*)(uint8_t* wheel, void* unused, int32_t slot);
     using WheelUseFn       = void (__fastcall*)(uint8_t* wheel, void* unused);
-    using WheelAssignFn    = void (__fastcall*)(uint8_t* wheel, void* unused, uint8_t* entry);
     using AnimActionFn     = int32_t (__fastcall*)(uint8_t* actor, void* unused);
     using IsTopMenuFn      = uint32_t (__cdecl*)(uint32_t menuId);
-    using TileIsTrueFn     = uint32_t (__fastcall*)(uint8_t* tile, void* unused, uint32_t trait);
-    using AddHeadFn        = void (__fastcall*)(uint8_t* list, void* unused, const void* item);
-    using UpdateInventoryFn = void (__cdecl*)();
-    using ShowHudMessageFn = uint32_t (__cdecl*)(const char* text, uint32_t emotion, const char* image,
-      const char* sound, float time, uint32_t instant);
-
-    // How long a refusal is shown, as the game shows it
-    constexpr float RefusalTime = 2.0f;
+    using WheelVisibleFn   = uint32_t (__fastcall*)(uint8_t* wheel, void* unused);
 
     template<typename T>
     T field(const uint8_t* object, uintptr_t offset) {
@@ -50,15 +41,6 @@ namespace dxvk {
         return nullptr;
 
       return *reinterpret_cast<uint8_t* const*>(VrGame::InventoryMenuInstance);
-    }
-
-    void showRefusal(uintptr_t setting) {
-      auto text = field<const char*>(reinterpret_cast<const uint8_t*>(setting), VrGame::SettingValue);
-
-      if (text && *text) {
-        reinterpret_cast<ShowHudMessageFn>(VrGame::ShowHudMessage)(text, VrGame::HudMessageNeutral,
-          VrGame::CantHotKeyImage, VrGame::CantHotKeySound, RefusalTime, 0);
-      }
     }
 
     struct Function {
@@ -84,16 +66,11 @@ namespace dxvk {
         function(VrGame::InventoryEntryName,   VrGame::InventoryEntryNamePrologue),
         function(VrGame::InventoryEntryIcon,   VrGame::InventoryEntryIconPrologue),
         function(VrGame::InventoryEntryWorn,   VrGame::InventoryEntryWornPrologue),
-        function(VrGame::InventoryEntryHealth, VrGame::InventoryEntryHealthPrologue),
         function(VrGame::HotKeyWheelSelect,    VrGame::HotKeyWheelSelectPrologue),
         function(VrGame::HotKeyWheelUse,       VrGame::HotKeyWheelUsePrologue),
-        function(VrGame::HotKeyWheelAssign,    VrGame::HotKeyWheelAssignPrologue),
+        function(VrGame::HotKeyWheelVisible,   VrGame::HotKeyWheelVisiblePrologue),
         function(VrGame::ActorGetAnimAction,   VrGame::ActorGetAnimActionPrologue),
         function(VrGame::IsTopMenu,            VrGame::IsTopMenuPrologue),
-        function(VrGame::TileIsTrue,           VrGame::TileIsTruePrologue),
-        function(VrGame::SimpleListAddHead,    VrGame::SimpleListAddHeadPrologue),
-        function(VrGame::UpdateInventoryMenu,  VrGame::UpdateInventoryMenuPrologue),
-        function(VrGame::ShowHudMessage,       VrGame::ShowHudMessagePrologue),
       };
 
       for (const Function& f : functions) {
@@ -162,11 +139,6 @@ namespace dxvk {
   }
 
 
-  uint8_t* VrGameHotKeys::highlighted() {
-    return inventoryMenu() ? *reinterpret_cast<uint8_t* const*>(VrGame::InventoryMenuItem) : nullptr;
-  }
-
-
   VrHotKeyItem VrGameHotKeys::describe(uint8_t* entry) {
     VrHotKeyItem item;
 
@@ -193,46 +165,11 @@ namespace dxvk {
   }
 
 
-  bool VrGameHotKeys::canAssign(uint8_t* entry) {
-    uint8_t* menu = inventoryMenu();
+  bool VrGameHotKeys::inventoryWheelShown() {
+    uint8_t* menu = available() ? inventoryMenu() : nullptr;
 
-    if (!menu || !entry)
-      return false;
-
-    if (reinterpret_cast<EntryHealthFn>(VrGame::InventoryEntryHealth)(entry, nullptr, 1) == 0.0f) {
-      showRefusal(VrGame::CantHotKeyBrokenSetting);
-      return false;
-    }
-
-    uint8_t* tile  = field<uint8_t*>(menu, VrGame::InventoryMenuTile);
-    uint32_t trait = *reinterpret_cast<const uint32_t*>(VrGame::InventoryEquippableTrait);
-    auto     form  = field<const uint8_t*>(entry, VrGame::InventoryEntryForm);
-
-    bool equippable = tile && (reinterpret_cast<TileIsTrueFn>(VrGame::TileIsTrue)(tile, nullptr, trait) & 0xFF);
-
-    if (!equippable || (form && field<uint8_t>(form, VrGame::FormType) == VrGame::FormTypeBook)) {
-      showRefusal(VrGame::CantHotKeySetting);
-      return false;
-    }
-
-    return true;
-  }
-
-
-  bool VrGameHotKeys::assign(uint8_t* entry, uint32_t slot) {
-    uint8_t* menu = inventoryMenu();
-
-    if (!menu || !entry || slot >= VrGame::HotKeySlotCount || slot == VrGame::HotKeyAmmoSwapSlot)
-      return false;
-
-    uint8_t* wheel = menu + VrGame::InventoryMenuHotKeyWheel;
-    reinterpret_cast<WheelSelectFn>(VrGame::HotKeyWheelSelect)(wheel, nullptr, int32_t(slot));
-    reinterpret_cast<WheelAssignFn>(VrGame::HotKeyWheelAssign)(wheel, nullptr, entry);
-
-    const uint8_t* form = field<const uint8_t*>(entry, VrGame::InventoryEntryForm);
-    reinterpret_cast<AddHeadFn>(VrGame::SimpleListAddHead)(menu + VrGame::InventoryMenuChangedItems, nullptr, &form);
-    reinterpret_cast<UpdateInventoryFn>(VrGame::UpdateInventoryMenu)();
-    return true;
+    return menu && (reinterpret_cast<WheelVisibleFn>(VrGame::HotKeyWheelVisible)(
+      menu + VrGame::InventoryMenuHotKeyWheel, nullptr) & 0xFF);
   }
 
 }

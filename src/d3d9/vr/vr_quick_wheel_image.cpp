@@ -6,6 +6,8 @@ namespace dxvk {
 
   namespace {
 
+    using Layout = VrQuickWheelImageLayout;
+
     constexpr float TwoPi    = 6.2831853f;
     constexpr float CellSpan = TwoPi / float(VrQuickWheelCellCount);
 
@@ -26,40 +28,27 @@ namespace dxvk {
       return cell.count > 1 ? cell.name + " (" + std::to_string(cell.count) + ")" : cell.name;
     }
 
-  }
+    // A cell's background, then its icon (or its mark) and its equipped dot
+    void drawCell(VrCanvas& canvas, const VrQuickWheelView& view, uint32_t index, const VrColour& background,
+        float alpha, const VrCanvasFont* font) {
+      const VrQuickWheelCellView& cell = view.cells[index];
 
+      float size   = float(canvas.width());
+      float centre = 0.5f * size;
 
-  void vrDrawQuickWheel(VrCanvas& canvas, const VrQuickWheelView& view, const VrCanvasFont* font) {
-    using Layout = VrQuickWheelImageLayout;
-
-    canvas.clear();
-
-    float size   = float(canvas.width());
-    float centre = 0.5f * size;
-    float outer  = Layout::OuterRadius * size;
-    float inner  = Layout::InnerRadius * size;
-
-    canvas.fillSector(centre, centre, 0.0f, outer, 0.0f, TwoPi, Shade);
-
-    for (uint32_t i = 0; i < VrQuickWheelCellCount; i++) {
-      const VrQuickWheelCellView& cell = view.cells[i];
-      bool picked = int32_t(i) == view.picked;
-
-      float middle = vrQuickWheelCellAngle(i);
+      float middle = vrQuickWheelCellAngle(index);
       float start  = middle - 0.5f * CellSpan + 0.5f * Layout::CellGap;
       float end    = middle + 0.5f * CellSpan - 0.5f * Layout::CellGap;
 
-      canvas.fillSector(centre, centre, inner, outer, start, end,
-        view.colour.faded(picked && cell.usable ? PickedAlpha : CellAlpha));
+      canvas.fillSector(centre, centre, Layout::InnerRadius * size, Layout::OuterRadius * size, start, end, background);
 
       // The icon's middle, clockwise from the top in an image whose Y axis
       // points down
       float x = centre + std::sin(middle) * Layout::IconRadius * size;
       float y = centre - std::cos(middle) * Layout::IconRadius * size;
-      float alpha = cell.usable ? IconAlpha : UnusableAlpha;
 
       if (cell.filled && cell.icon) {
-        canvas.drawShape(*cell.icon, x, y, Layout::IconSize * size, view.colour.faded(picked ? 1.0f : alpha));
+        canvas.drawShape(*cell.icon, x, y, Layout::IconSize * size, view.colour.faded(alpha));
       } else if (font && !cell.mark.empty()) {
         canvas.drawTextBlock(*font, cell.mark, x, y, Layout::IconSize * size, NameScale, MinNameScale, 1,
           view.colour.faded(cell.filled ? alpha : MarkAlpha));
@@ -73,23 +62,44 @@ namespace dxvk {
       }
     }
 
-    if (!font)
-      return;
+  }
 
-    // The picked item's name in the middle, or the title
-    const VrQuickWheelCellView* picked = view.picked >= 0 && view.picked < int32_t(VrQuickWheelCellCount)
-      ? &view.cells[view.picked] : nullptr;
 
-    std::string text = picked && picked->filled ? itemLabel(*picked) : view.title;
-    float width = 1.7f * inner;
+  void vrDrawQuickWheelRing(VrCanvas& canvas, const VrQuickWheelView& view, const VrCanvasFont* font) {
+    canvas.clear();
 
-    if (!picked && view.titleIcon) {
-      canvas.drawShape(*view.titleIcon, centre, centre - 0.35f * inner, 0.8f * inner, view.colour);
-      canvas.drawTextBlock(*font, text, centre, centre + 0.45f * inner, width, NameScale, MinNameScale, 2, view.colour);
-      return;
+    float size   = float(canvas.width());
+    float centre = 0.5f * size;
+
+    canvas.fillSector(centre, centre, 0.0f, Layout::OuterRadius * size, 0.0f, TwoPi, Shade);
+
+    for (uint32_t i = 0; i < VrQuickWheelCellCount; i++) {
+      const VrQuickWheelCellView& cell = view.cells[i];
+      float alpha = cell.usable ? IconAlpha : UnusableAlpha;
+
+      drawCell(canvas, view, i, view.colour.faded(CellAlpha), alpha, font);
     }
+  }
 
-    canvas.drawTextBlock(*font, text, centre, centre, width, NameScale, MinNameScale, 3, view.colour);
+
+  void vrDrawQuickWheelPick(VrCanvas& canvas, const VrQuickWheelView& view, const VrCanvasFont* font) {
+    if (view.picked < 0 || view.picked >= int32_t(VrQuickWheelCellCount))
+      return;
+
+    const VrQuickWheelCellView& cell = view.cells[view.picked];
+
+    // Over the unlit cell, this adds up to the lit cell's alpha
+    float lit = cell.usable ? 1.0f - (1.0f - PickedAlpha) / (1.0f - CellAlpha) : 0.0f;
+    drawCell(canvas, view, uint32_t(view.picked), view.colour.faded(lit), 1.0f, font);
+
+    if (!font || !cell.filled)
+      return;
+
+    float size  = float(canvas.width());
+    float inner = Layout::InnerRadius * size;
+
+    canvas.drawTextBlock(*font, itemLabel(cell), 0.5f * size, 0.5f * size, 1.7f * inner,
+      NameScale, MinNameScale, 3, view.colour);
   }
 
 }

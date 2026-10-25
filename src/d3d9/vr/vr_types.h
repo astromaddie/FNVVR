@@ -171,10 +171,9 @@ namespace dxvk {
     MenuNext,
     MenuLeftTrigger,
     MenuRightTrigger,
-    MenuQuickWheel,
   };
 
-  constexpr uint32_t VrActionCount = 21;
+  constexpr uint32_t VrActionCount = 20;
 
   /**
    * \brief State of the actions for one frame

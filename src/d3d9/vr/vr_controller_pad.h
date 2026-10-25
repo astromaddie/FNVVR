@@ -49,6 +49,18 @@ namespace dxvk {
   }
 
   /**
+   * \brief What the navigation stick does in menus
+   */
+  enum class VrMenuNavigation {
+    /// Moves through lists: the D-pad's dominant direction and the left
+    /// thumbstick
+    List,
+    /// Picks a slot on the Pip-Boy inventory's hotkey wheel: the D-pad
+    /// with its diagonals, no thumbstick
+    HotKeyWheel,
+  };
+
+  /**
    * \brief Turns the controller actions into a gamepad state for the game
    *
    * The game supports an Xbox gamepad, and in gamepad mode it also accepts
@@ -67,16 +79,24 @@ namespace dxvk {
    * with RT) and the navigation stick is the D-pad. Both sticks are also passed on
    * as the thumbsticks, for menus that read them (lockpicking).
    *
+   * The Pip-Boy inventory's hotkey wheel (shown while RB is held) reads the
+   * D-pad alone, diagonals included, and gives the highlighted item the
+   * slot of the first direction pressed. While it is shown the navigation
+   * stick presses the D-pad in eight directions and is not passed on as the
+   * left thumbstick: the interface would move the list with it.
+   *
    * \param [in] actions Actions sampled for this frame
    * \param [in] context Context the actions were read in
    * \param [in] bindings The game's gamepad binding of each control, as
    *    gamepad input codes (see findings/input.md), \ref VrGameControl::Count
    *    entries; 0xFF is unbound. May be \c nullptr in menus.
+   * \param [in] navigation What the navigation stick does in menus
    */
   VrPadState vrComputePadState(
     const VrActionState&        actions,
           VrInputContext        context,
-    const uint8_t*              bindings);
+    const uint8_t*              bindings,
+          VrMenuNavigation      navigation = VrMenuNavigation::List);
 
   /**
    * \brief Presses the gamepad input the game binds to a control

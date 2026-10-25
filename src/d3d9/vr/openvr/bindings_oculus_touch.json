@@ -200,15 +200,6 @@
           }
         },
         {
-          "path": "/user/hand/right/input/joystick",
-          "mode": "button",
-          "inputs": {
-            "click": {
-              "output": "/actions/menu/in/quick_wheel"
-            }
-          }
-        },
-        {
           "path": "/user/hand/left/input/grip",
           "mode": "trigger",
           "inputs": {

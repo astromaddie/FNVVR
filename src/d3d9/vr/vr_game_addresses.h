@@ -1513,7 +1513,7 @@ namespace dxvk {
      * Developer mode (VrDeveloperMode), see findings/developer-mode.md.
      * SetGodMode (__cdecl, bool) is what the console's tgm calls. The data
      * handler's object list (+0x04) chains every loaded TESObject through
-     * +0x20. A weapon (form type 0x28) is not playable when bit 0x80 of its
+     * +0x20. A weapon (form type 0x28; armour is 0x18) is not playable when bit 0x80 of its
      * flags at +0x100 is set. Items are added as the console's AddItem does:
      * a TESContainer (12 bytes) built on the stack, filled with AddObject
      * (__thiscall, object, count, extra) and handed to the player with
@@ -1535,6 +1535,7 @@ namespace dxvk {
     constexpr uintptr_t FormFlags                  = 0x08;
     constexpr uint32_t  FormFlagDeleted            = 0x20;
     constexpr uint8_t   FormTypeWeapon             = 0x28;
+    constexpr uint8_t   FormTypeArmor              = 0x18;
     constexpr uintptr_t WeaponFlags                = 0x100;
     constexpr uint8_t   WeaponFlagNotPlayable      = 0x80;
     /// TESObjectWEAP::IsAutomaticWeapon (0x00524B40) tests this bit of the
@@ -2076,13 +2077,12 @@ namespace dxvk {
      *   (__thiscall, flags 1).
      * - An entry's name (__thiscall, no argument), icon path relative to
      *   Data\Textures (__thiscall, reference 0, ret 4), whether it is worn
-     *   (__thiscall, 0, ret 4, bool), its health (__thiscall, 1, ret 4,
-     *   float in ST0) and its weapon's hotkey slot (__thiscall, -1 if none).
+     *   (__thiscall, 0, ret 4, bool) and its weapon's hotkey slot
+     *   (__thiscall, -1 if none).
      * - The HUD's hotkey wheel (HUDMainMenu+0x1C8) and the inventory's
      *   (InventoryMenu+0xE8): Select (__thiscall, slot, ret 4) picks a slot,
      *   Use (__thiscall) equips or unequips its item as the gamepad's D-pad
-     *   does, Assign (__thiscall, entry, ret 4) gives the selected slot to
-     *   the entry with the pick up sound.
+     *   does, Visible (__thiscall, bool) tells whether the wheel is shown.
      */
     constexpr uint32_t  HotKeySlotCount            = 8;
     constexpr uint32_t  HotKeyAmmoSwapSlot         = 1;
@@ -2096,50 +2096,26 @@ namespace dxvk {
     constexpr uint8_t   InventoryEntryIconPrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x14, 0x89, 0x4D, 0xEC, 0xC7, 0x45, 0xFC };
     constexpr uintptr_t InventoryEntryWorn         = 0x004BDDD0;
     constexpr uint8_t   InventoryEntryWornPrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x0C, 0x89, 0x4D, 0xF4, 0x8B, 0x45, 0xF4 };
-    constexpr uintptr_t InventoryEntryHealth       = 0x004BCDB0;
-    constexpr uint8_t   InventoryEntryHealthPrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x20, 0x89, 0x4D, 0xE8, 0x8B, 0x45, 0xE8 };
     constexpr uintptr_t InventoryEntryHotKey       = 0x004BD7A0;
     constexpr uint8_t   InventoryEntryHotKeyPrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x0C, 0x89, 0x4D, 0xF4, 0xC7, 0x45, 0xFC };
     constexpr uintptr_t HotKeyWheelSelect          = 0x00701E00;
     constexpr uint8_t   HotKeyWheelSelectPrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x08, 0x89, 0x4D, 0xFC, 0x8B, 0x45, 0x08 };
     constexpr uintptr_t HotKeyWheelUse             = 0x00701E80;
     constexpr uint8_t   HotKeyWheelUsePrologue[]   = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x38, 0x56, 0x89, 0x4D, 0xE4, 0xA1, 0x3C };
-    constexpr uintptr_t HotKeyWheelAssign          = 0x007019E0;
-    constexpr uint8_t   HotKeyWheelAssignPrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x28, 0x89, 0x4D, 0xE0, 0xA1, 0x3C, 0xEA };
+    constexpr uintptr_t HotKeyWheelVisible         = 0x00701740;
+    constexpr uint8_t   HotKeyWheelVisiblePrologue[] = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x68, 0xA3, 0x0F, 0x00, 0x00 };
     constexpr uintptr_t HudHotKeyWheel             = 0x1C8;
 
     /**
      * The Pip-Boy's inventory, see findings/quick-menu.md §3: whether a menu
-     * is the top one (__cdecl, menu id), the InventoryMenu and its
-     * highlighted entry, its hotkey wheel, its list of items whose hotkey
-     * changed (BSSimpleList::AddHead, __thiscall, form pointer address,
-     * ret 4), its refresh (__cdecl, no argument), its tile (+0x04) and the
-     * trait that tells whether the highlighted item can be equipped
-     * (Tile::IsTrue, __thiscall, trait, ret 4). The game's refusals show the
-     * cannot-hotkey messages with the sad Vault Boy and a sound.
+     * is the top one (__cdecl, menu id), the InventoryMenu and its hotkey
+     * wheel, shown while the gamepad's hotkey button (RB) is held.
      */
     constexpr uintptr_t IsTopMenu                  = 0x00702450;
     constexpr uint8_t   IsTopMenuPrologue[]        = { 0x55, 0x8B, 0xEC, 0x51, 0xE8, 0xB7, 0x4D, 0xDB, 0xFF, 0x85, 0xC0, 0x74 };
     constexpr uint32_t  InventoryMenuId            = 0x3EA;
     constexpr uintptr_t InventoryMenuInstance      = 0x011D9EA4;
-    constexpr uintptr_t InventoryMenuItem          = 0x011D9EA8;
-    constexpr uintptr_t InventoryMenuTile          = 0x04;
     constexpr uintptr_t InventoryMenuHotKeyWheel   = 0xE8;
-    constexpr uintptr_t InventoryMenuChangedItems  = 0x11C;
-    constexpr uintptr_t InventoryEquippableTrait   = 0x011D9EBC;
-    constexpr uintptr_t TileIsTrue                 = 0x00A01230;
-    constexpr uint8_t   TileIsTruePrologue[]       = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x10, 0x89, 0x4D, 0xF4, 0x8B, 0x45, 0x08 };
-    constexpr uintptr_t SimpleListAddHead          = 0x005AE3D0;
-    constexpr uint8_t   SimpleListAddHeadPrologue[] = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0xFB, 0xB0, 0xEE, 0x00, 0x64, 0xA1 };
-    constexpr uintptr_t UpdateInventoryMenu        = 0x00782A90;
-    constexpr uint8_t   UpdateInventoryMenuPrologue[] = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x58, 0xBA, 0xF0, 0x00, 0x64, 0xA1 };
-    constexpr uintptr_t CantHotKeyBrokenSetting    = 0x011D3810;
-    constexpr uintptr_t CantHotKeySetting          = 0x011D1E18;
-    constexpr char      CantHotKeyImage[]          = "Interface\\Icons\\Message Icons\\glow_message_vaultboy_sad.dds";
-    constexpr char      CantHotKeySound[]          = "UIVATSInsufficientAP";
-    constexpr uint32_t  HudMessageNeutral          = 0;
-    constexpr uint8_t   FormTypeArmor              = 0x18;
-    constexpr uint8_t   FormTypeBook               = 0x19;
 
     /**
      * Ammunition swap, see findings/quick-menu.md §4. A weapon's ammunition

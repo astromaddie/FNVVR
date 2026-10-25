@@ -16,6 +16,25 @@ namespace dxvk {
       return float((pixel >> shift) & 0xFF) / 255.0f;
     }
 
+    // How much of a shape covers a point: its alpha times its brightness.
+    // A shape drawn smaller averages several of these per pixel, from the
+    // nearest texel (a box filter); one drawn larger blends between texels.
+    float texelCoverage(const VrImage& image, float u, float v) {
+      // Points are at least -0.5 texel from the image: truncating rounds
+      uint32_t x = std::min(uint32_t(u + 0.5f), image.width  - 1);
+      uint32_t y = std::min(uint32_t(v + 0.5f), image.height - 1);
+      uint32_t texel = image.at(x, y);
+
+      return channel(texel, 24) * std::max({ channel(texel, 16), channel(texel, 8), channel(texel, 0) });
+    }
+
+    float sampledCoverage(const VrImage& image, float u, float v) {
+      float alpha  = vrSampleChannel(image, u, v, 24) / 255.0f;
+      float bright = std::max({ vrSampleChannel(image, u, v, 16), vrSampleChannel(image, u, v, 8),
+        vrSampleChannel(image, u, v, 0) }) / 255.0f;
+      return alpha * bright;
+    }
+
     uint32_t pack(float a, float r, float g, float b) {
       auto byte = [] (float v) {
         return uint32_t(std::lround(std::clamp(v, 0.0f, 1.0f) * 255.0f));
@@ -96,10 +115,37 @@ namespace dxvk {
 
     bool full = span >= TwoPi;
 
-    int32_t x0 = std::max(int32_t(std::floor(cx - outer - 1.0f)), 0);
-    int32_t y0 = std::max(int32_t(std::floor(cy - outer - 1.0f)), 0);
-    int32_t x1 = std::min(int32_t(std::ceil(cx + outer + 1.0f)), int32_t(m_width));
-    int32_t y1 = std::min(int32_t(std::ceil(cy + outer + 1.0f)), int32_t(m_height));
+    // Bounds of the sector: the corners of its straight edges, and the
+    // outer circle's extremes within its angles
+    float left = cx - outer, right = cx + outer, top = cy - outer, bottom = cy + outer;
+
+    if (!full) {
+      left = right = cx + std::sin(start) * inner;
+      top = bottom = cy - std::cos(start) * inner;
+
+      auto include = [&] (float radius, float angle) {
+        float x = cx + std::sin(angle) * radius;
+        float y = cy - std::cos(angle) * radius;
+        left   = std::min(left, x);
+        right  = std::max(right, x);
+        top    = std::min(top, y);
+        bottom = std::max(bottom, y);
+      };
+
+      include(inner, end);
+      include(outer, start);
+      include(outer, end);
+
+      constexpr float QuarterTurn = 0.25f * TwoPi;
+
+      for (float axis = QuarterTurn * std::ceil(start / QuarterTurn); axis <= end; axis += QuarterTurn)
+        include(outer, axis);
+    }
+
+    int32_t x0 = std::max(int32_t(std::floor(left - 1.0f)), 0);
+    int32_t y0 = std::max(int32_t(std::floor(top - 1.0f)), 0);
+    int32_t x1 = std::min(int32_t(std::ceil(right + 1.0f)), int32_t(m_width));
+    int32_t y1 = std::min(int32_t(std::ceil(bottom + 1.0f)), int32_t(m_height));
 
     for (int32_t y = y0; y < y1; y++) {
       for (int32_t x = x0; x < x1; x++) {
@@ -165,10 +211,7 @@ namespace dxvk {
             if (u < -0.5f || v < -0.5f || u > float(image.width) - 0.5f || v > float(image.height) - 0.5f)
               continue;
 
-            float alpha  = vrSampleChannel(image, u, v, 24) / 255.0f;
-            float bright = std::max({ vrSampleChannel(image, u, v, 16), vrSampleChannel(image, u, v, 8),
-              vrSampleChannel(image, u, v, 0) }) / 255.0f;
-            sum += alpha * bright;
+            sum += samples > 1 ? texelCoverage(image, u, v) : sampledCoverage(image, u, v);
           }
         }
 

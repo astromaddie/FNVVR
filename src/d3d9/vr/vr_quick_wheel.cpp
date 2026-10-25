@@ -20,6 +20,7 @@ namespace dxvk {
   VrQuickWheel::VrQuickWheel(IDirect3DDevice9* device, IVRBackend& backend, VrGameImages& images)
   : m_panel(device, backend, VrPanelId::QuickWheel),
     m_canvas(VrQuickWheelImageLayout::ImageSize, VrQuickWheelImageLayout::ImageSize),
+    m_ring(VrQuickWheelImageLayout::ImageSize, VrQuickWheelImageLayout::ImageSize),
     m_images(images) { }
 
 
@@ -41,11 +42,12 @@ namespace dxvk {
         return VrQuickWheelEvent::None;
       }
 
-      return open(input) ? VrQuickWheelEvent::Opened : VrQuickWheelEvent::Refused;
+      open(input);
+      return VrQuickWheelEvent::Opened;
     }
 
-    // Tracking lost, or the menu changed under the wheel
-    if (!input.head || !input.hand || input.mode != m_mode) {
+    // Tracking lost
+    if (!input.head || !input.hand) {
       close();
       return VrQuickWheelEvent::Closed;
     }
@@ -75,34 +77,12 @@ namespace dxvk {
 
 
   void VrQuickWheel::close() {
-    m_open  = false;
-    m_entry = nullptr;
+    m_open = false;
     m_panel.hide();
   }
 
 
-  bool VrQuickWheel::open(const VrQuickWheelInput& input) {
-    m_mode  = input.mode;
-    m_entry = nullptr;
-
-    if (m_mode == VrQuickWheelMode::Assign) {
-      uint8_t* entry = VrGameHotKeys::highlighted();
-
-      if (!entry) {
-        Logger::info("VR: No item is highlighted in the Pip-Boy, the quick wheel does not open");
-        return false;
-      }
-
-      // The game's message tells why it refuses
-      if (!VrGameHotKeys::canAssign(entry)) {
-        Logger::info("VR: The game refuses a hotkey for the highlighted item");
-        return false;
-      }
-
-      m_entry     = entry;
-      m_entryItem = VrGameHotKeys::describe(entry);
-    }
-
+  void VrQuickWheel::open(const VrQuickWheelInput& input) {
     VrGameHotKeys::read(m_items);
     fillView(input);
 
@@ -111,16 +91,15 @@ namespace dxvk {
     m_pose = vrComputePanelPoseTowards(*input.head, centre, vrLength(centre - input.head->position), MaxPitch);
     m_pose.position = centre;
 
+    vrDrawQuickWheelRing(m_ring, m_view, m_images.font());
+
     m_view.picked = -1;
     m_drawn = false;
     m_open  = true;
 
     show();
 
-    Logger::info(m_mode == VrQuickWheelMode::Assign
-      ? str::format("VR: The quick wheel opens to give '", m_entryItem.name, "' a hotkey")
-      : std::string("VR: The quick wheel opens"));
-    return true;
+    Logger::info("VR: The quick wheel opens");
   }
 
 
@@ -136,8 +115,7 @@ namespace dxvk {
       if (slot == VrGame::HotKeyAmmoSwapSlot) {
         // The ammunition in the weapon, which the cell swaps when the
         // magazine does not
-        const uint8_t* current = VrGameAmmo::available() && m_mode == VrQuickWheelMode::Use
-          ? VrGameAmmo::current() : nullptr;
+        const uint8_t* current = VrGameAmmo::available() ? VrGameAmmo::current() : nullptr;
 
         if (current) {
           std::vector<VrAmmoType> types = VrGameAmmo::types();
@@ -172,7 +150,7 @@ namespace dxvk {
       const VrHotKeyItem& item = m_items[slot];
       view.filled = item.present;
       view.worn   = item.present && item.worn;
-      view.usable = m_mode == VrQuickWheelMode::Assign || item.present;
+      view.usable = item.present;
       view.name   = item.name;
       view.count  = item.count;
       view.icon   = item.present ? m_images.picture(item.icon) : nullptr;
@@ -180,11 +158,6 @@ namespace dxvk {
       // The slot's key, as the keyboard numbers them
       if (!view.icon)
         view.mark = item.present ? item.name : std::to_string(slot + 1);
-    }
-
-    if (m_mode == VrQuickWheelMode::Assign) {
-      m_view.title     = m_entryItem.name;
-      m_view.titleIcon = m_images.picture(m_entryItem.icon);
     }
   }
 
@@ -196,14 +169,6 @@ namespace dxvk {
     }
 
     uint32_t slot = vrQuickWheelSlot(uint32_t(cell));
-
-    if (m_mode == VrQuickWheelMode::Assign) {
-      if (slot == VrGame::HotKeyAmmoSwapSlot || !VrGameHotKeys::assign(m_entry, slot))
-        return VrQuickWheelEvent::Failed;
-
-      Logger::info(str::format("VR: '", m_entryItem.name, "' is given hotkey ", slot + 1));
-      return VrQuickWheelEvent::Used;
-    }
 
     if (slot == VrGame::HotKeyAmmoSwapSlot) {
       if (!m_swapsAmmo)
@@ -241,7 +206,8 @@ namespace dxvk {
 
   void VrQuickWheel::show() {
     if (!m_drawn) {
-      vrDrawQuickWheel(m_canvas, m_view, m_images.font());
+      m_canvas = m_ring;
+      vrDrawQuickWheelPick(m_canvas, m_view, m_images.font());
 
       if (!m_panel.upload(m_canvas)) {
         Logger::err("VR: Failed to draw the quick wheel, it is not shown");

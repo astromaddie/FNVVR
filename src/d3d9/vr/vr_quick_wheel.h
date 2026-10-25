@@ -12,25 +12,13 @@
 namespace dxvk {
 
   /**
-   * \brief What the quick wheel is for
-   */
-  enum class VrQuickWheelMode {
-    /// In game: the hotkeys are used
-    Use,
-    /// In the Pip-Boy's inventory: the highlighted item is given a hotkey
-    Assign,
-  };
-
-  /**
    * \brief What the hands do with the quick wheel in a frame
    *
    * Poses in tracking space.
    */
   struct VrQuickWheelInput {
-    /// The wheel's control is held: the right stick pushed down in game,
-    /// its click in the Pip-Boy's inventory
+    /// The wheel's control is held: the right stick pushed down
     bool             held = false;
-    VrQuickWheelMode mode = VrQuickWheelMode::Use;
     /// The head and the right controller, or \c nullptr if not tracked
     const VrPose*    head = nullptr;
     const VrPose*    hand = nullptr;
@@ -43,12 +31,9 @@ namespace dxvk {
     None,
     /// The wheel opened
     Opened,
-    /// The wheel could not open: nothing to give a hotkey to, or the game
-    /// refused the item
-    Refused,
     /// Another cell is picked
     Picked,
-    /// The wheel closed on a cell, which was used or given
+    /// The wheel closed on a cell, which was used
     Used,
     /// The wheel closed on a cell the game refused, or on an empty one
     Failed,
@@ -65,9 +50,8 @@ namespace dxvk {
    * towards a cell picks it; letting go of the control uses it (the game's
    * hotkey wheel equips, unequips or uses the item; the ammunition cell
    * swaps to the next type held, unless the ammunition is changed on the
-   * magazine) or, in the Pip-Boy's inventory, gives its slot to the item
-   * highlighted when the wheel opened. Letting go with no cell picked does
-   * nothing.
+   * magazine). Letting go with no cell picked does nothing. Hotkeys are
+   * given in the Pip-Boy's inventory with the game's own gamepad wheel.
    *
    * A weapon is drawn when it is chosen: picking the weapon already
    * equipped draws it if it is holstered instead of unequipping it.
@@ -102,13 +86,15 @@ namespace dxvk {
 
     VrCanvasPanel     m_panel;
     VrCanvas          m_canvas;
+    // The wheel with no cell lit, drawn when it opens: picking a cell only
+    // draws that cell over it
+    VrCanvas          m_ring;
     VrGameImages&     m_images;
 
     bool              m_open        = false;
     bool              m_held        = false;
     bool              m_failed      = false;
     bool              m_drawsWeapon = false;
-    VrQuickWheelMode  m_mode        = VrQuickWheelMode::Use;
 
     // Where the wheel stands, and the hotkeys it shows
     VrPose            m_pose;
@@ -119,11 +105,7 @@ namespace dxvk {
     // The ammunition cell swaps the ammunition
     bool              m_swapsAmmo = false;
 
-    // The item given a hotkey, highlighted when the wheel opened
-    uint8_t*          m_entry = nullptr;
-    VrHotKeyItem      m_entryItem;
-
-    bool open(const VrQuickWheelInput& input);
+    void open(const VrQuickWheelInput& input);
 
     void fillView(const VrQuickWheelInput& input);
 

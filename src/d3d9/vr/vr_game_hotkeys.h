@@ -28,8 +28,8 @@ namespace dxvk {
    *
    * See findings/quick-menu.md §1-3. The game keeps the hotkeys in the
    * inventory; the HUD's wheel equips them as the gamepad's D-pad does, and
-   * the Pip-Boy inventory's wheel assigns them. Slot 1 is the ammunition
-   * swap, never a hotkey.
+   * the Pip-Boy inventory's wheel assigns them (the game's own gamepad
+   * path). Slot 1 is the ammunition swap, never a hotkey.
    *
    * Only used on the game's main thread, outside of the game's update.
    */
@@ -65,38 +65,18 @@ namespace dxvk {
     static bool use(uint32_t slot);
 
     /**
-     * \brief The item highlighted in the Pip-Boy's inventory
-     *
-     * \returns Its inventory entry (owned by the menu), or \c nullptr if
-     *    the inventory is not the top menu or no item is highlighted
-     */
-    static uint8_t* highlighted();
-
-    /**
      * \brief Reads an inventory entry
      */
     static VrHotKeyItem describe(uint8_t* entry);
 
     /**
-     * \brief Whether the highlighted item can be given a hotkey
+     * \brief Whether the Pip-Boy's inventory shows its hotkey wheel
      *
-     * When it cannot, the game's own message tells why (a broken item, an
-     * item that cannot be equipped or a book).
+     * The game shows it while the gamepad's hotkey button (RB) is held on
+     * an item that can be given a hotkey; the D-pad then gives the item
+     * the slot of its direction.
      */
-    static bool canAssign(uint8_t* entry);
-
-    /**
-     * \brief Gives a slot to an item of the Pip-Boy's inventory
-     *
-     * As the inventory's wheel does with the gamepad: the slot's previous
-     * item loses it, the pick up sound plays and the list is refreshed.
-     *
-     * \param [in] entry The item, the highlighted one when the choice
-     *    started
-     * \param [in] slot The slot, not the ammunition swap
-     * \returns \c false if the inventory is no longer open
-     */
-    static bool assign(uint8_t* entry, uint32_t slot);
+    static bool inventoryWheelShown();
 
   };
 

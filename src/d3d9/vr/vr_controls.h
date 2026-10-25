@@ -117,6 +117,16 @@ namespace dxvk {
     }
 
     /**
+     * \brief Makes the navigation stick pick a hotkey on the game's wheel
+     *
+     * \param [in] shown Whether the Pip-Boy's inventory shows its hotkey
+     *    wheel, see vrComputePadState
+     */
+    void setHotKeyWheelShown(bool shown) {
+      m_hotKeyWheelShown = shown;
+    }
+
+    /**
      * \brief Makes the right grip holster or draw the weapon
      *
      * \param [in] atHolster Whether the right hand is at the holster of the
@@ -254,6 +264,7 @@ namespace dxvk {
     bool                        m_swingsWithHand = false;
     bool                        m_handsFree      = false;
     bool                        m_rightStickTaken = false;
+    bool                        m_hotKeyWheelShown = false;
     bool                        m_menuBack = false;
     bool                        m_menuBackDown = false;
 

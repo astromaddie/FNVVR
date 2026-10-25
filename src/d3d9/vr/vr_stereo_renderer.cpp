@@ -588,6 +588,9 @@ namespace dxvk {
     // right stick
     m_controls.setReloadTaken(m_ammoInHand);
     m_controls.setRightStickTaken(m_quickWheel && m_quickWheel->isOpen());
+
+    // The Pip-Boy inventory's hotkey wheel takes the navigation stick
+    m_controls.setHotKeyWheelShown(state == VrGameStateKind::PipBoy && VrGameHotKeys::inventoryWheelShown());
     m_controls.setHandsFree(m_weaponDrawn && m_weaponDrawn->playerHolstered());
 
     float dt = float(timing.predictedPeriod) * 1e-9f;
@@ -954,7 +957,7 @@ namespace dxvk {
     if (!m_quickWheel)
       return;
 
-    if (state != VrGameStateKind::InGame && state != VrGameStateKind::PipBoy) {
+    if (state != VrGameStateKind::InGame) {
       m_quickWheel->close();
       return;
     }
@@ -962,21 +965,15 @@ namespace dxvk {
     const VrControllerState& right = input.controllers[uint32_t(VrHand::Right)];
     bool tracked = input.hasActions && right.isActive && m_hasHeadPose;
 
+    const VrVector2& stick = input.actions.turn;
+
     VrQuickWheelInput wheel;
-    wheel.mode = state == VrGameStateKind::PipBoy ? VrQuickWheelMode::Assign : VrQuickWheelMode::Use;
     wheel.head = tracked ? &m_headPose : nullptr;
     wheel.hand = tracked ? &right.gripPose : nullptr;
     wheel.manualReload = m_manualReload && m_manualReload->enabled();
-
-    if (wheel.mode == VrQuickWheelMode::Use) {
-      const VrVector2& stick = input.actions.turn;
-
-      wheel.held = m_quickWheel->isOpen()
-        ? std::sqrt(stick.x * stick.x + stick.y * stick.y) >= WheelKeepDeflection
-        : stick.y <= -WheelOpenDeflection;
-    } else {
-      wheel.held = input.actions.isPressed(VrAction::MenuQuickWheel);
-    }
+    wheel.held = m_quickWheel->isOpen()
+      ? std::sqrt(stick.x * stick.x + stick.y * stick.y) >= WheelKeepDeflection
+      : stick.y <= -WheelOpenDeflection;
 
     switch (m_quickWheel->update(wheel)) {
       case VrQuickWheelEvent::Opened:
@@ -992,7 +989,6 @@ namespace dxvk {
           m_weaponDrawn->draw();
         break;
 
-      case VrQuickWheelEvent::Refused:
       case VrQuickWheelEvent::Failed:
         m_backend.applyHaptic(VrHand::Right, NoRoundsHaptic, NoRoundsHapticDuration);
         break;

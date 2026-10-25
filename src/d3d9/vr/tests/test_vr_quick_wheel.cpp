@@ -109,7 +109,8 @@ TEST_CASE(quick_wheel_lights_the_picked_cell) {
   VrQuickWheelView view;
   view.picked = 2;
 
-  vrDrawQuickWheel(canvas, view, nullptr);
+  vrDrawQuickWheelRing(canvas, view, nullptr);
+  vrDrawQuickWheelPick(canvas, view, nullptr);
 
   float size   = float(VrQuickWheelImageLayout::ImageSize);
   float centre = 0.5f * size;
@@ -121,4 +122,29 @@ TEST_CASE(quick_wheel_lights_the_picked_cell) {
   CHECK(picked > other + 0.1f);
   // Outside the wheel nothing is drawn
   CHECK(alphaAt(canvas, 2.0f, 2.0f) < 0.01f);
+
+  // As lit as the whole wheel drawn with the cell lit in one pass
+  VrCanvas ring(VrQuickWheelImageLayout::ImageSize, VrQuickWheelImageLayout::ImageSize);
+  view.picked = -1;
+  vrDrawQuickWheelRing(ring, view, nullptr);
+  CHECK(picked > alphaAt(ring, centre + radius, centre) + 0.1f);
+  CHECK_NEAR(picked, 1.0f - (1.0f - 0.62f) * (1.0f - 0.5f), 0.02f);
+}
+
+
+TEST_CASE(canvas_sector_reaches_its_outer_extremes) {
+  VrColour white = { 1.0f, 1.0f, 1.0f, 1.0f };
+
+  // Around the right: from 45 to 135 degrees clockwise from the top, the
+  // outer circle's rightmost point is between the corners
+  VrCanvas right(100, 100);
+  right.fillSector(50.0f, 50.0f, 20.0f, 40.0f, 0.785f, 2.356f, white);
+  CHECK(alphaAt(right, 88.0f, 50.0f) > 0.99f);
+  CHECK(alphaAt(right, 50.0f, 88.0f) < 0.01f);
+
+  // Across the top, past 2 pi
+  VrCanvas top(100, 100);
+  top.fillSector(50.0f, 50.0f, 20.0f, 40.0f, 5.5f, 7.0f, white);
+  CHECK(alphaAt(top, 50.0f, 12.0f) > 0.99f);
+  CHECK(alphaAt(top, 50.0f, 88.0f) < 0.01f);
 }

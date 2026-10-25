@@ -134,7 +134,8 @@ namespace dxvk {
     VrGamepadHook::setCursorMode(pointer.cursorActive);
     VrMenuCursor::update(pointer);
 
-    VrPadState pad = vrComputePadState(actions, m_context, gameBindings());
+    VrMenuNavigation navigation = m_hotKeyWheelShown ? VrMenuNavigation::HotKeyWheel : VrMenuNavigation::List;
+    VrPadState pad = vrComputePadState(actions, m_context, gameBindings(), navigation);
 
     if (m_gameAim && m_context == VrInputContext::Game)
       vrPressGameControl(pad, VrGameControl::Aim, gameBindings());

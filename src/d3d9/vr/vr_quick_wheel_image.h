@@ -37,9 +37,6 @@ namespace dxvk {
     std::array<VrQuickWheelCellView, VrQuickWheelCellCount> cells;
     /// The picked cell, or -1
     int32_t        picked = -1;
-    /// Shown in the middle while no cell is picked
-    std::string    title;
-    const VrImage* titleIcon = nullptr;
     /// The HUD's colour
     VrColour       colour = { 1.0f, 0.71f, 0.26f, 1.0f };
   };
@@ -60,16 +57,31 @@ namespace dxvk {
   };
 
   /**
-   * \brief Draws the quick wheel
+   * \brief Draws the quick wheel with no cell lit
    *
-   * A dark ring of cells with the picked one lit, each item's icon in the
-   * HUD's colour (dimmed when it cannot be chosen, with a dot when it is
-   * equipped), and the picked item's name in the middle.
+   * A dark ring of cells, each item's icon in the HUD's colour (dimmed
+   * when it cannot be chosen, with a dot when it is equipped). The picked
+   * cell is ignored, see vrDrawQuickWheelPick.
    *
    * \param [out] canvas Canvas of VrQuickWheelImageLayout::ImageSize pixels
    * \param [in] view What the wheel shows
+   * \param [in] font Font of the slots' keys, or \c nullptr to draw no text
+   */
+  void vrDrawQuickWheelRing(VrCanvas& canvas, const VrQuickWheelView& view, const VrCanvasFont* font);
+
+  /**
+   * \brief Lights the picked cell over the ring
+   *
+   * Drawing the whole wheel takes too long for a frame, so a change of the
+   * picked cell only draws that cell, lit, and the picked item's name in
+   * the middle over a copy of the ring.
+   *
+   * \param [in,out] canvas The ring, drawn by vrDrawQuickWheelRing with the
+   *    same view
+   * \param [in] view What the wheel shows; nothing is drawn if no cell is
+   *    picked
    * \param [in] font Font of the names, or \c nullptr to draw no text
    */
-  void vrDrawQuickWheel(VrCanvas& canvas, const VrQuickWheelView& view, const VrCanvasFont* font);
+  void vrDrawQuickWheelPick(VrCanvas& canvas, const VrQuickWheelView& view, const VrCanvasFont* font);
 
 }
