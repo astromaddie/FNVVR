@@ -1,6 +1,7 @@
 #include <vector>
 
 #include "test.h"
+#include "paint_probe.h"
 
 #include "../vr_power_attack.h"
 
@@ -10,8 +11,8 @@ namespace {
 
   constexpr float HoldTime = 0.3f;
 
-  uint32_t alphaAt(const std::vector<uint32_t>& pixels, uint32_t size, uint32_t x, uint32_t y) {
-    return pixels[y * size + x] >> 24;
+  float alphaAt(const VrPaintList& list, float x, float y) {
+    return test::probePaint(list, x, y).a;
   }
 
 }
@@ -111,37 +112,34 @@ TEST_CASE(power_charge_does_not_build_while_not_allowed) {
 
 
 TEST_CASE(power_ring_fills_clockwise_from_the_top) {
-  constexpr uint32_t Size = 64;
-  std::vector<uint32_t> pixels(Size * Size);
+  constexpr float Size = 64.0f;
+  VrPaintList list(64, 64);
 
-  // Points in the middle of the ring: top, right, bottom, left
-  const uint32_t ring = uint32_t(0.5f * Size - 0.395f * Size);
+  // Points in the middle of the ring: right, left, then below
+  const float centre = 0.5f * Size + 0.13f;
+  const float ring   = 0.395f * Size;
 
-  vrDrawChargeRing(pixels.data(), Size, 0.5f, false);
+  vrPaintChargeRing(list, 0.5f, false);
 
-  uint32_t centre = alphaAt(pixels, Size, Size / 2, Size / 2);
-  uint32_t corner = alphaAt(pixels, Size, 0, 0);
-  uint32_t right  = alphaAt(pixels, Size, Size - 1 - ring, Size / 2);
-  uint32_t left   = alphaAt(pixels, Size, ring, Size / 2);
-  uint32_t bottomRight = alphaAt(pixels, Size, Size / 2 + 4, Size - 1 - ring);
-  uint32_t bottomLeft  = alphaAt(pixels, Size, Size / 2 - 5, Size - 1 - ring);
-
-  CHECK(centre == 0);
-  CHECK(corner == 0);
   // Half full: the right half is lit, the left half is the track
-  CHECK(right > 150);
-  CHECK(bottomRight > 150);
-  CHECK(left > 40 && left < 120);
-  CHECK(bottomLeft > 40 && bottomLeft < 120);
+  CHECK(alphaAt(list, centre, centre) < 0.01f);
+  CHECK(alphaAt(list, 0.3f, 0.2f) < 0.01f);
+  CHECK_NEAR(alphaAt(list, centre + ring, centre), 0.8f, 0.02f);
+  CHECK_NEAR(alphaAt(list, centre - ring, centre), 0.3f, 0.02f);
+  CHECK_NEAR(alphaAt(list, centre + 4.0f, centre + ring - 0.4f), 0.8f, 0.02f);
+  CHECK_NEAR(alphaAt(list, centre - 5.0f, centre + ring - 0.4f), 0.3f, 0.02f);
 
   // Charged: the whole ring is opaque
-  vrDrawChargeRing(pixels.data(), Size, 0.0f, true);
-  CHECK(alphaAt(pixels, Size, ring, Size / 2) == 255);
-  CHECK(alphaAt(pixels, Size, Size - 1 - ring, Size / 2) == 255);
-  CHECK(alphaAt(pixels, Size, Size / 2, Size / 2) == 0);
+  vrPaintChargeRing(list, 0.0f, true);
+  CHECK(alphaAt(list, centre - ring, centre) > 0.99f);
+  CHECK(alphaAt(list, centre + ring, centre) > 0.99f);
+  CHECK(alphaAt(list, centre, centre) < 0.01f);
 
-  // Empty: only the track
-  vrDrawChargeRing(pixels.data(), Size, 0.0f, false);
-  CHECK(alphaAt(pixels, Size, Size - 1 - ring, Size / 2) < 120);
-  CHECK((pixels[ring * Size + Size / 2] & 0xFFFFFF) == 0xFFB642);
+  // Empty: only the track, in the amber of the Pip-Boy
+  vrPaintChargeRing(list, 0.0f, false);
+  test::PaintProbe track = test::probePaint(list, centre + ring, centre);
+  CHECK_NEAR(track.a, 0.3f, 0.02f);
+  CHECK_NEAR(track.r / track.a, 1.0f, 0.02f);
+  CHECK_NEAR(track.g / track.a, float(0xB6) / 255.0f, 0.02f);
+  CHECK_NEAR(track.b / track.a, float(0x42) / 255.0f, 0.02f);
 }

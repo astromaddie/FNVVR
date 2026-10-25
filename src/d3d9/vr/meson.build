@@ -36,7 +36,7 @@ vr_src = files([
   'vr_throw.cpp',
   'vr_sneak_rules.cpp',
   'vr_holster.cpp',
-  'vr_canvas.cpp',
+  'vr_paint.cpp',
   'vr_quick_wheel_layout.cpp',
   'vr_quick_wheel_image.cpp',
 ])
@@ -100,7 +100,8 @@ vr_dxvk_src = files([
   'vr_weapon_drawn.cpp',
   'vr_weapon_hand.cpp',
   'vr_weapon_parts.cpp',
-  'vr_canvas_panel.cpp',
+  'vr_painter.cpp',
+  'vr_paint_panel.cpp',
   'vr_game_images.cpp',
   'vr_game_hotkeys.cpp',
   'vr_game_ammo.cpp',

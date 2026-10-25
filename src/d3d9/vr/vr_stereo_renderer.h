@@ -33,6 +33,7 @@
 #include "vr_manual_reload.h"
 #include "vr_part_highlight.h"
 #include "vr_npc_gaze.h"
+#include "vr_painter.h"
 #include "vr_pipboy_animation.h"
 #include "vr_weapon_drawn.h"
 #include "vr_pipboy_control.h"
@@ -340,6 +341,9 @@ namespace dxvk {
 
     // Grenades, mines and thrown weapons armed and thrown by hand
     std::unique_ptr<VrHandThrow>  m_handThrow;
+
+    // Draws the images of the panels below, which it outlives
+    std::unique_ptr<VrPainter>    m_painter;
 
     // Power attacks charged by holding the trigger, and their ring beside
     // the hand

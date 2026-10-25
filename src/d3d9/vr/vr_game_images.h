@@ -3,7 +3,7 @@
 #include <map>
 #include <string>
 
-#include "vr_canvas.h"
+#include "vr_paint.h"
 
 namespace dxvk {
 
@@ -33,7 +33,7 @@ namespace dxvk {
      * \returns The font, or \c nullptr if none of the game's fonts could
      *    be read
      */
-    const VrCanvasFont* font();
+    const VrPaintFont* font();
 
     /**
      * \brief The HUD's colour, as the player chose it
@@ -45,7 +45,7 @@ namespace dxvk {
     std::map<std::string, VrImage> m_pictures;
     std::map<std::string, bool>    m_missing;
 
-    VrCanvasFont m_font;
+    VrPaintFont m_font;
     bool         m_fontRead   = false;
     bool         m_fontLoaded = false;
 

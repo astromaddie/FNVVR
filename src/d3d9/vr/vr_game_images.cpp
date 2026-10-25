@@ -52,7 +52,7 @@ namespace dxvk {
   }
 
 
-  const VrCanvasFont* VrGameImages::font() {
+  const VrPaintFont* VrGameImages::font() {
     if (m_fontRead)
       return m_fontLoaded ? &m_font : nullptr;
 

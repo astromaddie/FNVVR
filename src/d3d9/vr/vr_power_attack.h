@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "vr_paint.h"
 #include "vr_types.h"
 
 namespace dxvk {
@@ -103,13 +104,11 @@ namespace dxvk {
    * screen, over a faint track; a charged attack shows it whole and fully
    * opaque. Outside the ring the image is transparent.
    *
-   * \param [out] pixels Square image, rows from the top, each pixel
-   *    0xAARRGGBB with straight alpha
-   * \param [in] size Width and height of the image, in pixels
+   * \param [out] list Paint list of a square image
    * \param [in] fill How full the ring is, from 0 to 1
    * \param [in] charged Whether the attack is charged
    */
-  void vrDrawChargeRing(uint32_t* pixels, uint32_t size, float fill, bool charged);
+  void vrPaintChargeRing(VrPaintList& list, float fill, bool charged);
 
   /**
    * \brief Where the charge ring is shown and how large it is

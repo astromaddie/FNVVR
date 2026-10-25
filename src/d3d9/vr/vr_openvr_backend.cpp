@@ -1044,6 +1044,11 @@ namespace dxvk {
 
     overlay->SetOverlayWidthInMeters(state.handle, panel.width);
 
+    if (panel.premultiplied != state.premultiplied) {
+      overlay->SetOverlayFlag(state.handle, vr::VROverlayFlags_IsPremultiplied, panel.premultiplied);
+      state.premultiplied = panel.premultiplied;
+    }
+
     auto start = high_resolution_clock::now();
 
     if (!m_transition->toTransferSource(&panel.image, 1))
@@ -1123,6 +1128,7 @@ namespace dxvk {
 
       state.handle  = 0;
       state.visible = false;
+      state.premultiplied = false;
     }
   }
 

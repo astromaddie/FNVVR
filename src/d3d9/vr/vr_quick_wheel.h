@@ -3,10 +3,9 @@
 #include <array>
 #include <cstdint>
 
-#include "vr_canvas.h"
-#include "vr_canvas_panel.h"
 #include "vr_game_hotkeys.h"
 #include "vr_game_images.h"
+#include "vr_paint_panel.h"
 #include "vr_quick_wheel_image.h"
 
 namespace dxvk {
@@ -62,7 +61,7 @@ namespace dxvk {
 
   public:
 
-    VrQuickWheel(IDirect3DDevice9* device, IVRBackend& backend, VrGameImages& images);
+    VrQuickWheel(VrPainter& painter, IVRBackend& backend, VrGameImages& images);
 
     VrQuickWheelEvent update(const VrQuickWheelInput& input);
 
@@ -84,11 +83,8 @@ namespace dxvk {
 
   private:
 
-    VrCanvasPanel     m_panel;
-    VrCanvas          m_canvas;
-    // The wheel with no cell lit, drawn when it opens: picking a cell only
-    // draws that cell over it
-    VrCanvas          m_ring;
+    VrPaintPanel      m_panel;
+    VrPaintList       m_list;
     VrGameImages&     m_images;
 
     bool              m_open        = false;

@@ -105,13 +105,16 @@ namespace dxvk {
    * axis. The pose is in tracking space or relative to the head, see
    * \c anchor. The panel is \c width metres wide, and its height follows the
    * aspect ratio of the image. The image follows the rules of VrEyeImage,
-   * and its alpha channel is used for blending.
+   * and its alpha channel is used for blending, its colours premultiplied
+   * by it or not.
    */
   struct VrPanelSubmission {
     VrEyeImage    image;
     VrPose        pose;
     float         width  = 0.0f;
     VrPanelAnchor anchor = VrPanelAnchor::Room;
+    /// The image's colours are premultiplied by its alpha
+    bool          premultiplied = false;
     /// See VrFrameSubmission::syncMs
     double        syncMs = 0.0;
   };

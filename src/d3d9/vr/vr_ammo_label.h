@@ -2,9 +2,8 @@
 
 #include <string>
 
-#include "vr_canvas.h"
-#include "vr_canvas_panel.h"
 #include "vr_game_images.h"
+#include "vr_paint_panel.h"
 
 namespace dxvk {
 
@@ -27,15 +26,15 @@ namespace dxvk {
    * colour, and below them the button that changes it when another type
    * is held.
    *
-   * \param [out] canvas Canvas of the layout's size
+   * \param [out] list Paint list of the layout's size
    * \param [in] name The ammunition's name
    * \param [in] held Rounds of it held
    * \param [in] more Another type can be chosen
    * \param [in] colour The HUD's colour
    * \param [in] font Font of the text, or \c nullptr to draw no text
    */
-  void vrDrawAmmoLabel(VrCanvas& canvas, const std::string& name, int32_t held, bool more,
-    const VrColour& colour, const VrCanvasFont* font);
+  void vrPaintAmmoLabel(VrPaintList& list, const std::string& name, int32_t held, bool more,
+    const VrColour& colour, const VrPaintFont* font);
 
   /**
    * \brief The label above the left hand while it holds ammunition taken
@@ -45,7 +44,7 @@ namespace dxvk {
 
   public:
 
-    VrAmmoLabel(IDirect3DDevice9* device, IVRBackend& backend, VrGameImages& images);
+    VrAmmoLabel(VrPainter& painter, IVRBackend& backend, VrGameImages& images);
 
     /**
      * \brief Shows the label
@@ -62,8 +61,8 @@ namespace dxvk {
 
   private:
 
-    VrCanvasPanel  m_panel;
-    VrCanvas       m_canvas;
+    VrPaintPanel   m_panel;
+    VrPaintList    m_list;
     VrGameImages&  m_images;
 
     // What the texture shows

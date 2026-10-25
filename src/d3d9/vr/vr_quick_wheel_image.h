@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <string>
 
-#include "vr_canvas.h"
+#include "vr_paint.h"
 #include "vr_quick_wheel_layout.h"
 
 namespace dxvk {
@@ -57,31 +57,16 @@ namespace dxvk {
   };
 
   /**
-   * \brief Draws the quick wheel with no cell lit
+   * \brief Draws the quick wheel
    *
    * A dark ring of cells, each item's icon in the HUD's colour (dimmed
-   * when it cannot be chosen, with a dot when it is equipped). The picked
-   * cell is ignored, see vrDrawQuickWheelPick.
+   * when it cannot be chosen, with a dot when it is equipped), the picked
+   * cell lit and its item's name in the middle.
    *
-   * \param [out] canvas Canvas of VrQuickWheelImageLayout::ImageSize pixels
+   * \param [out] list Paint list of VrQuickWheelImageLayout::ImageSize pixels
    * \param [in] view What the wheel shows
-   * \param [in] font Font of the slots' keys, or \c nullptr to draw no text
-   */
-  void vrDrawQuickWheelRing(VrCanvas& canvas, const VrQuickWheelView& view, const VrCanvasFont* font);
-
-  /**
-   * \brief Lights the picked cell over the ring
-   *
-   * Drawing the whole wheel takes too long for a frame, so a change of the
-   * picked cell only draws that cell, lit, and the picked item's name in
-   * the middle over a copy of the ring.
-   *
-   * \param [in,out] canvas The ring, drawn by vrDrawQuickWheelRing with the
-   *    same view
-   * \param [in] view What the wheel shows; nothing is drawn if no cell is
-   *    picked
    * \param [in] font Font of the names, or \c nullptr to draw no text
    */
-  void vrDrawQuickWheelPick(VrCanvas& canvas, const VrQuickWheelView& view, const VrCanvasFont* font);
+  void vrPaintQuickWheel(VrPaintList& list, const VrQuickWheelView& view, const VrPaintFont* font);
 
 }

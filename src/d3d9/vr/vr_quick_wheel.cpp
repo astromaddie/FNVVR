@@ -17,10 +17,9 @@ namespace dxvk {
   }
 
 
-  VrQuickWheel::VrQuickWheel(IDirect3DDevice9* device, IVRBackend& backend, VrGameImages& images)
-  : m_panel(device, backend, VrPanelId::QuickWheel),
-    m_canvas(VrQuickWheelImageLayout::ImageSize, VrQuickWheelImageLayout::ImageSize),
-    m_ring(VrQuickWheelImageLayout::ImageSize, VrQuickWheelImageLayout::ImageSize),
+  VrQuickWheel::VrQuickWheel(VrPainter& painter, IVRBackend& backend, VrGameImages& images)
+  : m_panel(painter, backend, VrPanelId::QuickWheel),
+    m_list(VrQuickWheelImageLayout::ImageSize, VrQuickWheelImageLayout::ImageSize),
     m_images(images) { }
 
 
@@ -90,8 +89,6 @@ namespace dxvk {
     const VrVector3& centre = input.hand->position;
     m_pose = vrComputePanelPoseTowards(*input.head, centre, vrLength(centre - input.head->position), MaxPitch);
     m_pose.position = centre;
-
-    vrDrawQuickWheelRing(m_ring, m_view, m_images.font());
 
     m_view.picked = -1;
     m_drawn = false;
@@ -206,10 +203,9 @@ namespace dxvk {
 
   void VrQuickWheel::show() {
     if (!m_drawn) {
-      m_canvas = m_ring;
-      vrDrawQuickWheelPick(m_canvas, m_view, m_images.font());
+      vrPaintQuickWheel(m_list, m_view, m_images.font());
 
-      if (!m_panel.upload(m_canvas)) {
+      if (!m_panel.paint(m_list)) {
         Logger::err("VR: Failed to draw the quick wheel, it is not shown");
         m_failed = true;
         close();

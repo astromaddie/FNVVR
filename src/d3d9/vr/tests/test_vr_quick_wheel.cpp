@@ -1,4 +1,5 @@
 #include "test.h"
+#include "paint_probe.h"
 
 #include "../vr_quick_wheel_image.h"
 
@@ -6,8 +7,8 @@ using namespace dxvk;
 
 namespace {
 
-  float alphaAt(const VrCanvas& canvas, float x, float y) {
-    return float(canvas.at(uint32_t(x), uint32_t(y)) >> 24) / 255.0f;
+  float alphaAt(const VrPaintList& list, float x, float y) {
+    return test::probePaint(list, x, y).a;
   }
 
 }
@@ -60,91 +61,135 @@ TEST_CASE(quick_wheel_keeps_a_cell_past_its_edge) {
 }
 
 
-TEST_CASE(canvas_sector_covers_its_angles_only) {
-  VrCanvas canvas(100, 100);
+TEST_CASE(paint_sector_covers_its_angles_only) {
+  VrPaintList list(100, 100);
   VrColour white = { 1.0f, 1.0f, 1.0f, 1.0f };
 
   // The right half of a ring, clockwise from the top
-  canvas.fillSector(50.0f, 50.0f, 20.0f, 40.0f, 0.0f, 3.14159f, white);
+  list.fillSector(50.0f, 50.0f, 20.0f, 40.0f, 0.0f, 3.14159f, white);
 
-  CHECK(alphaAt(canvas, 80.0f, 50.0f) > 0.99f);
-  CHECK(alphaAt(canvas, 20.0f, 50.0f) < 0.01f);
+  CHECK(alphaAt(list, 80.3f, 50.2f) > 0.99f);
+  CHECK(alphaAt(list, 20.3f, 50.2f) < 0.01f);
   // The hole and outside the ring
-  CHECK(alphaAt(canvas, 55.0f, 50.0f) < 0.01f);
-  CHECK(alphaAt(canvas, 95.0f, 50.0f) < 0.01f);
+  CHECK(alphaAt(list, 55.3f, 50.2f) < 0.01f);
+  CHECK(alphaAt(list, 95.3f, 50.2f) < 0.01f);
+  // The edges fade out over a pixel
+  CHECK_NEAR(alphaAt(list, 50.0f, 20.3f), 0.5f, 0.1f);
+  CHECK_NEAR(alphaAt(list, 90.0f, 50.2f), 0.5f, 0.1f);
 }
 
 
-TEST_CASE(canvas_blends_over_what_is_there) {
-  VrCanvas canvas(10, 10);
-  canvas.fillSector(5.0f, 5.0f, 0.0f, 20.0f, 0.0f, 7.0f, { 0.0f, 0.0f, 0.0f, 0.5f });
-  canvas.fillSector(5.0f, 5.0f, 0.0f, 20.0f, 0.0f, 7.0f, { 1.0f, 0.0f, 0.0f, 0.5f });
-
-  uint32_t pixel = canvas.at(5, 5);
-  CHECK_NEAR(float(pixel >> 24) / 255.0f, 0.75f, 0.01f);
-  // Red over black: two thirds red once the alpha is taken out
-  CHECK_NEAR(float((pixel >> 16) & 0xFF) / 255.0f, 2.0f / 3.0f, 0.01f);
-  CHECK((pixel & 0xFFFF) == 0);
+TEST_CASE(paint_premultiplies_its_colours) {
+  CHECK(vrPremultiplied({ 1.0f, 0.0f, 0.0f, 0.5f }) == 0x80800000u);
+  CHECK(vrPremultiplied({ 1.0f, 1.0f, 1.0f, 1.0f }) == 0xFFFFFFFFu);
+  CHECK(vrPremultiplied({ 1.0f, 1.0f, 1.0f, 0.0f }) == 0u);
 }
 
 
-TEST_CASE(canvas_shape_takes_the_image_alpha_and_brightness) {
+TEST_CASE(paint_rounded_rect_fades_at_its_edges) {
+  VrPaintList list(100, 50);
+  list.fillRoundedRect(0.0f, 0.0f, 100.0f, 50.0f, 10.0f, { 1.0f, 1.0f, 1.0f, 1.0f });
+
+  CHECK(alphaAt(list, 50.3f, 25.2f) > 0.99f);
+  CHECK(alphaAt(list, 50.3f, 1.2f) > 0.99f);
+  CHECK_NEAR(alphaAt(list, 50.3f, 0.0f), 0.5f, 0.05f);
+  // Outside the rounded corner
+  CHECK(alphaAt(list, 1.1f, 1.2f) < 0.01f);
+}
+
+
+TEST_CASE(paint_shape_keeps_the_image_aspect) {
   VrImage image;
   image.width  = 2;
   image.height = 1;
   image.pixels = { 0xFFFFFFFFu, 0x00FFFFFFu };
 
-  VrCanvas canvas(20, 20);
-  canvas.drawShape(image, 10.0f, 10.0f, 20.0f, { 0.0f, 1.0f, 0.0f, 1.0f });
+  VrPaintList list(20, 20);
+  list.drawShape(image, 10.0f, 10.0f, 20.0f, { 0.0f, 1.0f, 0.0f, 1.0f });
 
   // The image is twice as wide as tall: it fills the middle band
-  CHECK(alphaAt(canvas, 2.0f, 10.0f) > 0.9f);
-  CHECK(alphaAt(canvas, 18.0f, 10.0f) < 0.1f);
-  CHECK(alphaAt(canvas, 2.0f, 1.0f) < 0.01f);
+  CHECK(list.batches().size() == 1);
+  CHECK(list.batches()[0].image == &image);
+  CHECK(list.batches()[0].use == VrPaintImageUse::Shape);
+
+  float left = 100.0f, right = -100.0f, top = 100.0f, bottom = -100.0f;
+
+  for (const VrPaintVertex& vertex : list.vertices()) {
+    left   = std::min(left, vertex.x);
+    right  = std::max(right, vertex.x);
+    top    = std::min(top, vertex.y);
+    bottom = std::max(bottom, vertex.y);
+    CHECK(vertex.colour == 0xFF00FF00u);
+  }
+
+  CHECK_NEAR(left, 0.0f, 1.0e-4f);
+  CHECK_NEAR(right, 20.0f, 1.0e-4f);
+  CHECK_NEAR(top, 5.0f, 1.0e-4f);
+  CHECK_NEAR(bottom, 15.0f, 1.0e-4f);
+}
+
+
+TEST_CASE(paint_batches_follow_images_and_blending) {
+  VrImage image;
+  image.width  = 1;
+  image.height = 1;
+  image.pixels = { 0xFFFFFFFFu };
+
+  VrPaintList list(10, 10);
+  VrColour white = { 1.0f, 1.0f, 1.0f, 1.0f };
+
+  list.fillRect(0.0f, 0.0f, 1.0f, 1.0f, white);
+  list.fillRect(2.0f, 0.0f, 3.0f, 1.0f, white);
+  list.drawShape(image, 5.0f, 5.0f, 2.0f, white);
+  list.setBlend(VrPaintBlend::Add);
+  list.drawShape(image, 5.0f, 5.0f, 2.0f, white);
+
+  CHECK(list.batches().size() == 3);
+  CHECK(list.batches()[0].count == 12);
+  CHECK(list.batches()[2].blend == VrPaintBlend::Add);
+
+  list.clear();
+  list.fillRect(0.0f, 0.0f, 1.0f, 1.0f, white);
+  CHECK(list.batches().size() == 1);
+  CHECK(list.batches()[0].blend == VrPaintBlend::Over);
 }
 
 
 TEST_CASE(quick_wheel_lights_the_picked_cell) {
-  VrCanvas canvas(VrQuickWheelImageLayout::ImageSize, VrQuickWheelImageLayout::ImageSize);
+  VrPaintList list(VrQuickWheelImageLayout::ImageSize, VrQuickWheelImageLayout::ImageSize);
   VrQuickWheelView view;
   view.picked = 2;
 
-  vrDrawQuickWheelRing(canvas, view, nullptr);
-  vrDrawQuickWheelPick(canvas, view, nullptr);
+  vrPaintQuickWheel(list, view, nullptr);
 
   float size   = float(VrQuickWheelImageLayout::ImageSize);
   float centre = 0.5f * size;
-  float radius = 0.40f * size;
+  float radius = 0.40f * size + 0.3f;
 
   // The right cell is picked, the left one is not
-  float picked = alphaAt(canvas, centre + radius, centre);
-  float other  = alphaAt(canvas, centre - radius, centre);
+  float picked = alphaAt(list, centre + radius, centre + 0.2f);
+  float other  = alphaAt(list, centre - radius, centre + 0.2f);
   CHECK(picked > other + 0.1f);
-  // Outside the wheel nothing is drawn
-  CHECK(alphaAt(canvas, 2.0f, 2.0f) < 0.01f);
-
-  // As lit as the whole wheel drawn with the cell lit in one pass
-  VrCanvas ring(VrQuickWheelImageLayout::ImageSize, VrQuickWheelImageLayout::ImageSize);
-  view.picked = -1;
-  vrDrawQuickWheelRing(ring, view, nullptr);
-  CHECK(picked > alphaAt(ring, centre + radius, centre) + 0.1f);
   CHECK_NEAR(picked, 1.0f - (1.0f - 0.62f) * (1.0f - 0.5f), 0.02f);
+  CHECK_NEAR(other, 1.0f - (1.0f - 0.62f) * (1.0f - 0.14f), 0.02f);
+  // Outside the wheel nothing is drawn
+  CHECK(alphaAt(list, 2.3f, 2.2f) < 0.01f);
 }
 
 
-TEST_CASE(canvas_sector_reaches_its_outer_extremes) {
+TEST_CASE(paint_sector_reaches_its_outer_extremes) {
   VrColour white = { 1.0f, 1.0f, 1.0f, 1.0f };
 
   // Around the right: from 45 to 135 degrees clockwise from the top, the
   // outer circle's rightmost point is between the corners
-  VrCanvas right(100, 100);
+  VrPaintList right(100, 100);
   right.fillSector(50.0f, 50.0f, 20.0f, 40.0f, 0.785f, 2.356f, white);
-  CHECK(alphaAt(right, 88.0f, 50.0f) > 0.99f);
-  CHECK(alphaAt(right, 50.0f, 88.0f) < 0.01f);
+  CHECK(alphaAt(right, 88.3f, 50.2f) > 0.99f);
+  CHECK(alphaAt(right, 50.3f, 88.2f) < 0.01f);
 
   // Across the top, past 2 pi
-  VrCanvas top(100, 100);
+  VrPaintList top(100, 100);
   top.fillSector(50.0f, 50.0f, 20.0f, 40.0f, 5.5f, 7.0f, white);
-  CHECK(alphaAt(top, 50.0f, 12.0f) > 0.99f);
-  CHECK(alphaAt(top, 50.0f, 88.0f) < 0.01f);
+  CHECK(alphaAt(top, 50.3f, 12.2f) > 0.99f);
+  CHECK(alphaAt(top, 50.3f, 88.2f) < 0.01f);
 }

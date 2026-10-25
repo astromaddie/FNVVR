@@ -283,9 +283,10 @@ namespace dxvk {
     if (renderer->m_meleeSwing && !renderer->m_powerRules)
       Logger::warn("VR: The game's power attack rules were not found, melee swings are never power attacks");
 
-    renderer->m_chargeRing = std::make_unique<VrChargeRing>(device, backend);
-    renderer->m_quickWheel = std::make_unique<VrQuickWheel>(device, backend, renderer->m_gameImages);
-    renderer->m_ammoLabel  = std::make_unique<VrAmmoLabel>(device, backend, renderer->m_gameImages);
+    renderer->m_painter    = std::make_unique<VrPainter>(device);
+    renderer->m_chargeRing = std::make_unique<VrChargeRing>(*renderer->m_painter, backend);
+    renderer->m_quickWheel = std::make_unique<VrQuickWheel>(*renderer->m_painter, backend, renderer->m_gameImages);
+    renderer->m_ammoLabel  = std::make_unique<VrAmmoLabel>(*renderer->m_painter, backend, renderer->m_gameImages);
 
     if (VrGameConsole::install())
       renderer->m_terminal = std::make_unique<VrConsoleTerminal>(device, backend);
