@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <vector>
 
 #include "vr_terminal_image.h"
 
@@ -17,6 +16,7 @@ namespace dxvk {
    * key tops are those of the keyboard image (VrTerminalImage): names,
    * lit and pressed keys, the Shift light. The rest of the copy is the
    * enlarged texture, which the bracket and the keyboard's sides use.
+   * Drawn by the GPU, see VrPainter.
    */
   class VrTerminalTexture {
 
@@ -27,16 +27,7 @@ namespace dxvk {
 
     /// The key tops on the terminal texture, in whole texels: the part of
     /// the copy taken from the keyboard image (findings/console.md §11)
-    constexpr static uint32_t KeyTopsLeft   = 46;
-    constexpr static uint32_t KeyTopsTop    = 295;
-    constexpr static uint32_t KeyTopsRight  = 249;
-    constexpr static uint32_t KeyTopsBottom = 379;
-
-    /// The key tops on the copy, in pixels
-    constexpr static uint32_t KeyTopsX      = KeyTopsLeft * Scale;
-    constexpr static uint32_t KeyTopsY      = KeyTopsTop  * Scale;
-    constexpr static uint32_t KeyTopsWidth  = (KeyTopsRight  - KeyTopsLeft) * Scale;
-    constexpr static uint32_t KeyTopsHeight = (KeyTopsBottom - KeyTopsTop)  * Scale;
+    constexpr static VrTexelRect KeyTops = { 46.0f, 295.0f, 249.0f, 379.0f };
 
     /**
      * \brief Takes the terminal texture
@@ -55,29 +46,20 @@ namespace dxvk {
     }
 
     /**
-     * \brief Draws the whole enlarged texture, without the key tops
+     * \brief Draws the copy
      *
-     * \param [out] pixels width() by height() pixels, see VrImage
-     */
-    void drawBase(std::vector<uint32_t>& pixels) const;
-
-    /**
-     * \brief Draws the key tops of the copy
+     * The enlarged texture, then the keyboard image laid over its key tops
+     * where it is opaque; the texture's alpha is kept.
      *
-     * The keyboard image is laid over the enlarged texture where it is
-     * opaque; the texture's alpha is kept.
-     *
+     * \param [out] list Paint list of width() by height() pixels
      * \param [in] keyboard The keyboard image
-     * \param [out] pixels KeyTopsWidth by KeyTopsHeight pixels
+     * \param [in] view What the keyboard shows
      */
-    void drawKeyTops(const VrTerminalImage& keyboard, uint32_t* pixels) const;
+    void paint(VrPaintList& list, const VrTerminalImage& keyboard, const VrTerminalKeyboardView& view) const;
 
   private:
 
-    VrImage               m_texture;
-    std::vector<uint32_t> m_keyTops;
-
-    uint32_t sample(float x, float y) const;
+    VrImage m_texture;
 
   };
 

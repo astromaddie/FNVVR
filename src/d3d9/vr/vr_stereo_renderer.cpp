@@ -289,7 +289,7 @@ namespace dxvk {
     renderer->m_ammoLabel  = std::make_unique<VrAmmoLabel>(*renderer->m_painter, backend, renderer->m_gameImages);
 
     if (VrGameConsole::install())
-      renderer->m_terminal = std::make_unique<VrConsoleTerminal>(device, backend);
+      renderer->m_terminal = std::make_unique<VrConsoleTerminal>(*renderer->m_painter, backend);
 
     renderer->m_handPick = VrHandActivatePick::install();
 
