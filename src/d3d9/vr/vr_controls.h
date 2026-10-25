@@ -87,6 +87,27 @@ namespace dxvk {
     }
 
     /**
+     * \brief Keeps the attack control from the game while the hands are free
+     *
+     * \param [in] free Whether the weapon is holstered by the player, so
+     *    that the trigger does not draw it (the game draws the weapon on
+     *    an attack)
+     */
+    void setHandsFree(bool free) {
+      m_handsFree = free;
+    }
+
+    /**
+     * \brief Makes the right grip holster or draw the weapon
+     *
+     * \param [in] atHolster Whether the right hand is at the holster of the
+     *    equipped weapon, see VrActionFilter
+     */
+    void setRightHandAtHolster(bool atHolster) {
+      m_filter.setGrabAtHolster(atHolster);
+    }
+
+    /**
      * \brief Clicks the menu's back button from the next frame on
      *
      * Closes the Pip-Boy the way the player's back button does: the game
@@ -212,6 +233,7 @@ namespace dxvk {
 
     bool                        m_gameAim = false;
     bool                        m_swingsWithHand = false;
+    bool                        m_handsFree      = false;
     bool                        m_menuBack = false;
     bool                        m_menuBackDown = false;
 

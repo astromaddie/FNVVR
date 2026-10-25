@@ -100,6 +100,12 @@ namespace dxvk {
     constexpr float   NoRoundsHaptic         = 0.3f;
     constexpr int64_t NoRoundsHapticDuration = 150'000'000;
 
+    // Pulses of the right hand at the holster: a light one when it gets
+    // there, a firm one when the weapon goes in or comes out
+    constexpr float   HolsterReachedHaptic   = 0.15f;
+    constexpr float   HolsterHaptic          = 0.6f;
+    constexpr int64_t HolsterHapticDuration  = 25'000'000;
+
     /**
      * \brief Checks whether a state has no 3D scene and is shown on the panel
      */
@@ -557,6 +563,11 @@ namespace dxvk {
     m_rightHandAtPipBoy = isRightHandAtPipBoy(input, state);
     m_controls.setRightHandAtPipBoy(m_rightHandAtPipBoy ? m_pipBoyControl.lightHoldTime() : 0.0f);
 
+    // The right grip holsters or draws at the holster, and the trigger does
+    // not draw the holstered weapon
+    m_controls.setRightHandAtHolster(m_holster.atHolster());
+    m_controls.setHandsFree(m_weaponDrawn && m_weaponDrawn->playerHolstered());
+
     float dt = float(timing.predictedPeriod) * 1e-9f;
 
     updateControls(input, state, true, dt);
@@ -581,6 +592,7 @@ namespace dxvk {
     // The game turned its camera with the head already
     m_controls.updateCamera(m_gameCameraPose, dt);
     updateNpcGaze();
+    updateHolster(input, state);
     updateWeaponHand(input, state, modelCamera, dt);
     updateManualReload(input, state, dt);
     updateMeleeSwing(input, state, dt);
@@ -905,8 +917,55 @@ namespace dxvk {
     VrGameCameraPose hand      = handInGame(right);
     VrGameCameraPose otherHand = handInGame(left);
 
+    VrFirstPersonMode mode = m_weaponDrawn && m_weaponDrawn->playerHolstered()
+      ? VrFirstPersonMode::FreeHands
+      : VrFirstPersonMode::Hands;
+
     m_weaponHand->beginFrame(gameCamera, &hand, left.isActive ? &otherHand : nullptr,
-      input.hasActions && input.actions.isPressed(VrAction::TwoHandGrip), VrFirstPersonMode::Hands, dt);
+      input.hasActions && input.actions.isPressed(VrAction::TwoHandGrip), mode, dt);
+  }
+
+
+  void VrStereoRenderer::updateHolster(const VrInputState& input, VrGameStateKind state) {
+    if (!m_weaponDrawn)
+      return;
+
+    const VrControllerState& right = input.controllers[uint32_t(VrHand::Right)];
+
+    int32_t type = -1;
+    VrWeaponDrawn::equippedWeapon(type);
+
+    VrHolsterInput holster;
+    holster.active = state == VrGameStateKind::InGame && m_hasReference && m_hasHeadPose
+      && right.isActive && input.hasActions && !m_rightHandAtPipBoy;
+    holster.kind   = vrHolsterForWeaponType(type);
+    holster.drawn  = !m_weaponDrawn->playerHolstered();
+    holster.grip   = input.actions.isPressed(VrAction::Grab);
+
+    if (holster.active) {
+      holster.head = vrComputeEyeCameraPose(m_gameCameraPose,
+        vrComputeEyeInReference(m_reference, m_headPose), VrGameUnitsPerMetre);
+      holster.hand = handInGame(right).position;
+    }
+
+    switch (m_holster.update(holster)) {
+      case VrHolsterEvent::Entered:
+        m_backend.applyHaptic(VrHand::Right, HolsterReachedHaptic, HolsterHapticDuration);
+        break;
+
+      case VrHolsterEvent::Holstered:
+        m_weaponDrawn->holster();
+        m_backend.applyHaptic(VrHand::Right, HolsterHaptic, HolsterHapticDuration);
+        break;
+
+      case VrHolsterEvent::Drawn:
+        m_weaponDrawn->draw();
+        m_backend.applyHaptic(VrHand::Right, HolsterHaptic, HolsterHapticDuration);
+        break;
+
+      case VrHolsterEvent::None:
+        break;
+    }
   }
 
 

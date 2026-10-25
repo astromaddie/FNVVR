@@ -21,6 +21,11 @@
 - **Long HUD messages**: messages such as being overencumbered or a discovered location with a long name, and long
   objectives, are no longer cut on the right; the radiation and XP meters stop moving towards the centre where they
   would cover them.
+- **Holsters**: the weapon is put away by bringing it to its holster and pressing the right grip: one-handed weapons,
+  grenades and mines at the right hip, rifles, heavy weapons and two-handed melee weapons behind the back over the
+  right shoulder. The empty right hand at the holster and the right grip draw it again. A light pulse tells the hand
+  is at the holster; the weapon's own sounds play. With the weapon holstered both hands are free and the trigger does
+  nothing.
 
 ## v0.8.0 (2026-10-24, since v0.7.0 `b6c9aca`)
 

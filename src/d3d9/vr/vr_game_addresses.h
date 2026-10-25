@@ -2055,6 +2055,121 @@ namespace dxvk {
     constexpr uint8_t AccumulateScenePrologue[]      = { 0x6A, 0xFF, 0x68, 0x18, 0xAD, 0xF2, 0x00, 0x64, 0xA1, 0x00, 0x00, 0x00 };
     constexpr uint8_t RenderScenePrologue[]          = { 0x8B, 0x0D, 0x48, 0x47, 0x1F, 0x01, 0x56, 0x8B, 0x74, 0x24, 0x0C, 0x85 };
 
+    /**
+     * Holsters, see findings/quick-menu.md §5. Actor::PlayPickUpSound
+     * (__thiscall: item form, pick up, use; ret 0xC) plays the item's pick
+     * up or put down sound, in 2D for the player. Actor::GetAnimAction
+     * (__thiscall, no argument) returns the player's anim action, -1 when
+     * none.
+     */
+    constexpr uintptr_t PlayPickUpSound            = 0x008ADED0;
+    constexpr uint8_t   PlayPickUpSoundPrologue[]  = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x68, 0x51, 0xF1, 0x00, 0x64, 0xA1 };
+    constexpr uintptr_t ActorGetAnimAction         = 0x008A7570;
+    constexpr uint8_t   ActorGetAnimActionPrologue[] = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x8B, 0x45, 0xFC, 0x83, 0x78 };
+
+    /**
+     * Hotkeys, see findings/quick-menu.md §1-3. Eight slots, the second of
+     * which is the ammunition swap, not a hotkey.
+     *
+     * - InventoryChanges::GetHotKeyItem (__thiscall, slot, ret 4) returns a
+     *   new inventory entry, freed with the entry's deleting destructor
+     *   (__thiscall, flags 1).
+     * - An entry's name (__thiscall, no argument), icon path relative to
+     *   Data\Textures (__thiscall, reference 0, ret 4), whether it is worn
+     *   (__thiscall, 0, ret 4, bool), its health (__thiscall, 1, ret 4,
+     *   float in ST0) and its weapon's hotkey slot (__thiscall, -1 if none).
+     * - The HUD's hotkey wheel (HUDMainMenu+0x1C8) and the inventory's
+     *   (InventoryMenu+0xE8): Select (__thiscall, slot, ret 4) picks a slot,
+     *   Use (__thiscall) equips or unequips its item as the gamepad's D-pad
+     *   does, Assign (__thiscall, entry, ret 4) gives the selected slot to
+     *   the entry with the pick up sound.
+     */
+    constexpr uint32_t  HotKeySlotCount            = 8;
+    constexpr uint32_t  HotKeyAmmoSwapSlot         = 1;
+    constexpr uintptr_t GetHotKeyItem              = 0x004BF4B0;
+    constexpr uint8_t   GetHotKeyItemPrologue[]    = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x38, 0x12, 0xEF, 0x00, 0x64, 0xA1 };
+    constexpr uintptr_t InventoryEntryDelete       = 0x004459E0;
+    constexpr uint8_t   InventoryEntryDeletePrologue[] = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x8B, 0x4D, 0xFC, 0xE8, 0x01 };
+    constexpr uintptr_t InventoryEntryName         = 0x004BE2D0;
+    constexpr uint8_t   InventoryEntryNamePrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x08, 0x89, 0x4D, 0xF8, 0x6A, 0x00, 0x68 };
+    constexpr uintptr_t InventoryEntryIcon         = 0x004BE200;
+    constexpr uint8_t   InventoryEntryIconPrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x14, 0x89, 0x4D, 0xEC, 0xC7, 0x45, 0xFC };
+    constexpr uintptr_t InventoryEntryWorn         = 0x004BDDD0;
+    constexpr uint8_t   InventoryEntryWornPrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x0C, 0x89, 0x4D, 0xF4, 0x8B, 0x45, 0xF4 };
+    constexpr uintptr_t InventoryEntryHealth       = 0x004BCDB0;
+    constexpr uint8_t   InventoryEntryHealthPrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x20, 0x89, 0x4D, 0xE8, 0x8B, 0x45, 0xE8 };
+    constexpr uintptr_t InventoryEntryHotKey       = 0x004BD7A0;
+    constexpr uint8_t   InventoryEntryHotKeyPrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x0C, 0x89, 0x4D, 0xF4, 0xC7, 0x45, 0xFC };
+    constexpr uintptr_t HotKeyWheelSelect          = 0x00701E00;
+    constexpr uint8_t   HotKeyWheelSelectPrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x08, 0x89, 0x4D, 0xFC, 0x8B, 0x45, 0x08 };
+    constexpr uintptr_t HotKeyWheelUse             = 0x00701E80;
+    constexpr uint8_t   HotKeyWheelUsePrologue[]   = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x38, 0x56, 0x89, 0x4D, 0xE4, 0xA1, 0x3C };
+    constexpr uintptr_t HotKeyWheelAssign          = 0x007019E0;
+    constexpr uint8_t   HotKeyWheelAssignPrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x28, 0x89, 0x4D, 0xE0, 0xA1, 0x3C, 0xEA };
+    constexpr uintptr_t HudHotKeyWheel             = 0x1C8;
+
+    /**
+     * The Pip-Boy's inventory, see findings/quick-menu.md §3: whether a menu
+     * is the top one (__cdecl, menu id), the InventoryMenu and its
+     * highlighted entry, its hotkey wheel, its list of items whose hotkey
+     * changed (BSSimpleList::AddHead, __thiscall, form pointer address,
+     * ret 4), its refresh (__cdecl, no argument), its tile (+0x04) and the
+     * trait that tells whether the highlighted item can be equipped
+     * (Tile::IsTrue, __thiscall, trait, ret 4). The game's refusals show the
+     * cannot-hotkey messages with the sad Vault Boy and a sound.
+     */
+    constexpr uintptr_t IsTopMenu                  = 0x00702450;
+    constexpr uint8_t   IsTopMenuPrologue[]        = { 0x55, 0x8B, 0xEC, 0x51, 0xE8, 0xB7, 0x4D, 0xDB, 0xFF, 0x85, 0xC0, 0x74 };
+    constexpr uint32_t  InventoryMenuId            = 0x3EA;
+    constexpr uintptr_t InventoryMenuInstance      = 0x011D9EA4;
+    constexpr uintptr_t InventoryMenuItem          = 0x011D9EA8;
+    constexpr uintptr_t InventoryMenuTile          = 0x04;
+    constexpr uintptr_t InventoryMenuHotKeyWheel   = 0xE8;
+    constexpr uintptr_t InventoryMenuChangedItems  = 0x11C;
+    constexpr uintptr_t InventoryEquippableTrait   = 0x011D9EBC;
+    constexpr uintptr_t TileIsTrue                 = 0x00A01230;
+    constexpr uint8_t   TileIsTruePrologue[]       = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x10, 0x89, 0x4D, 0xF4, 0x8B, 0x45, 0x08 };
+    constexpr uintptr_t SimpleListAddHead          = 0x005AE3D0;
+    constexpr uint8_t   SimpleListAddHeadPrologue[] = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0xFB, 0xB0, 0xEE, 0x00, 0x64, 0xA1 };
+    constexpr uintptr_t UpdateInventoryMenu        = 0x00782A90;
+    constexpr uint8_t   UpdateInventoryMenuPrologue[] = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x58, 0xBA, 0xF0, 0x00, 0x64, 0xA1 };
+    constexpr uintptr_t CantHotKeyBrokenSetting    = 0x011D3810;
+    constexpr uintptr_t CantHotKeySetting          = 0x011D1E18;
+    constexpr char      CantHotKeyImage[]          = "Interface\\Icons\\Message Icons\\glow_message_vaultboy_sad.dds";
+    constexpr char      CantHotKeySound[]          = "UIVATSInsufficientAP";
+    constexpr uint32_t  HudMessageNeutral          = 0;
+    constexpr uint8_t   FormTypeBook               = 0x19;
+
+    /**
+     * Ammunition swap, see findings/quick-menu.md §4. A weapon's ammunition
+     * (BGSAmmoForm::pAmmo) is a list form (form type 0x55, BSSimpleList of
+     * forms at +0x18: form, next) when it takes several types. A swap
+     * gives the process a new clip entry (the game's allocator, __cdecl
+     * size; the entry's constructor, __thiscall form and count, ret 8;
+     * process vtable SetCurrentAmmo) and tells the weapon's hotkey which
+     * ammunition it uses (__thiscall on the player, slot and ammunition,
+     * ret 8). PlayerCharacter::AmmoSwapHelper (__thiscall, animate, only if
+     * empty, ret 8) is the game's own swap to the next type held.
+     */
+    constexpr uint8_t   FormTypeList               = 0x55;
+    constexpr uintptr_t WeaponAmmo                 = 0xA8;
+    constexpr uintptr_t ListFormItems              = 0x18;
+    constexpr uintptr_t ProcessSetCurrentAmmoSlot  = 0x168;
+    constexpr uintptr_t GameAllocate               = 0x00401000;
+    constexpr uint8_t   GameAllocatePrologue[]     = { 0x55, 0x8B, 0xEC, 0x8B, 0x45, 0x08, 0x50, 0xE8, 0x14, 0x00, 0x00, 0x00 };
+    constexpr uintptr_t InventoryEntryConstruct    = 0x004BC550;
+    constexpr uint8_t   InventoryEntryConstructPrologue[] = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x4B, 0xD6, 0xEE, 0x00, 0x64, 0xA1 };
+    constexpr uintptr_t SetAmmoForHotKey           = 0x004BFB70;
+    constexpr uint8_t   SetAmmoForHotKeyPrologue[] = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x8D, 0x45, 0x0C, 0x50, 0x8B };
+    constexpr uintptr_t AmmoSwapHelper             = 0x009462C0;
+    constexpr uint8_t   AmmoSwapHelperPrologue[]   = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x2B, 0x7F, 0xF1, 0x00, 0x64, 0xA1 };
+
+    /**
+     * The HUD's colour, the uHUDColor:Interface setting (value at +4,
+     * 0xRRGGBBAA)
+     */
+    constexpr uintptr_t HudColorSetting            = 0x011D8AD4;
+
   }
 
 }

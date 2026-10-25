@@ -463,6 +463,33 @@ namespace dxvk {
     };
 
     /**
+     * \brief Curls the fingers below the right hand bone as the player's are
+     *
+     * \param [in] hand The right hand bone
+     * \param [in] curls The player's finger curls
+     * \param [out] fingers The bones' local rotations before, to write back
+     * \returns How many bones were posed
+     */
+    uint32_t poseRightFingers(uint8_t* hand, const VrFingerCurls& curls,
+        std::array<SavedBone, VrFingerBoneCount>& fingers) {
+      uint32_t count = 0;
+
+      forEachObject(hand, MaxModelDepth, [&curls, &fingers, &count] (uint8_t* object) {
+        auto name = field<const char*>(object, VrGame::ObjectName);
+        VrHand side;
+        uint32_t index;
+
+        if (!name || count == fingers.size() || !vrFindFingerBone(name, side, index) || side != VrHand::Right)
+          return;
+
+        fingers[count++] = { object, readRotation(object, VrGame::ObjectLocalRotation) };
+        writeRotation(object, VrGame::ObjectLocalRotation, vrPoseFingerBone(index, side, curls));
+      });
+
+      return count;
+    }
+
+    /**
      * \brief Where a bone below the left hand is in the hand bone's frame
      *
      * With the bones between them posed as placeOtherHand poses them, in
@@ -575,7 +602,7 @@ namespace dxvk {
           bool                  grip,
           VrFirstPersonMode     mode,
           float                 dt) {
-    if (mode != VrFirstPersonMode::Hands)
+    if (mode != VrFirstPersonMode::Hands && mode != VrFirstPersonMode::FreeHands)
       hand = nullptr;
 
     m_frameTime         = dt;
@@ -973,9 +1000,12 @@ namespace dxvk {
       return;
     }
 
-    // The arms and the weapon are culled one by one from here on
-    if (m_hidesModel)
+    // The arms and the weapon are culled one by one from here on. The
+    // weapon node, culled while it is holstered, is shown again with them.
+    if (m_hidesModel || (m_hidesHolstered && m_mode != VrFirstPersonMode::FreeHands)) {
       showArms(root);
+      m_hidesHolstered = false;
+    }
 
     if (m_mode == VrFirstPersonMode::PipBoy) {
       m_hasAim    = false;
@@ -983,6 +1013,16 @@ namespace dxvk {
       m_twoHanded = false;
       m_braced    = false;
       placePipBoyArm(root, shift, updateData);
+      return;
+    }
+
+    if (m_mode == VrFirstPersonMode::FreeHands && m_hasHand) {
+      m_hasAim     = false;
+      m_hasBlade   = false;
+      m_twoHanded  = false;
+      m_braced     = false;
+      m_drawWeapon = nullptr;
+      placeFreeHands(root, drawnRoot, shift, updateData);
       return;
     }
 
@@ -1101,21 +1141,8 @@ namespace dxvk {
     std::array<SavedBone, VrFingerBoneCount> fingers;
     uint32_t fingerCount = 0;
 
-    if (fist && !form && m_hasFingers[uint32_t(VrHand::Right)]) {
-      const VrFingerCurls& curls = m_fingerCurls[uint32_t(VrHand::Right)];
-
-      forEachObject(fist, MaxModelDepth, [&curls, &fingers, &fingerCount] (uint8_t* object) {
-        auto name = field<const char*>(object, VrGame::ObjectName);
-        VrHand side;
-        uint32_t index;
-
-        if (!name || fingerCount == fingers.size() || !vrFindFingerBone(name, side, index) || side != VrHand::Right)
-          return;
-
-        fingers[fingerCount++] = { object, readRotation(object, VrGame::ObjectLocalRotation) };
-        writeRotation(object, VrGame::ObjectLocalRotation, vrPoseFingerBone(index, side, curls));
-      });
-    }
+    if (fist && !form && m_hasFingers[uint32_t(VrHand::Right)])
+      fingerCount = poseRightFingers(fist, m_fingerCurls[uint32_t(VrHand::Right)], fingers);
 
     writeRotation(root, VrGame::ObjectLocalRotation, vrTranspose(parent.rotate) * worldRotation);
     writeVector(root, VrGame::NodeLocalTranslate, parent.toLocal(worldTranslation));
@@ -1238,6 +1265,76 @@ namespace dxvk {
     if (!m_loggedActive) {
       Logger::info("VR: The weapon is in the right hand");
       m_loggedActive = true;
+    }
+  }
+
+
+  void VrWeaponHand::placeFreeHands(
+          uint8_t*              root,
+    const VrVector3&            drawnRoot,
+    const VrVector3&            shift,
+          void*                 updateData) {
+    uint8_t* rightHand = findObject(root, VrGame::RightHandNodeName);
+    uint8_t* otherHand = findObject(root, VrGame::LeftHandNodeName);
+    uint8_t* forearm   = otherHand ? field<uint8_t*>(otherHand, VrGame::ObjectParent) : nullptr;
+
+    if (!rightHand) {
+      showArms(root);
+      return;
+    }
+
+    ParentFrame parent = parentFrame(root);
+
+    // The right hand bone takes the free hand's pose around its
+    // controller, mirrored, wherever the game holds the arms with the
+    // weapon holstered
+    VrGameCameraPose hand = m_hand;
+    hand.position = hand.position - shift;
+
+    VrGameTransform target = vrComputeHeldTransform(hand, vrMirrorHandPose(FreeHandPose));
+    VrGameRotation drawnRotation = readRotation(rightHand, VrGame::ObjectWorldRotation);
+    VrVector3 drawnHand = readVector(rightHand, VrGame::ObjectWorldTranslation);
+
+    VrGameTransform rig;
+    rig.rotate    = target.rotate * vrTranspose(drawnRotation);
+    rig.translate = target.translate - rig.rotate * drawnHand;
+
+    VrGameRotation worldRotation = rig.rotate * readRotation(root, VrGame::ObjectWorldRotation);
+    VrVector3 worldTranslation   = rig.rotate * drawnRoot + rig.translate;
+
+    VrGameRotation rotation = readRotation(root, VrGame::ObjectLocalRotation);
+    VrVector3 translation   = readVector(root, VrGame::NodeLocalTranslate);
+
+    std::array<SavedBone, VrFingerBoneCount> fingers;
+    uint32_t fingerCount = 0;
+
+    if (m_hasFingers[uint32_t(VrHand::Right)])
+      fingerCount = poseRightFingers(rightHand, m_fingerCurls[uint32_t(VrHand::Right)], fingers);
+
+    writeRotation(root, VrGame::ObjectLocalRotation, vrTranspose(parent.rotate) * worldRotation);
+    writeVector(root, VrGame::NodeLocalTranslate, parent.toLocal(worldTranslation));
+    updateObject(root, updateData);
+
+    writeRotation(root, VrGame::ObjectLocalRotation, rotation);
+    writeVector(root, VrGame::NodeLocalTranslate, translation);
+
+    for (uint32_t i = 0; i < fingerCount; i++)
+      writeRotation(fingers[i].bone, VrGame::ObjectLocalRotation, fingers[i].rotate);
+
+    if (forearm && m_hasOtherHand)
+      placeOtherHand(root, otherHand, shift, updateData, nullptr);
+
+    hideArms(root, false);
+
+    // A holstered weapon is not in the hand
+    if (uint8_t* weapon = findObject(root, VrGame::WeaponNodeName))
+      hide(weapon, !m_loggedFreeHands);
+
+    m_hidesHolstered = true;
+
+    if (!m_loggedFreeHands) {
+      Logger::info("VR: The weapon is holstered, both hands take the free pose around their controllers");
+      m_loggedFreeHands = true;
     }
   }
 

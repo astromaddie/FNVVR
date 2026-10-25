@@ -24,6 +24,7 @@
 #include "vr_charge_ring.h"
 #include "vr_console_terminal.h"
 #include "vr_hand_throw.h"
+#include "vr_holster.h"
 #include "vr_melee_swing.h"
 #include "vr_menu_scenes.h"
 #include "vr_manual_reload.h"
@@ -369,6 +370,7 @@ namespace dxvk {
 
     // The player's weapon stays drawn, without the draw and holster animations
     std::unique_ptr<VrWeaponDrawn> m_weaponDrawn;
+    VrHolsterHand       m_holster;
 
     // The idle camera off and the kill camera in first person
     std::unique_ptr<VrComfortSettings> m_comfortSettings;
@@ -531,6 +533,8 @@ namespace dxvk {
     void updateHandThrow(const VrInputState& input, VrGameStateKind state, float dt);
 
     void updateManualReload(const VrInputState& input, VrGameStateKind state, float dt);
+
+    void updateHolster(const VrInputState& input, VrGameStateKind state);
 
     bool updatePowerCharge(const VrInputState& input, int32_t& cost);
 

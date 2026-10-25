@@ -2,6 +2,7 @@
 
 #include "vr_game_addresses.h"
 #include "vr_game_memory.h"
+#include "vr_holster.h"
 #include "vr_weapon_drawn.h"
 
 namespace dxvk {
@@ -12,6 +13,9 @@ namespace dxvk {
     using SetWantDrawnFn   = void (__fastcall*)(uint8_t* actor, void* unused, bool drawn);
     using GetWantDrawnFn   = bool (__fastcall*)(uint8_t* actor, void* unused);
     using SitStateFn       = int32_t (__fastcall*)(uint8_t* actor, void* unused);
+    using WeaponEntryFn    = uint8_t* (__fastcall*)(uint8_t* process, void* unused);
+    using PickUpSoundFn    = void (__fastcall*)(uint8_t* actor, void* unused, const uint8_t* item,
+      uint32_t pickUp, uint32_t use);
 
     VrWeaponDrawn* g_weaponDrawn = nullptr;
 
@@ -50,7 +54,9 @@ namespace dxvk {
       && VrGameMemory::matches(VrGame::SetWantWeaponDrawn,
         VrGame::SetWantWeaponDrawnPrologue, sizeof(VrGame::SetWantWeaponDrawnPrologue))
       && VrGameMemory::matches(VrGame::GetWantWeaponDrawn,
-        VrGame::GetWantWeaponDrawnPrologue, sizeof(VrGame::GetWantWeaponDrawnPrologue));
+        VrGame::GetWantWeaponDrawnPrologue, sizeof(VrGame::GetWantWeaponDrawnPrologue))
+      && VrGameMemory::matches(VrGame::PlayPickUpSound,
+        VrGame::PlayPickUpSoundPrologue, sizeof(VrGame::PlayPickUpSoundPrologue));
 
     found = found
       && VrGameMemory::redirectCall(VrGame::EquipWaitCallSite, VrGame::AnimGetGroupAction,
@@ -75,7 +81,26 @@ namespace dxvk {
     if (!process)
       return;
 
-    if (reinterpret_cast<GetWantDrawnFn>(VrGame::GetWantWeaponDrawn)(actor, nullptr))
+    if (reinterpret_cast<GetWantDrawnFn>(VrGame::GetWantWeaponDrawn)(actor, nullptr)) {
+      if (m_playerHolstered)
+        Logger::info("VR: The holstered weapon was drawn by the game");
+
+      m_playerHolstered = false;
+      return;
+    }
+
+    // A weapon worn on the fist, or none, has no holster
+    if (m_playerHolstered) {
+      int32_t type = -1;
+      equippedWeapon(type);
+
+      if (vrHolsterForWeaponType(type) == VrHolsterKind::None) {
+        Logger::info("VR: The equipped weapon has no holster, the hands are raised again");
+        m_playerHolstered = false;
+      }
+    }
+
+    if (m_playerHolstered)
       return;
 
     // The game holsters the weapon on purpose in these cases
@@ -99,6 +124,74 @@ namespace dxvk {
       Logger::info("VR: The player's weapon is drawn again");
       m_loggedDraw = true;
     }
+  }
+
+
+  void VrWeaponDrawn::holster() {
+    uint8_t* actor = player();
+
+    if (!actor || m_playerHolstered)
+      return;
+
+    reinterpret_cast<SetWantDrawnFn>(VrGame::SetWantWeaponDrawn)(actor, nullptr, false);
+
+    if (reinterpret_cast<GetWantDrawnFn>(VrGame::GetWantWeaponDrawn)(actor, nullptr)) {
+      Logger::info("VR: The game refused to holster the weapon");
+      return;
+    }
+
+    m_playerHolstered = true;
+    playSound(false);
+    Logger::info("VR: The player holstered the weapon");
+  }
+
+
+  void VrWeaponDrawn::draw() {
+    uint8_t* actor = player();
+
+    if (!actor)
+      return;
+
+    reinterpret_cast<SetWantDrawnFn>(VrGame::SetWantWeaponDrawn)(actor, nullptr, true);
+
+    if (!reinterpret_cast<GetWantDrawnFn>(VrGame::GetWantWeaponDrawn)(actor, nullptr)) {
+      Logger::info("VR: The game refused to draw the weapon");
+      return;
+    }
+
+    if (m_playerHolstered)
+      playSound(true);
+
+    m_playerHolstered = false;
+    Logger::info("VR: The player drew the weapon");
+  }
+
+
+  const uint8_t* VrWeaponDrawn::equippedWeapon(int32_t& type) {
+    type = -1;
+
+    uint8_t* actor   = player();
+    uint8_t* process = actor ? field<uint8_t*>(actor, VrGame::ActorProcess) : nullptr;
+
+    if (!process)
+      return nullptr;
+
+    uint8_t* entry = virtualFunction<WeaponEntryFn>(process, VrGame::ProcessWeaponInfoSlot)(process, nullptr);
+    auto weapon = entry ? field<const uint8_t*>(entry, VrGame::InventoryEntryForm) : nullptr;
+
+    if (weapon)
+      type = field<int8_t>(weapon, VrGame::WeaponAnimationType);
+
+    return weapon;
+  }
+
+
+  void VrWeaponDrawn::playSound(bool pickUp) const {
+    int32_t type = -1;
+    const uint8_t* weapon = equippedWeapon(type);
+
+    if (weapon)
+      reinterpret_cast<PickUpSoundFn>(VrGame::PlayPickUpSound)(player(), nullptr, weapon, pickUp, 0);
   }
 
 

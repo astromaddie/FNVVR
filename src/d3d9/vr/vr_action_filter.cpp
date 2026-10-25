@@ -88,11 +88,13 @@ namespace dxvk {
 
       if (m_lightHoldTime > 0.0f && m_lightTime == 0.0f)
         m_lightTime = m_lightHoldTime + LightMargin;
+
+      m_pressHolsters = m_grabAtHolster && !m_pressLights;
     }
 
     m_grabDown = down;
 
-    if (down && m_pressLights)
+    if (down && (m_pressLights || m_pressHolsters))
       actions.setPressed(VrAction::Grab, false);
   }
 
