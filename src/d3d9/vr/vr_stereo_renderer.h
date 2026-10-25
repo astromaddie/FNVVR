@@ -24,11 +24,16 @@
 #include "vr_charge_ring.h"
 #include "vr_console_terminal.h"
 #include "vr_hand_throw.h"
+#include "vr_holster.h"
+#include "vr_ammo_label.h"
+#include "vr_game_images.h"
+#include "vr_quick_wheel.h"
 #include "vr_melee_swing.h"
 #include "vr_menu_scenes.h"
 #include "vr_manual_reload.h"
 #include "vr_part_highlight.h"
 #include "vr_npc_gaze.h"
+#include "vr_painter.h"
 #include "vr_pipboy_animation.h"
 #include "vr_weapon_drawn.h"
 #include "vr_pipboy_control.h"
@@ -337,10 +342,20 @@ namespace dxvk {
     // Grenades, mines and thrown weapons armed and thrown by hand
     std::unique_ptr<VrHandThrow>  m_handThrow;
 
+    // Draws the images of the panels below, which it outlives
+    std::unique_ptr<VrPainter>    m_painter;
+
     // Power attacks charged by holding the trigger, and their ring beside
     // the hand
     std::unique_ptr<VrPowerAttackRules> m_powerRules;
     std::unique_ptr<VrChargeRing>       m_chargeRing;
+    VrGameImages                        m_gameImages;
+    std::unique_ptr<VrQuickWheel>       m_quickWheel;
+    std::unique_ptr<VrAmmoLabel>        m_ammoLabel;
+    // The left hand held ammunition at the last frame, and the reload
+    // button was down
+    bool                                m_ammoInHand     = false;
+    bool                                m_ammoButtonDown = false;
     VrPowerCharge       m_powerCharge;
     uint32_t            m_loggedPowerHits = 0;
 
@@ -369,6 +384,7 @@ namespace dxvk {
 
     // The player's weapon stays drawn, without the draw and holster animations
     std::unique_ptr<VrWeaponDrawn> m_weaponDrawn;
+    VrHolsterHand       m_holster;
 
     // The idle camera off and the kill camera in first person
     std::unique_ptr<VrComfortSettings> m_comfortSettings;
@@ -531,6 +547,14 @@ namespace dxvk {
     void updateHandThrow(const VrInputState& input, VrGameStateKind state, float dt);
 
     void updateManualReload(const VrInputState& input, VrGameStateKind state, float dt);
+
+    void updateHolster(const VrInputState& input, VrGameStateKind state);
+
+    void updateQuickWheel(const VrInputState& input, VrGameStateKind state);
+
+    void updateAmmoChoice(const VrInputState& input, VrGameStateKind state);
+
+    void hideQuickPanels();
 
     bool updatePowerCharge(const VrInputState& input, int32_t& cost);
 

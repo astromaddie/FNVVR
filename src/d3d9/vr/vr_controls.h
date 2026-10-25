@@ -87,6 +87,56 @@ namespace dxvk {
     }
 
     /**
+     * \brief Keeps the attack control from the game while the hands are free
+     *
+     * \param [in] free Whether the weapon is holstered by the player, so
+     *    that the trigger does not draw it (the game draws the weapon on
+     *    an attack)
+     */
+    void setHandsFree(bool free) {
+      m_handsFree = free;
+    }
+
+    /**
+     * \brief Keeps the left hand's reload button from the game
+     *
+     * \param [in] taken Whether the left hand holds ammunition whose type
+     *    the button changes, see VrActionFilter
+     */
+    void setReloadTaken(bool taken) {
+      m_filter.setReloadTaken(taken);
+    }
+
+    /**
+     * \brief Keeps the right stick from turning and from scrolling menus
+     *
+     * \param [in] taken Whether the quick wheel holds it
+     */
+    void setRightStickTaken(bool taken) {
+      m_rightStickTaken = taken;
+    }
+
+    /**
+     * \brief Makes the navigation stick pick a hotkey on the game's wheel
+     *
+     * \param [in] shown Whether the Pip-Boy's inventory shows its hotkey
+     *    wheel, see vrComputePadState
+     */
+    void setHotKeyWheelShown(bool shown) {
+      m_hotKeyWheelShown = shown;
+    }
+
+    /**
+     * \brief Makes the right grip holster or draw the weapon
+     *
+     * \param [in] atHolster Whether the right hand is at the holster of the
+     *    equipped weapon, see VrActionFilter
+     */
+    void setRightHandAtHolster(bool atHolster) {
+      m_filter.setGrabAtHolster(atHolster);
+    }
+
+    /**
      * \brief Clicks the menu's back button from the next frame on
      *
      * Closes the Pip-Boy the way the player's back button does: the game
@@ -212,6 +262,9 @@ namespace dxvk {
 
     bool                        m_gameAim = false;
     bool                        m_swingsWithHand = false;
+    bool                        m_handsFree      = false;
+    bool                        m_rightStickTaken = false;
+    bool                        m_hotKeyWheelShown = false;
     bool                        m_menuBack = false;
     bool                        m_menuBackDown = false;
 

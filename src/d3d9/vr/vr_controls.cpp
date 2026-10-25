@@ -83,7 +83,7 @@ namespace dxvk {
       if (tracked)
         head = vrComputeEyeInReference(*reference, input.headPose);
 
-      float turn = m_context == VrInputContext::Game ? input.actions.turn.x : 0.0f;
+      float turn = m_context == VrInputContext::Game && !m_rightStickTaken ? input.actions.turn.x : 0.0f;
       m_headLook->update(tracked ? &head : nullptr, turn, dt);
     }
 
@@ -111,7 +111,7 @@ namespace dxvk {
     if (m_menuBackDown)
       actions.setPressed(VrAction::MenuBack, true);
 
-    if (m_swingsWithHand && m_context == VrInputContext::Game)
+    if ((m_swingsWithHand || m_handsFree) && m_context == VrInputContext::Game)
       actions.setPressed(VrAction::Attack, false);
 
     // The crouch sneaks instead of the button
@@ -134,7 +134,8 @@ namespace dxvk {
     VrGamepadHook::setCursorMode(pointer.cursorActive);
     VrMenuCursor::update(pointer);
 
-    VrPadState pad = vrComputePadState(actions, m_context, gameBindings());
+    VrMenuNavigation navigation = m_hotKeyWheelShown ? VrMenuNavigation::HotKeyWheel : VrMenuNavigation::List;
+    VrPadState pad = vrComputePadState(actions, m_context, gameBindings(), navigation);
 
     if (m_gameAim && m_context == VrInputContext::Game)
       vrPressGameControl(pad, VrGameControl::Aim, gameBindings());
@@ -184,7 +185,7 @@ namespace dxvk {
 
     pointerInput.triggers[uint32_t(VrHand::Left)]  = actions.isPressed(VrAction::MenuLeftTrigger);
     pointerInput.triggers[uint32_t(VrHand::Right)] = actions.isPressed(VrAction::MenuRightTrigger);
-    pointerInput.wheel = actions.turn.y;
+    pointerInput.wheel = m_rightStickTaken ? 0.0f : actions.turn.y;
 
     VrPointerState pointer = m_pointer.update(pointerInput);
 

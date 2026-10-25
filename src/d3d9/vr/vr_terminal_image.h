@@ -5,6 +5,7 @@
 
 #include "vr_bitmap_font.h"
 #include "vr_dds.h"
+#include "vr_paint.h"
 #include "vr_terminal_keyboard.h"
 
 namespace dxvk {
@@ -37,7 +38,8 @@ namespace dxvk {
    * name of each key printed on it in the game's terminal font, the key
    * the laser points at lit, the key just typed pressed down, and the
    * orange light lit while Shift or Caps Lock is on. The plate's dark
-   * surroundings on the texture are transparent.
+   * surroundings on the texture are transparent. Drawn by the GPU, see
+   * VrPainter.
    */
   class VrTerminalImage {
 
@@ -60,39 +62,41 @@ namespace dxvk {
     bool initialize(const VrImage& texture, const VrBitmapFont& font, const VrImage& glyphs);
 
     /**
-     * \brief Draws the keyboard again if its look changed
+     * \brief The plate's texels, premultiplied by their alpha
      *
-     * \param [in] view What the keyboard shows
-     * \returns Whether the image changed
+     * Each texel is opaque or transparent black, so that the GPU's
+     * filtering does not darken the plate's edges. Empty until
+     * initialized.
      */
-    bool update(const VrTerminalKeyboardView& view);
+    const VrImage& plate() const {
+      return m_plate;
+    }
 
     /**
-     * \brief The image, Width by Height pixels, see VrImage
+     * \brief Draws the keyboard
+     *
+     * \param [out] list Paint list the keyboard is added to
+     * \param [in] view What the keyboard shows
+     * \param [in] left Where the plate's left edge is, in pixels of the list
+     * \param [in] top Where the plate's top edge is
+     * \param [in] area The part of the plate drawn, in texels of the
+     *    terminal texture, or \c nullptr for all of it; the keys must lie
+     *    in it
+     * \param [in] keepAlpha Whether the alpha already drawn is kept, as on
+     *    the terminal texture, instead of the plate's
      */
-    const uint32_t* pixels() const {
-      return m_pixels.data();
-    }
+    void paint(VrPaintList& list, const VrTerminalKeyboardView& view, float left, float top,
+      const VrTexelRect* area, bool keepAlpha) const;
 
   private:
 
-    std::vector<uint32_t>  m_plate;
-    std::vector<uint32_t>  m_pixels;
-    VrBitmapFont           m_font;
-    VrImage                m_glyphs;
-
-    VrTerminalKeyboardView m_drawn;
-    bool                   m_valid = false;
+    VrImage     m_plate;
+    VrPaintFont m_font;
 
     void buildPlate(const VrImage& texture);
 
-    void drawKey(const VrTerminalKey& key, bool hovered, bool pressed, bool shifted);
-
-    void drawLabel(const char* text, float centreX, float centreY, float maxWidth, float scale);
-
-    void drawGlyph(const VrGlyph& glyph, float x, float baseline, float scale);
-
-    void drawLight();
+    void paintLabel(VrPaintList& list, const char* text, float centreX, float centreY, float maxWidth,
+      float scale) const;
 
   };
 

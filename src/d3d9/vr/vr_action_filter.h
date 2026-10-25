@@ -37,6 +37,15 @@ namespace dxvk {
    *   plus \ref LightMargin, whether the grip stays down or not. As for
    *   Reload, the press is decided when it starts, and Grab stays off
    *   until the grip is released.
+   *
+   * - While the left hand holds ammunition taken behind the back, the
+   *   Reload action (X) changes its type (see VrManualReload::cycleAmmo)
+   *   and reaches the game neither as Reload nor as Activate. As above,
+   *   the press is decided when it starts.
+   *
+   * - While the right hand is at the holster of the equipped weapon, a
+   *   Grab press holsters or draws it (see VrHolsterHand) and never
+   *   reaches the game, until the grip is released.
    */
   class VrActionFilter {
 
@@ -72,6 +81,16 @@ namespace dxvk {
     }
 
     /**
+     * \brief Keeps the Reload action from the game from the next press on
+     *
+     * \param [in] taken Whether the left hand holds ammunition whose type
+     *    the press changes
+     */
+    void setReloadTaken(bool taken) {
+      m_reloadTaken = taken;
+    }
+
+    /**
      * \brief Makes the Grab action switch the Pip-Boy light from the next press on
      *
      * \param [in] holdTime How long the game's Pip-Boy control is held to
@@ -80,6 +99,15 @@ namespace dxvk {
      */
     void setGrabLightHoldTime(float holdTime) {
       m_lightHoldTime = holdTime;
+    }
+
+    /**
+     * \brief Makes the Grab action holster or draw from the next press on
+     *
+     * \param [in] atHolster Whether the right hand is at the holster
+     */
+    void setGrabAtHolster(bool atHolster) {
+      m_grabAtHolster = atHolster;
     }
 
     /**
@@ -105,11 +133,15 @@ namespace dxvk {
     bool  m_reloadActivates = false;
     bool  m_reloadDown      = false;
     bool  m_pressActivates  = false;
+    bool  m_reloadTaken     = false;
+    bool  m_pressTaken      = false;
 
     float m_lightHoldTime   = 0.0f;
     float m_lightTime       = 0.0f;
     bool  m_grabDown      = false;
     bool  m_pressLights     = false;
+    bool  m_grabAtHolster   = false;
+    bool  m_pressHolsters   = false;
 
     void updateHold(bool down, float dt);
 

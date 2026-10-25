@@ -104,7 +104,8 @@ namespace dxvk {
           IDirect3DTexture9*    texture,
     const VrPose&               pose,
           float                 width,
-          VrPanelAnchor         anchor) {
+          VrPanelAnchor         anchor,
+          bool                  premultiplied) {
     Com<ID3D9VkInteropDevice> interop;
 
     if (FAILED(device->QueryInterface(__uuidof(ID3D9VkInteropDevice),
@@ -115,6 +116,7 @@ namespace dxvk {
     panel.pose   = pose;
     panel.width  = width;
     panel.anchor = anchor;
+    panel.premultiplied = premultiplied;
 
     Com<ID3D9VkInteropTexture> textureInterop;
 

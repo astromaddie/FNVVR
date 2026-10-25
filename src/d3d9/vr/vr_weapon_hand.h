@@ -22,6 +22,8 @@ namespace dxvk {
   enum class VrFirstPersonMode {
     /// The weapon in the right hand, the left hand free or on the weapon
     Hands,
+    /// The weapon is holstered: both hands are free, each at its controller
+    FreeHands,
     /// The left forearm carries the Pip-Boy, the right hand is hidden
     PipBoy,
     /// Nothing is drawn: the controllers point at a menu with their lasers,
@@ -190,7 +192,7 @@ namespace dxvk {
      * \param [in] grip Whether the other hand's grip on the weapon is held:
      *    it takes the weapon once it comes near it, and lets go on release
      * \param [in] mode What the model shows. \c hand is ignored unless it
-     *    is VrFirstPersonMode::Hands.
+     *    is VrFirstPersonMode::Hands or VrFirstPersonMode::FreeHands.
      * \param [in] dt Time since the previous frame, in seconds
      */
     void beginFrame(
@@ -967,6 +969,9 @@ namespace dxvk {
     bool             m_hidesRightHand = false;
     bool             m_hidesModel = false;
     bool             m_loggedHidden = false;
+    // The weapon node is culled while the weapon is holstered
+    bool             m_hidesHolstered = false;
+    bool             m_loggedFreeHands = false;
 
     static void __fastcall updateHook(
             uint8_t*              object,
@@ -1040,6 +1045,8 @@ namespace dxvk {
     void placeModel(uint8_t* root, void* updateData);
 
     void placePipBoyArm(uint8_t* root, const VrVector3& shift, void* updateData);
+
+    void placeFreeHands(uint8_t* root, const VrVector3& drawnRoot, const VrVector3& shift, void* updateData);
 
     static PipBoyNodes findPipBoy(uint8_t* root);
 

@@ -9,6 +9,7 @@
 #include "vr_backend.h"
 #include "vr_console_screen.h"
 #include "vr_menu_pointer.h"
+#include "vr_paint_panel.h"
 #include "vr_terminal_image.h"
 #include "vr_terminal_texture.h"
 
@@ -55,9 +56,7 @@ namespace dxvk {
     /// How long a key is drawn pressed, in seconds
     constexpr static float PressTime        = 0.12f;
 
-    VrConsoleTerminal(IDirect3DDevice9* device, IVRBackend& backend);
-
-    ~VrConsoleTerminal();
+    VrConsoleTerminal(VrPainter& painter, IVRBackend& backend);
 
     /**
      * \brief Where the keyboard is, for the lasers
@@ -106,23 +105,24 @@ namespace dxvk {
 
   private:
 
-    IDirect3DDevice9*      m_device;
+    VrPainter&             m_painter;
     IVRBackend&            m_backend;
 
     std::unique_ptr<VrConsoleScreen> m_screen;
 
-    // The flat keyboard's image and panel
-    Com<IDirect3DTexture9> m_staging;
-    Com<IDirect3DTexture9> m_texture;
+    // The flat keyboard's panel
+    VrPaintPanel           m_flatPanel;
+    VrPaintList            m_flatList;
 
-    // The 3D keyboard's copy of the terminal texture, and where its key
-    // tops are updated from
+    // The 3D keyboard's copy of the terminal texture
     Com<IDirect3DTexture9> m_modelTexture;
-    Com<IDirect3DSurface9> m_keyTopsStaging;
+    VrPaintList            m_modelList;
 
     VrTerminalImage        m_image;
     VrTerminalTexture      m_modelImage;
     VrTerminalKeyboardView m_view;
+    // What the keyboard was last drawn with
+    VrTerminalKeyboardView m_drawnView;
     VrPanelPlacement       m_placement;
     VrPanelPlacement       m_flatPlacement;
     VrPose                 m_screenAnchor;
@@ -131,8 +131,8 @@ namespace dxvk {
     bool  m_failed       = false;
     bool  m_modelFailed  = false;
     bool  m_active       = false;
-    bool  m_panelShown   = false;
-    bool  m_keyTopsDrawn = false;
+    bool  m_viewDrawn    = false;
+    bool  m_modelDrawn   = false;
     bool  m_button       = false;
     float m_blinkTime    = 0.0f;
     float m_pressTime    = 0.0f;
@@ -153,13 +153,7 @@ namespace dxvk {
 
     bool showModelKeyboard(bool changed);
 
-    bool createTextures();
-
-    bool upload();
-
     bool createModelTexture();
-
-    bool uploadKeyTops();
 
   };
 
