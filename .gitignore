@@ -1,4 +1,5 @@
 build*/
+/artifacts/
 subprojects/.wraplock
 FNVVR_old/
 .vscode/
