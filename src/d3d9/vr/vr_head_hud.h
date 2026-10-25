@@ -81,6 +81,24 @@ namespace dxvk {
           VrInterfaceRect&      crop);
 
   /**
+   * \brief Right side of the messages and objectives in the top left corner
+   *
+   * The text of a message starts 130 units into the Messages group and
+   * wraps at 320 units, so it ends inside the group's width; the
+   * objectives stay inside the QuestReminder group. See findings/hud.md §14.
+   *
+   * \param [in] messages Rectangle of the Messages group in interface
+   *    units, or \c nullptr if it is unknown
+   * \param [in] objectives Rectangle of the QuestReminder group in
+   *    interface units, or \c nullptr if it is unknown
+   * \returns The right side with a small gap, in interface units, or 0 if
+   *    neither group is known
+   */
+  float vrComputeHudCornerRight(
+    const VrInterfaceRect*      messages,
+    const VrInterfaceRect*      objectives);
+
+  /**
    * \brief Rearranges the HUD image for the panel in front of the head
    *
    * The messages and objectives are in the top left corner and the
@@ -88,17 +106,21 @@ namespace dxvk {
    * is too far to the side to read comfortably, so the upper half of the
    * image moves towards the centre by \c shift and the lower half stays.
    * The radiation and XP meters, placed by the VR layer in a column in the
-   * top right corner (see VrHudMeters), move towards the centre by the same
-   * distance, from the other side.
+   * top right corner (see VrHudMeters), move towards the centre from the
+   * other side, by the same distance at most: they stop where the moved
+   * messages and objectives end, since a copy replaces what it covers.
    *
    * \param [in] size Size of the image, in pixels
    * \param [in] shift How far the corners move towards the centre, in pixels
    * \param [in] meters Crop of the meters' column in pixels, or \c nullptr
    *    if neither was placed in the top right corner
+   * \param [in] cornerRight Right side of the messages and objectives
+   *    before the move, in pixels, or 0 if unknown
    */
   VrHeadHudLayout vrComputeHeadHudLayout(
     const VrVector2&            size,
           float                 shift,
-    const VrInterfaceRect*      meters);
+    const VrInterfaceRect*      meters,
+          float                 cornerRight);
 
 }

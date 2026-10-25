@@ -1767,7 +1767,18 @@ namespace dxvk {
     if (hasMeters)
       meters = pixelsToRect(interfaceToPixels(metersGroup, imageSize.x / size.x, desc));
 
-    VrHeadHudLayout layout = vrComputeHeadHudLayout(imageSize, shift, hasMeters ? &meters : nullptr);
+    // The messages and objectives in the top left corner, which the meters
+    // must not cover
+    VrInterfaceRect messagesGroup;
+    VrInterfaceRect objectivesGroup;
+    bool hasMessages   = m_hudLayers.groupRect(VrGame::HudMessages, messagesGroup);
+    bool hasObjectives = m_hudLayers.groupRect(VrGame::HudQuestReminder, objectivesGroup);
+
+    float cornerRight = vrComputeHudCornerRight(hasMessages ? &messagesGroup : nullptr,
+      hasObjectives ? &objectivesGroup : nullptr) * imageSize.x / size.x;
+
+    VrHeadHudLayout layout = vrComputeHeadHudLayout(imageSize, shift,
+      hasMeters ? &meters : nullptr, std::round(cornerRight));
 
     if (FAILED(m_device->ColorFill(destination.ptr(), nullptr, D3DCOLOR_ARGB(0, 0, 0, 0))))
       return false;

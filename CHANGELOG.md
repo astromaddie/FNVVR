@@ -18,6 +18,9 @@
 - **No ammunition left** (manual reload): reaching behind the back for a magazine, shells or rounds with none left in
   the inventory now shows the game's "You don't have enough ammo." message in front of the head and gives a long, dull
   pulse on the left controller, unlike every other reload pulse.
+- **Long HUD messages**: messages such as being overencumbered or a discovered location with a long name, and long
+  objectives, are no longer cut on the right; the radiation and XP meters stop moving towards the centre where they
+  would cover them.
 
 ## v0.8.0 (2026-10-24, since v0.7.0 `b6c9aca`)
 
