@@ -46,6 +46,10 @@ namespace dxvk {
    * - While the right hand is at the holster of the equipped weapon, a
    *   Grab press holsters or draws it (see VrHolsterHand) and never
    *   reaches the game, until the grip is released.
+   *
+   * - While the hands hold objects themselves (see VrPhysicsGrab), the
+   *   Grab action never reaches the game, so that the game's grab does
+   *   not take an object too.
    */
   class VrActionFilter {
 
@@ -111,6 +115,15 @@ namespace dxvk {
     }
 
     /**
+     * \brief Keeps the Grab action from the game
+     *
+     * \param [in] byHands Whether the hands hold objects themselves
+     */
+    void setGrabByHands(bool byHands) {
+      m_grabByHands = byHands;
+    }
+
+    /**
      * \brief Whether the game's Pip-Boy control is held to switch the light
      *
      * Set by the last call to \ref update, in the Game context only.
@@ -142,6 +155,7 @@ namespace dxvk {
     bool  m_pressLights     = false;
     bool  m_grabAtHolster   = false;
     bool  m_pressHolsters   = false;
+    bool  m_grabByHands     = false;
 
     void updateHold(bool down, float dt);
 

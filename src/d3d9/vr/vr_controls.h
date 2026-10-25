@@ -137,6 +137,16 @@ namespace dxvk {
     }
 
     /**
+     * \brief Keeps the grip from pressing the game's grab control
+     *
+     * \param [in] byHands Whether the hands hold objects themselves, see
+     *    VrActionFilter
+     */
+    void setGrabByHands(bool byHands) {
+      m_filter.setGrabByHands(byHands);
+    }
+
+    /**
      * \brief Clicks the menu's back button from the next frame on
      *
      * Closes the Pip-Boy the way the player's back button does: the game

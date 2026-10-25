@@ -99,7 +99,7 @@ namespace dxvk {
 
     m_grabDown = down;
 
-    if (down && (m_pressLights || m_pressHolsters))
+    if (down && (m_pressLights || m_pressHolsters || m_grabByHands))
       actions.setPressed(VrAction::Grab, false);
   }
 
