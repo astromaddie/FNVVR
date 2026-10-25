@@ -65,10 +65,15 @@ namespace dxvk {
   void VrActionFilter::updateReload(VrActionState& actions) {
     bool down = actions.isPressed(VrAction::Reload);
 
-    if (down && !m_reloadDown)
-      m_pressActivates = m_reloadActivates;
+    if (down && !m_reloadDown) {
+      m_pressTaken     = m_reloadTaken;
+      m_pressActivates = m_reloadActivates && !m_pressTaken;
+    }
 
     m_reloadDown = down;
+
+    if (down && m_pressTaken)
+      actions.setPressed(VrAction::Reload, false);
 
     if (down && m_pressActivates) {
       actions.setPressed(VrAction::Reload,   false);

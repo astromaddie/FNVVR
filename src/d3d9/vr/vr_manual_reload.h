@@ -194,6 +194,10 @@ namespace dxvk {
      */
     void setEnabled(bool enabled);
 
+    bool enabled() const {
+      return m_enabled;
+    }
+
     /**
      * \brief Follows the hands and reloads the weapon in the right hand
      *
@@ -291,6 +295,30 @@ namespace dxvk {
     }
 
     /**
+     * \brief Whether the left hand holds a magazine or rounds taken behind
+     *    the back, which \ref cycleAmmo can change
+     */
+    bool holdsAmmo() const;
+
+    /**
+     * \brief The ammunition the left hand holds, valid with \ref holdsAmmo
+     *
+     * The clip's type while rounds of it are left, as the hand took it; it
+     * goes into the weapon with the magazine or rounds, see
+     * findings/quick-menu.md §6, decision 3.
+     */
+    const uint8_t* heldAmmo() const {
+      return m_heldAmmo;
+    }
+
+    /**
+     * \brief Makes the ammunition in the left hand the next type with rounds left
+     *
+     * \returns \c false if nothing changed
+     */
+    bool cycleAmmo();
+
+    /**
      * \brief Where the reload of the weapon in the hand stands, for the
      *    parts that glow, see vrPartsToWork
      */
@@ -376,6 +404,12 @@ namespace dxvk {
     // shown has left, in seconds
     bool            m_showsNoAmmo = false;
     float           m_noAmmoTime  = 0.0f;
+
+    // Ammunition of the magazine or rounds taken behind the back
+    // (TESAmmo*), compared but not dereferenced
+    const uint8_t*  m_heldAmmo = nullptr;
+
+    void loadHeldAmmo();
 
     void clearJam(const uint8_t* weapon, const char* how);
 

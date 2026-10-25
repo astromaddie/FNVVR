@@ -98,6 +98,25 @@ namespace dxvk {
     }
 
     /**
+     * \brief Keeps the left hand's reload button from the game
+     *
+     * \param [in] taken Whether the left hand holds ammunition whose type
+     *    the button changes, see VrActionFilter
+     */
+    void setReloadTaken(bool taken) {
+      m_filter.setReloadTaken(taken);
+    }
+
+    /**
+     * \brief Keeps the right stick from turning and from scrolling menus
+     *
+     * \param [in] taken Whether the quick wheel holds it
+     */
+    void setRightStickTaken(bool taken) {
+      m_rightStickTaken = taken;
+    }
+
+    /**
      * \brief Makes the right grip holster or draw the weapon
      *
      * \param [in] atHolster Whether the right hand is at the holster of the
@@ -234,6 +253,7 @@ namespace dxvk {
     bool                        m_gameAim = false;
     bool                        m_swingsWithHand = false;
     bool                        m_handsFree      = false;
+    bool                        m_rightStickTaken = false;
     bool                        m_menuBack = false;
     bool                        m_menuBackDown = false;
 

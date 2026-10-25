@@ -38,6 +38,11 @@ namespace dxvk {
    *   Reload, the press is decided when it starts, and Grab stays off
    *   until the grip is released.
    *
+   * - While the left hand holds ammunition taken behind the back, the
+   *   Reload action (X) changes its type (see VrManualReload::cycleAmmo)
+   *   and reaches the game neither as Reload nor as Activate. As above,
+   *   the press is decided when it starts.
+   *
    * - While the right hand is at the holster of the equipped weapon, a
    *   Grab press holsters or draws it (see VrHolsterHand) and never
    *   reaches the game, until the grip is released.
@@ -73,6 +78,16 @@ namespace dxvk {
      */
     void setReloadActivates(bool activates) {
       m_reloadActivates = activates;
+    }
+
+    /**
+     * \brief Keeps the Reload action from the game from the next press on
+     *
+     * \param [in] taken Whether the left hand holds ammunition whose type
+     *    the press changes
+     */
+    void setReloadTaken(bool taken) {
+      m_reloadTaken = taken;
     }
 
     /**
@@ -118,6 +133,8 @@ namespace dxvk {
     bool  m_reloadActivates = false;
     bool  m_reloadDown      = false;
     bool  m_pressActivates  = false;
+    bool  m_reloadTaken     = false;
+    bool  m_pressTaken      = false;
 
     float m_lightHoldTime   = 0.0f;
     float m_lightTime       = 0.0f;

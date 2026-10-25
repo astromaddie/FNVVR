@@ -152,6 +152,9 @@ namespace dxvk {
     if (!actor)
       return;
 
+    if (!m_playerHolstered && reinterpret_cast<GetWantDrawnFn>(VrGame::GetWantWeaponDrawn)(actor, nullptr))
+      return;
+
     reinterpret_cast<SetWantDrawnFn>(VrGame::SetWantWeaponDrawn)(actor, nullptr, true);
 
     if (!reinterpret_cast<GetWantDrawnFn>(VrGame::GetWantWeaponDrawn)(actor, nullptr)) {

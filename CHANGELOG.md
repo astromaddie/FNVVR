@@ -26,6 +26,16 @@
   right shoulder. The empty right hand at the holster and the right grip draw it again. A light pulse tells the hand
   is at the holster; the weapon's own sounds play. With the weapon holstered both hands are free and the trigger does
   nothing.
+- **Quick wheel**: pushing the right stick down and holding it shows the hotkeys on a wheel in front of the right
+  hand, with each item's icon (equipped items marked with a dot). Moving the hand towards a cell picks it (a light
+  tick), letting go of the stick uses it as the game's hotkeys do (equip, unequip, use an aid item); letting go in the
+  middle does nothing. A weapon chosen on the wheel comes straight into the hand, out of its holster. The top cell is
+  the ammunition: with the manual reload off it swaps to the next type held.
+- **Hotkeys from the Pip-Boy**: in the inventory, with the laser on an item, holding the right stick click shows the
+  same wheel; letting go on a cell gives the item that hotkey, with the game's own sound and refusals.
+- **Ammunition types** (manual reload): a magazine, shells or rounds taken behind the back are of the weapon's current
+  type while some are left, otherwise of the next type held. While the left hand holds them, X switches to the next
+  type held (a label above the hand shows its name and count); pushing them into the weapon loads that type.
 
 ## v0.8.0 (2026-10-24, since v0.7.0 `b6c9aca`)
 

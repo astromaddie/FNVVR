@@ -83,7 +83,7 @@ namespace dxvk {
       if (tracked)
         head = vrComputeEyeInReference(*reference, input.headPose);
 
-      float turn = m_context == VrInputContext::Game ? input.actions.turn.x : 0.0f;
+      float turn = m_context == VrInputContext::Game && !m_rightStickTaken ? input.actions.turn.x : 0.0f;
       m_headLook->update(tracked ? &head : nullptr, turn, dt);
     }
 
@@ -184,7 +184,7 @@ namespace dxvk {
 
     pointerInput.triggers[uint32_t(VrHand::Left)]  = actions.isPressed(VrAction::MenuLeftTrigger);
     pointerInput.triggers[uint32_t(VrHand::Right)] = actions.isPressed(VrAction::MenuRightTrigger);
-    pointerInput.wheel = actions.turn.y;
+    pointerInput.wheel = m_rightStickTaken ? 0.0f : actions.turn.y;
 
     VrPointerState pointer = m_pointer.update(pointerInput);
 

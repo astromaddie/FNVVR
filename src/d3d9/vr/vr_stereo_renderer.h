@@ -25,6 +25,9 @@
 #include "vr_console_terminal.h"
 #include "vr_hand_throw.h"
 #include "vr_holster.h"
+#include "vr_ammo_label.h"
+#include "vr_game_images.h"
+#include "vr_quick_wheel.h"
 #include "vr_melee_swing.h"
 #include "vr_menu_scenes.h"
 #include "vr_manual_reload.h"
@@ -342,6 +345,13 @@ namespace dxvk {
     // the hand
     std::unique_ptr<VrPowerAttackRules> m_powerRules;
     std::unique_ptr<VrChargeRing>       m_chargeRing;
+    VrGameImages                        m_gameImages;
+    std::unique_ptr<VrQuickWheel>       m_quickWheel;
+    std::unique_ptr<VrAmmoLabel>        m_ammoLabel;
+    // The left hand held ammunition at the last frame, and the reload
+    // button was down
+    bool                                m_ammoInHand     = false;
+    bool                                m_ammoButtonDown = false;
     VrPowerCharge       m_powerCharge;
     uint32_t            m_loggedPowerHits = 0;
 
@@ -535,6 +545,12 @@ namespace dxvk {
     void updateManualReload(const VrInputState& input, VrGameStateKind state, float dt);
 
     void updateHolster(const VrInputState& input, VrGameStateKind state);
+
+    void updateQuickWheel(const VrInputState& input, VrGameStateKind state);
+
+    void updateAmmoChoice(const VrInputState& input, VrGameStateKind state);
+
+    void hideQuickPanels();
 
     bool updatePowerCharge(const VrInputState& input, int32_t& cost);
 

@@ -78,11 +78,15 @@ namespace dxvk {
     HudPrompt,
     /// Charge of a power attack, beside the right hand
     HudCharge,
+    /// Ammunition held by the left hand while it reloads, above it
+    HudAmmo,
+    /// The quick wheel of hotkeys, in front of the right hand
+    QuickWheel,
     /// The console's terminal and keyboard, in front of the player
     Terminal,
   };
 
-  constexpr uint32_t VrPanelCount = 6;
+  constexpr uint32_t VrPanelCount = 8;
 
   /**
    * \brief What a panel's pose is relative to

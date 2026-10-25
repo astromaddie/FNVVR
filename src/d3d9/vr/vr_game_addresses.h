@@ -2138,6 +2138,7 @@ namespace dxvk {
     constexpr char      CantHotKeyImage[]          = "Interface\\Icons\\Message Icons\\glow_message_vaultboy_sad.dds";
     constexpr char      CantHotKeySound[]          = "UIVATSInsufficientAP";
     constexpr uint32_t  HudMessageNeutral          = 0;
+    constexpr uint8_t   FormTypeArmor              = 0x18;
     constexpr uint8_t   FormTypeBook               = 0x19;
 
     /**

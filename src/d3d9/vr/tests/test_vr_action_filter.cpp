@@ -246,3 +246,24 @@ TEST_CASE(grab_at_the_holster_never_reaches_the_game) {
   result = filter.update(pressed(VrAction::Grab), VrInputContext::Game, Frame);
   CHECK(result.isPressed(VrAction::Grab));
 }
+
+
+TEST_CASE(reload_taken_by_the_ammunition_reaches_nothing) {
+  VrActionFilter filter;
+  filter.setReloadTaken(true);
+  filter.setReloadActivates(true);
+
+  VrActionState result = filter.update(pressed(VrAction::Reload), VrInputContext::Game, Frame);
+  CHECK(!result.isPressed(VrAction::Reload));
+  CHECK(!result.isPressed(VrAction::Activate));
+
+  // Kept until released, even once the hand no longer holds ammunition
+  filter.setReloadTaken(false);
+  result = filter.update(pressed(VrAction::Reload), VrInputContext::Game, Frame);
+  CHECK(!result.isPressed(VrAction::Reload));
+  CHECK(!result.isPressed(VrAction::Activate));
+
+  filter.update(VrActionState(), VrInputContext::Game, Frame);
+  result = filter.update(pressed(VrAction::Reload), VrInputContext::Game, Frame);
+  CHECK(result.isPressed(VrAction::Activate));
+}
