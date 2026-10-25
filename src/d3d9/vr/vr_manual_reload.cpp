@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cfloat>
 
 #include "../../util/log/log.h"
@@ -41,6 +42,11 @@ namespace dxvk {
     // bool in AL
     using HasModEffectFn = uint32_t (__fastcall*)(uint8_t* entry, void* unused, uint32_t effect);
 
+    // Interface::ShowMessage, __cdecl with the text, the face, the image,
+    // the sound, the time and whether it is shown at once
+    using ShowHudMessageFn = uint32_t (__cdecl*)(const char* text, uint32_t emotion, const char* image,
+      const char* sound, float time, uint32_t instant);
+
     // Frames during which the clip of a reload is watched: the equipment
     // queue fills it a frame or so after the reload
     constexpr uint32_t ClipWatchFrames = 4;
@@ -54,6 +60,10 @@ namespace dxvk {
 
     // Part of its travel the rack part of a jammed weapon rests back by
     constexpr float JamRest = 0.3f;
+
+    // How long the message that no rounds are left is shown, in seconds,
+    // as V.A.T.S. shows it; none is queued again meanwhile
+    constexpr float NoAmmoMessageTime = 2.0f;
 
     VrManualReload* g_manualReload = nullptr;
 
@@ -176,6 +186,14 @@ namespace dxvk {
       Logger::warn("VR: The clip reads of the attack were not found, jams are left to the game");
 
     std::unique_ptr<VrManualReload> reload(new VrManualReload());
+    reload->m_showsNoAmmo = VrGameMemory::matches(VrGame::NoAmmoMessageReadSite,
+        VrGame::NoAmmoMessageRead, sizeof(VrGame::NoAmmoMessageRead))
+      && VrGameMemory::matches(VrGame::ShowHudMessage,
+        VrGame::ShowHudMessagePrologue, sizeof(VrGame::ShowHudMessagePrologue));
+
+    if (!reload->m_showsNoAmmo)
+      Logger::warn("VR: The game's no ammo message was not found, running out of rounds is only felt");
+
     g_manualReload = reload.get();
     return reload;
   }
@@ -577,7 +595,28 @@ namespace dxvk {
     else
       m_rackRest = m_jammed ? JamRest * input.rackTravel : 0.0f;
 
+    m_noAmmoTime = std::max(m_noAmmoTime - input.frameTime, 0.0f);
+
+    if (events.magazine == VrMagazineEvent::NoRounds || events.round == VrRoundEvent::NoRounds)
+      showNoAmmo();
+
     return events;
+  }
+
+
+  void VrManualReload::showNoAmmo() {
+    if (!m_showsNoAmmo || m_noAmmoTime > 0.0f)
+      return;
+
+    auto setting = reinterpret_cast<const uint8_t*>(VrGame::NoAmmoMessageSetting);
+    auto text    = readField<const char*>(setting, VrGame::SettingValue);
+
+    if (!text || !*text)
+      return;
+
+    reinterpret_cast<ShowHudMessageFn>(VrGame::ShowHudMessage)(text, VrGame::HudMessageSad,
+      nullptr, nullptr, NoAmmoMessageTime, 0);
+    m_noAmmoTime = NoAmmoMessageTime;
   }
 
 

@@ -1772,6 +1772,25 @@ namespace dxvk {
     constexpr uintptr_t WeaponAttackFailSound      = 0x22C;
 
     /**
+     * The message V.A.T.S. shows when the player has too little ammunition,
+     * see findings/reload.md §4.1. VATSMenu::DoIdle reads the
+     * sVATSMessageNoAmmo game setting (string value at SettingValue, "You
+     * don't have enough ammo." in English) at the checked site and hands it
+     * to HUDMainMenu::ShowMessage with the sad face (2), no image, no sound,
+     * 2 s and not instant. Interface::ShowMessage (__cdecl, same arguments)
+     * does the same once the HUD exists.
+     */
+    constexpr uintptr_t NoAmmoMessageSetting   = 0x011D28C8;
+    constexpr uintptr_t NoAmmoMessageReadSite  = 0x007EE86C;
+    constexpr uint8_t   NoAmmoMessageRead[] = {
+      0xB9, 0xC8, 0x28, 0x1D, 0x01, 0xE8, 0x7A, 0x55, 0xC1, 0xFF,
+      0x50, 0x8B, 0x0D, 0xC0, 0x96, 0x1D, 0x01, 0xE8, 0xFE, 0x6A, 0xF8, 0xFF,
+    };
+    constexpr uintptr_t ShowHudMessage         = 0x007052F0;
+    constexpr uint8_t   ShowHudMessagePrologue[] = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x38, 0xC3, 0xEE, 0x00 };
+    constexpr uint32_t  HudMessageSad          = 2;
+
+    /**
      * Weapon form: the data of its name (TESFullName at +0x30) and of its
      * model's path (TESModel at +0x3C). Its clip size is WeaponClipRounds.
      */

@@ -15,6 +15,9 @@
   starting choice `d3d9.vrPhysicalSneak`.
 - **Sneak meter**: [HIDDEN], [CAUTION], [DANGER] and [DETECTED] are shown in front of the head while sneaking, just
   below the line of sight.
+- **No ammunition left** (manual reload): reaching behind the back for a magazine, shells or rounds with none left in
+  the inventory now shows the game's "You don't have enough ammo." message in front of the head and gives a long, dull
+  pulse on the left controller, unlike every other reload pulse.
 
 ## v0.8.0 (2026-10-24, since v0.7.0 `b6c9aca`)
 

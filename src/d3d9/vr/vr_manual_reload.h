@@ -158,6 +158,10 @@ namespace dxvk {
    * while it is open the weapon does not fire, and while it is shut no
    * box goes out or in.
    *
+   * When the hand reaches behind the back with no rounds left, the game's
+   * no ammo message of V.A.T.S. is shown on the HUD, at most once while it
+   * is shown (findings/reload.md §4.1).
+   *
    * The reloads may be started from the game's other threads, so the clip
    * left to watch is shared under a lock, and the weapon reloaded by hand
    * is atomic.
@@ -368,7 +372,14 @@ namespace dxvk {
     // -1: it is full while its clip holds that many
     int32_t         m_refusedClip = -1;
 
+    // The game's no ammo message can be shown, and how long the last one
+    // shown has left, in seconds
+    bool            m_showsNoAmmo = false;
+    float           m_noAmmoTime  = 0.0f;
+
     void clearJam(const uint8_t* weapon, const char* how);
+
+    void showNoAmmo();
 
     void watchClip(int32_t clip);
 
