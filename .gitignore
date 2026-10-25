@@ -1,5 +1,6 @@
 build*/
 /artifacts/
+__pycache__/
 subprojects/.wraplock
 FNVVR_old/
 .vscode/
