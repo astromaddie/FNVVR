@@ -26,7 +26,9 @@ namespace dxvk {
    * - The third-person view: the game's POV control, or a save made in
    *   third person, asks for it. While the player plays (no menu, no
    *   V.A.T.S. camera, not dead), the game's own
-   *   PlayerCharacter::SetFirstPerson puts the first person back.
+   *   PlayerCharacter::SetFirstPerson puts the first person back. The
+   *   game's temporary third person, used to sit down and get up, is left
+   *   alone: the game ends it by itself.
    *
    * The cameras of V.A.T.S. itself are not changed here. See
    * findings/camera.md §7.
@@ -63,6 +65,7 @@ namespace dxvk {
 
     bool m_loggedKillCam = false;
     bool m_loggedView    = false;
+    bool m_loggedTemp    = false;
 
     void keepFirstPerson(uintptr_t player);
 

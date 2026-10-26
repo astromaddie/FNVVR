@@ -717,6 +717,19 @@ namespace dxvk {
       0x0F, 0xB6, 0x88, 0x4C, 0x06, 0x00, 0x00,
     };
 
+    /**
+     * The game's temporary third person, see findings/camera.md §8.1:
+     * PlayerCharacter::ForceTemp3rdPerson sets the player's bTemp3rdPerson
+     * byte to use furniture (TESFurniture::Activate, sitting down and
+     * getting up) and for the Sandman and Cannibal kills;
+     * PlayerCharacter::UpdateTemp3rdPerson (0x009503D0) clears it and goes
+     * back to first person once the animation is over. Its read there,
+     * movzx ecx, byte [eax+0x64D], checks the offset.
+     */
+    constexpr uintptr_t PlayerTempThirdPerson     = 0x64D;
+    constexpr uintptr_t TempThirdPersonReadSite   = 0x009503DA;
+    constexpr uint8_t   TempThirdPersonRead[]     = { 0x0F, 0xB6, 0x88, 0x4D, 0x06, 0x00, 0x00 };
+
     /** LoadingMenu*, not null while a loading screen is shown */
     constexpr uintptr_t LoadingMenu = 0x011DA0C0;
 
