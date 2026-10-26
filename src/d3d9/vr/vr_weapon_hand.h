@@ -241,6 +241,15 @@ namespace dxvk {
     }
 
     /**
+     * \brief Whether the left hand holds the weapon or supports it
+     *
+     * Decided when the model was last placed, in the previous frame.
+     */
+    bool leftHandOnWeapon() const {
+      return m_twoHanded || m_braced;
+    }
+
+    /**
      * \brief Where the Pip-Boy's screen is relative to the left controller
      *
      * The centre of the screen when the left forearm takes its free pose

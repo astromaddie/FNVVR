@@ -248,6 +248,25 @@ TEST_CASE(grab_at_the_holster_never_reaches_the_game) {
 }
 
 
+TEST_CASE(grab_by_hands_never_reaches_the_game_but_still_lights) {
+  VrActionFilter filter;
+  filter.setGrabByHands(true);
+
+  VrActionState result = filter.update(pressed(VrAction::Grab), VrInputContext::Game, Frame);
+  CHECK(!result.isPressed(VrAction::Grab));
+
+  filter.update(VrActionState(), VrInputContext::Game, Frame);
+  result = filter.update(pressed(VrAction::Grab), VrInputContext::Game, Frame);
+  CHECK(!result.isPressed(VrAction::Grab));
+
+  // The grip at the Pip-Boy still switches its light
+  filter.update(VrActionState(), VrInputContext::Game, Frame);
+  filter.setGrabLightHoldTime(0.8f);
+  filter.update(pressed(VrAction::Grab), VrInputContext::Game, Frame);
+  CHECK(filter.holdsPipBoyControl());
+}
+
+
 TEST_CASE(reload_taken_by_the_ammunition_reaches_nothing) {
   VrActionFilter filter;
   filter.setReloadTaken(true);
