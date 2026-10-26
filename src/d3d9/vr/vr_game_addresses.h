@@ -100,6 +100,17 @@ namespace dxvk {
     constexpr uintptr_t CameraUpdateWorldToCamera = 0x00A70BA0;
 
     /**
+     * BoundInFrustum (0x004B5FF0, used by NodeInFrustum and PointInFrustum)
+     * keeps the frustum planes of the last camera it was given, and only
+     * sets them again for another camera pointer or another value of the
+     * game's time, see findings/render.md "Frustum plane cache". The
+     * checked site stores that camera.
+     */
+    constexpr uintptr_t FrustumCacheCamera     = 0x011C632C;
+    constexpr uintptr_t FrustumCacheStoreSite  = 0x004B6090;
+    constexpr uint8_t   FrustumCacheStore[]    = { 0x89, 0x0D, 0x2C, 0x63, 0x1C, 0x01 };
+
+    /**
      * Call to XInputGetState in OSInputGlobals::Poll, and the game's import
      * thunk (a jump through the XInput import) that it calls
      */
