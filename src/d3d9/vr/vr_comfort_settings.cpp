@@ -28,6 +28,8 @@ namespace dxvk {
         VrGame::SetKillCamModeCallbackPrologue, sizeof(VrGame::SetKillCamModeCallbackPrologue))
       && VrGameMemory::matches(VrGame::SetFirstPerson,
         VrGame::SetFirstPersonPrologue, sizeof(VrGame::SetFirstPersonPrologue))
+      && VrGameMemory::matches(VrGame::TempThirdPersonReadSite,
+        VrGame::TempThirdPersonRead, sizeof(VrGame::TempThirdPersonRead))
       && VrGameMemory::readable(VrGame::VatsCameraState, sizeof(uint32_t))
       && VrGameMemory::readable(VrGame::DisableAutoVanitySetting + VrGame::SettingValue, sizeof(uint8_t))
       && VrGameMemory::readable(VrGame::Player, sizeof(uintptr_t));
@@ -75,6 +77,17 @@ namespace dxvk {
     // the dead player in third person
     if (*reinterpret_cast<const uint32_t*>(VrGame::VatsCameraState))
       return;
+
+    // Sitting down and getting up play on the third-person body: in first
+    // person only the camera followed the animation, and the player was
+    // never placed on the seat. The game comes back to first person itself.
+    if (*reinterpret_cast<const uint8_t*>(player + VrGame::PlayerTempThirdPerson)) {
+      if (!m_loggedTemp) {
+        Logger::info("VR: The game shows the third person for a moment (furniture), it is left to it");
+        m_loggedTemp = true;
+      }
+      return;
+    }
 
     auto vtable = *reinterpret_cast<const uintptr_t*>(player);
     auto isDead = *reinterpret_cast<const IsDeadFn*>(vtable + VrGame::ActorIsDeadSlot);

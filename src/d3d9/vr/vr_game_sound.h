@@ -49,6 +49,17 @@ namespace dxvk {
           float                 frequency);
 
   /**
+   * \brief Plays a sound form once as the interface plays its sounds
+   *
+   * Not placed in the world (2D), as a system sound, as the game's menus
+   * and HUD messages play theirs by editor ID.
+   *
+   * \param [in] editorId The TESSound's editor ID
+   * \returns \c false if there is no sound of that name
+   */
+  bool vrPlayInterfaceSound(const char* editorId);
+
+  /**
    * \brief Whether a sound form loops
    *
    * A looping sound played once goes on until it is stopped.

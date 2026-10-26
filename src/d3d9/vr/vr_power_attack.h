@@ -98,6 +98,45 @@ namespace dxvk {
   };
 
   /**
+   * \brief Tells the player once per hold that a power attack lacks action
+   *    points
+   *
+   * Holding the attack as long as a charge takes while the player lacks
+   * the action points for it is a power attack the game would refuse: the
+   * player is told once, until the attack is let go. As for the charge,
+   * the frame the refusal starts adds no time.
+   */
+  class VrPowerRefusal {
+
+  public:
+
+    /**
+     * \brief Forgets the hold
+     */
+    void reset();
+
+    /**
+     * \brief Follows the attack for a frame
+     *
+     * \param [in] held Whether the attack is held in this frame
+     * \param [in] lacksActionPoints Whether a power attack now would cost
+     *    more action points than the player has
+     * \param [in] dt Game time since the previous frame, in seconds
+     * \param [in] holdTime Time the attack is held to make a power attack,
+     *    in seconds
+     * \returns \c true in the frame the player is to be told
+     */
+    bool update(bool held, bool lacksActionPoints, float dt, float holdTime);
+
+  private:
+
+    bool  m_refused = false;
+    bool  m_told    = false;
+    float m_time    = 0.0f;
+
+  };
+
+  /**
    * \brief Draws the charge as a ring
    *
    * The ring fills clockwise from the top, in the amber of the Pip-Boy's

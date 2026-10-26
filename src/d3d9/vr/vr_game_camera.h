@@ -17,7 +17,8 @@ namespace dxvk {
    * \brief Access to one of the game's cameras (NiCamera)
    *
    * Reads and writes the camera through its known memory layout and asks the
-   * game to refresh the matrices it derives from it. Nothing here knows about
+   * game to refresh the matrices it derives from it, and to set again the
+   * frustum planes its visibility tests keep for the camera. Nothing here knows about
    * VR: callers pass poses and frustums in the game's own frame. The camera
    * is the world camera, or another one such as a rendered menu's.
    */
@@ -77,6 +78,8 @@ namespace dxvk {
   private:
 
     uint8_t* m_camera = nullptr;
+    bool     m_checkedFrustumCache = false;
+    bool     m_hasFrustumCache     = false;
 
     void refresh();
 

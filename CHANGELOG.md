@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- **Chairs and benches**: sitting down and getting up work again. The game shows the third person while the player
+  sits down and gets up, as it does without VR, and comes back to the first person by itself.
+- **Distant water**: water far away no longer turns grey and flat outside the middle of the view; it keeps its
+  reflection across the whole field of view of the headset.
+- **V.A.T.S. with the manual reload**: when a shot empties the clip in V.A.T.S., the game reloads as it does without
+  VR instead of freezing on the empty clip.
+- **Throwing spear**: held in the hand as the throw holds it, point forward, instead of as a cane, so it no longer
+  turns around when it leaves the hand.
+
+### Feedback
+
+- **No rounds left**: reaching behind the back with no rounds left also plays the game's sound for a lock or terminal
+  beyond the player's skill.
+- **Power attack without enough action points**: holding the trigger for a charge without the action points shows the
+  words V.A.T.S. writes by its action point meter when they run short ("PA Limités" in French) with the game's sound
+  for missing action points.
+
 ## v0.9.0 (2026-10-25, since v0.8.0 `66809af`)
 
 ### Quick wheel, holsters and ammunition types

@@ -100,6 +100,17 @@ namespace dxvk {
     constexpr uintptr_t CameraUpdateWorldToCamera = 0x00A70BA0;
 
     /**
+     * BoundInFrustum (0x004B5FF0, used by NodeInFrustum and PointInFrustum)
+     * keeps the frustum planes of the last camera it was given, and only
+     * sets them again for another camera pointer or another value of the
+     * game's time, see findings/render.md "Frustum plane cache". The
+     * checked site stores that camera.
+     */
+    constexpr uintptr_t FrustumCacheCamera     = 0x011C632C;
+    constexpr uintptr_t FrustumCacheStoreSite  = 0x004B6090;
+    constexpr uint8_t   FrustumCacheStore[]    = { 0x89, 0x0D, 0x2C, 0x63, 0x1C, 0x01 };
+
+    /**
      * Call to XInputGetState in OSInputGlobals::Poll, and the game's import
      * thunk (a jump through the XInput import) that it calls
      */
@@ -716,6 +727,19 @@ namespace dxvk {
       0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x08, 0x89, 0x4D, 0xF8, 0x8B, 0x45, 0xF8,
       0x0F, 0xB6, 0x88, 0x4C, 0x06, 0x00, 0x00,
     };
+
+    /**
+     * The game's temporary third person, see findings/camera.md §8.1:
+     * PlayerCharacter::ForceTemp3rdPerson sets the player's bTemp3rdPerson
+     * byte to use furniture (TESFurniture::Activate, sitting down and
+     * getting up) and for the Sandman and Cannibal kills;
+     * PlayerCharacter::UpdateTemp3rdPerson (0x009503D0) clears it and goes
+     * back to first person once the animation is over. Its read there,
+     * movzx ecx, byte [eax+0x64D], checks the offset.
+     */
+    constexpr uintptr_t PlayerTempThirdPerson     = 0x64D;
+    constexpr uintptr_t TempThirdPersonReadSite   = 0x009503DA;
+    constexpr uint8_t   TempThirdPersonRead[]     = { 0x0F, 0xB6, 0x88, 0x4D, 0x06, 0x00, 0x00 };
 
     /** LoadingMenu*, not null while a loading screen is shown */
     constexpr uintptr_t LoadingMenu = 0x011DA0C0;
@@ -1790,6 +1814,21 @@ namespace dxvk {
     constexpr uintptr_t ShowHudMessage         = 0x007052F0;
     constexpr uint8_t   ShowHudMessagePrologue[] = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x38, 0xC3, 0xEE, 0x00 };
     constexpr uint32_t  HudMessageSad          = 2;
+
+    /**
+     * What V.A.T.S. shows by its action point meter when the player has
+     * too few of them, see findings/melee.md §12.5: the sActionPointsShort
+     * label ("AP") and the sVATSMessageLowAP text beside it, both read by
+     * VATSMenu::Create at the checked sites (string value at SettingValue).
+     * The inventory plays UIVATSInsufficientAP when action points or a
+     * hotkey are refused.
+     */
+    constexpr uintptr_t ActionPointsShortSetting  = 0x011D3E8C;
+    constexpr uintptr_t ActionPointsShortReadSite = 0x007EA40A;
+    constexpr uint8_t   ActionPointsShortRead[]   = { 0xB9, 0x8C, 0x3E, 0x1D, 0x01, 0xE8, 0xDC, 0x99, 0xC1, 0xFF };
+    constexpr uintptr_t LowApMessageSetting       = 0x011D1D90;
+    constexpr uintptr_t LowApMessageReadSite      = 0x007EA497;
+    constexpr uint8_t   LowApMessageRead[]        = { 0xB9, 0x90, 0x1D, 0x1D, 0x01, 0xE8, 0x4F, 0x99, 0xC1, 0xFF };
 
     /**
      * Weapon form: the data of its name (TESFullName at +0x30) and of its
