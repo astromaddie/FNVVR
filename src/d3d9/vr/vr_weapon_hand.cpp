@@ -135,6 +135,11 @@ namespace dxvk {
     // The same for the attack animation of a grenade or mine
     constexpr uint32_t ThrowAnimationTries       = 3;
 
+    // How far the release of a thrown weapon's attack animation turns it
+    // in the hand from the idle pose, in radians (75 degrees), for the
+    // hand to hold it as at the release: a spear's idle holds it as a cane
+    constexpr float ThrownRegripTurn = 1.3089969f;
+
     // Bones of the free hand that take a pose: its fingers, the wrist and
     // the forearm's twist bone
     constexpr uint32_t MaxPosedBones = 48;
@@ -1098,6 +1103,15 @@ namespace dxvk {
       return;
     }
 
+    // A thrown weapon the idle holds otherwise than its throw is held as
+    // the throw lets go of it
+    bool regripped = !fist && type == WeaponTypeThrown && regripThrown(root, weapon, form, updateData);
+
+    if (regripped) {
+      drawnWeapon    = readVector(weapon, VrGame::ObjectWorldTranslation);
+      weaponRotation = readRotation(weapon, VrGame::ObjectWorldRotation);
+    }
+
     VrGameTransform rig = held
       ? vrComputeRigHoldingWeapon(weaponRotation, drawnWeapon, m_heldSettle.rotation(), hand)
       : vrComputeRigToHand(m_gameCamera, drawnWeapon, hand);
@@ -1152,6 +1166,9 @@ namespace dxvk {
     // starts from the game's fingers
     writeRotation(root, VrGame::ObjectLocalRotation, rotation);
     writeVector(root, VrGame::NodeLocalTranslate, translation);
+
+    if (regripped)
+      restoreThrownGrip(weapon, updateData);
 
     for (uint32_t i = 0; i < fingerCount; i++)
       writeRotation(fingers[i].bone, VrGame::ObjectLocalRotation, fingers[i].rotate);
@@ -3084,6 +3101,78 @@ namespace dxvk {
     }
 
     m_hasThrowAnimation = vrReadThrowAnimation(player(), form, arming, nodes, m_throwAnimation);
+  }
+
+
+  bool VrWeaponHand::regripThrown(uint8_t* root, uint8_t* weapon, const uint8_t* form, void* updateData) {
+    if (form != m_thrownGripForm) {
+      m_thrownGripForm  = form;
+      m_hasThrownGrip   = false;
+      m_usesThrownGrip  = false;
+      m_thrownGripTries = 0;
+      m_thrownGripWait  = 0;
+    }
+
+    uint8_t* rightHand = findObject(root, VrGame::RightHandNodeName);
+
+    if (!rightHand)
+      return false;
+
+    // Read while the game holds the weapon in its idle pose, compared with
+    // it, before anything is written to it
+    if (!m_hasThrownGrip && m_thrownGripTries < ThrowAnimationTries && m_drawSettle.settled()) {
+      if (m_thrownGripWait) {
+        m_thrownGripWait -= 1;
+      } else {
+        m_thrownGripTries += 1;
+        m_thrownGripWait   = ReloadAnimationRetryDraws;
+        m_hasThrownGrip    = vrReadThrownGrip(player(), form, weapon, rightHand, m_thrownGrip);
+
+        if (m_hasThrownGrip) {
+          m_usesThrownGrip = m_thrownGrip.turn > ThrownRegripTurn;
+
+          const char* model = readField<const char*>(form, VrGame::WeaponModelPath);
+          Logger::info(str::format("VR: '", model ? model : "", "' is held ", m_usesThrownGrip
+            ? "as its attack animation lets go of it" : "in its idle pose, close enough to its throw"));
+        }
+      }
+    }
+
+    uint8_t* parent = field<uint8_t*>(weapon, VrGame::ObjectParent);
+
+    if (!m_usesThrownGrip || !parent)
+      return false;
+
+    // The release's pose in the hand, brought to the weapon node's parent
+    // as the game holds it now
+    ParentFrame hand  = { readRotation(rightHand, VrGame::ObjectWorldRotation),
+                          readVector(rightHand, VrGame::ObjectWorldTranslation),
+                          field<float>(rightHand, VrGame::ObjectWorldScale) };
+    ParentFrame frame = parentFrame(weapon);
+
+    VrGameRotation worldRotation = hand.rotate * m_thrownGrip.weapon.rotate;
+    VrVector3      worldPosition = hand.toWorld(m_thrownGrip.weapon.translate);
+
+    m_gripSavedRotate    = readRotation(weapon, VrGame::ObjectLocalRotation);
+    m_gripSavedTranslate = readVector(weapon, VrGame::NodeLocalTranslate);
+    m_gripSavedScale     = field<float>(weapon, VrGame::ObjectLocalScale);
+
+    writeRotation(weapon, VrGame::ObjectLocalRotation, vrTranspose(frame.rotate) * worldRotation);
+    writeVector(weapon, VrGame::NodeLocalTranslate, frame.toLocal(worldPosition));
+    *reinterpret_cast<float*>(weapon + VrGame::ObjectLocalScale) =
+      m_thrownGrip.weapon.scale * hand.scale / frame.scale;
+    updateObject(weapon, updateData);
+    return true;
+  }
+
+
+  void VrWeaponHand::restoreThrownGrip(uint8_t* weapon, void* updateData) {
+    // The next eye's update starts from the game's pose again
+    writeRotation(weapon, VrGame::ObjectLocalRotation, m_gripSavedRotate);
+    writeVector(weapon, VrGame::NodeLocalTranslate, m_gripSavedTranslate);
+    *reinterpret_cast<float*>(weapon + VrGame::ObjectLocalScale) = m_gripSavedScale;
+
+    poseParts(weapon, m_thrownGrip.parts, updateData);
   }
 
 

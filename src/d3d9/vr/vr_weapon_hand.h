@@ -935,6 +935,20 @@ namespace dxvk {
     uint32_t         m_throwAnimationTries = 0;
     uint32_t         m_throwAnimationWait  = 0;
 
+    // Thrown weapon held as its attack animation lets go of it, see
+    // regripThrown: the weapon it was read for, compared but not
+    // dereferenced, whether the hand holds it so, and the weapon node's
+    // own local transform while it is posed
+    VrThrownGrip     m_thrownGrip;
+    bool             m_hasThrownGrip    = false;
+    bool             m_usesThrownGrip   = false;
+    const uint8_t*   m_thrownGripForm   = nullptr;
+    uint32_t         m_thrownGripTries  = 0;
+    uint32_t         m_thrownGripWait   = 0;
+    VrGameRotation   m_gripSavedRotate;
+    VrVector3        m_gripSavedTranslate;
+    float            m_gripSavedScale   = 1.0f;
+
     // The identity, for a part held at the hand bone itself
     VrGameTransform  m_atHandBone;
 
@@ -1072,6 +1086,25 @@ namespace dxvk {
       const uint8_t*              form,
             int8_t                type,
       const VrThrowAnimationNodes& nodes);
+
+    /**
+     * \brief Holds a thrown weapon as its attack animation lets go of it
+     *
+     * When the game's idle holds the weapon turned far from that, such as
+     * a spear held as a cane that the attack flips in the hand, the
+     * weapon node is posed in the right hand as at the release and its
+     * world transform updated. It keeps that local transform until
+     * restoreThrownGrip, after the model's update.
+     *
+     * \returns Whether the weapon node was posed
+     */
+    bool regripThrown(uint8_t* root, uint8_t* weapon, const uint8_t* form, void* updateData);
+
+    /**
+     * \brief Gives the weapon node its own local transform back and poses
+     *    the parts below it as at the release
+     */
+    void restoreThrownGrip(uint8_t* weapon, void* updateData);
 
     void posePart(uint8_t* part, const VrPartPose& pose, void* updateData);
 
