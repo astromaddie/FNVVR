@@ -30,9 +30,10 @@ namespace dxvk {
    * the hand points at, the game's activation target named by this hand
    * (VrHandActivatePick), by its centre of mass into the hand's centre.
    * Objects too heavy for the game's grab, fixed and keyframed bodies, and
-   * actors (living or dead) are not held. A hand that touches the object
-   * the other hand holds holds it too, with a second spring on the same
-   * body.
+   * living actors are not held. A corpse is held by the limb a hand
+   * touches, its ragdoll's constraints bring the rest; it is not pulled
+   * from a distance. A hand that touches the object the other hand holds
+   * holds it too, with a second spring on the same body.
    *
    * A hand pushes with a fixed force (vrGrabMaxAcceleration), shared by
    * both hands on one body, so heavy objects follow and come more slowly
@@ -46,6 +47,8 @@ namespace dxvk {
    * grab, with the hands the VR frame gave last. While a hand holds an
    * object, the object's collision group is the player's: it neither
    * pushes nor hurts the player and keeps colliding with everything else.
+   * Not a corpse's limb, which collides with the other limbs by its
+   * ragdoll's own group.
    * The object's own group comes back once it was let go and is clear of
    * the player.
    *
@@ -150,6 +153,8 @@ namespace dxvk {
       float     mass     = 0.0f;
       /// Pulled from where the hand points rather than touched
       bool      pulled   = false;
+      /// A limb of a dead actor's ragdoll
+      bool      corpse   = false;
     };
 
     VrPhysicsGrab() = default;

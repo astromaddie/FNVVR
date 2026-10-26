@@ -27,6 +27,7 @@ namespace dxvk {
     using FindReferenceFn    = uint8_t* (__cdecl*)(uint8_t* object);
     using GetPartFn          = uint8_t* (__fastcall*)(uint8_t* object, void* unused);
     using IsActorFn          = bool (__fastcall*)(uint8_t* ref, void* unused);
+    using IsDeadFn           = uint32_t (__fastcall*)(uint8_t* actor, void* unused, uint32_t unknown);
     using ActivateFn         = void (__fastcall*)(uint8_t* body, void* unused);
     using UpdateFilterFn     = void (__fastcall*)(uint8_t* world, void* unused, uint8_t* entity,
                                                   int32_t mode, int32_t collections);
@@ -387,9 +388,10 @@ namespace dxvk {
 
       Logger::info(str::format("VR: The ", handName(hand), best.pulled ? " hand pulls " : " hand holds ",
         hexId(held.refId), " (", best.mass, " kg), ", int32_t(best.distance * 100.0f / VrGameUnitsPerMetre),
-        " cm from the hand's centre", hands > 1 ? ", with the other hand" : "",
+        " cm from the hand's centre", best.corpse ? ", a limb of a corpse" : "",
+        hands > 1 ? ", with the other hand" : "",
         ", up to ", m_gravity > 0.0f ? acceleration / m_gravity : acceleration, m_gravity > 0.0f ? " g" : "",
-        held.grouped ? "" : ", still colliding with the player"));
+        held.grouped || best.corpse ? "" : ", still colliding with the player"));
       m_loggedGrabs++;
     }
 
@@ -468,7 +470,9 @@ namespace dxvk {
     if (!body || body == m_hands[uint32_t(hand) ^ 1u].body)
       return false;
 
-    if (!holdable(body, settingFloat(VrGame::GrabMaxWeightSetting), candidate) || candidate.ref != ref)
+    // A body is dragged by the limb a hand holds, not pulled into it
+    if (!holdable(body, settingFloat(VrGame::GrabMaxWeightSetting), candidate) || candidate.ref != ref
+     || candidate.corpse)
       return false;
 
     candidate.point    = readField<VrVector3>(body, VrGame::BodyCentreOfMass) * (1.0f / havokScale());
@@ -496,7 +500,14 @@ namespace dxvk {
     uint8_t* scene  = object ? readField<uint8_t*>(object, VrGame::CollisionSceneObject) : nullptr;
     uint8_t* ref    = scene ? reinterpret_cast<FindReferenceFn>(VrGame::FindReferenceFor3D)(scene) : nullptr;
 
-    if (!ref || virtualFunction<IsActorFn>(ref, VrGame::RefIsActorSlot)(ref, nullptr))
+    if (!ref)
+      return false;
+
+    // The living are refused, as by the game's grab. A dead actor is held
+    // by the limb touched; its ragdoll's constraints bring the rest.
+    bool actor = virtualFunction<IsActorFn>(ref, VrGame::RefIsActorSlot)(ref, nullptr);
+
+    if (actor && !(virtualFunction<IsDeadFn>(ref, VrGame::ActorIsDeadSlot)(ref, nullptr, 0) & 0xFF))
       return false;
 
     uint8_t* base = reinterpret_cast<GetPartFn>(VrGame::RefGetBaseForm)(ref, nullptr);
@@ -505,9 +516,10 @@ namespace dxvk {
               || base == *reinterpret_cast<uint8_t* const*>(VrGame::AshPileForm2)))
       return false;
 
-    candidate.body = body;
-    candidate.ref  = ref;
-    candidate.mass = 1.0f / inverseMass;
+    candidate.body   = body;
+    candidate.ref    = ref;
+    candidate.mass   = 1.0f / inverseMass;
+    candidate.corpse = actor;
     return true;
   }
 
@@ -594,11 +606,11 @@ namespace dxvk {
     }
 
     held.groupedFilter = (held.filter & VrGame::FilterKeptBits) | (group << VrGame::FilterGroupShift);
-    held.grouped       = group != 0;
+    held.grouped       = group != 0 && !candidate.corpse;
 
     if (held.grouped)
       updateFilter(body, held.groupedFilter);
-    else if (!m_loggedNoGroup) {
+    else if (group == 0 && !m_loggedNoGroup) {
       Logger::warn("VR: The player has no collision group, held objects collide with the player");
       m_loggedNoGroup = true;
     }
