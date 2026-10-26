@@ -973,9 +973,12 @@ namespace dxvk {
     int32_t   before = clipCount(player);
 
     // The weapons reloaded by hand are not reloaded by the control or when
-    // a shot empties the clip: an empty clip clicks
+    // a shot empties the clip: an empty clip clicks. V.A.T.S. plays its
+    // queued shots on its own and waits for the game's reload, so there
+    // the game reloads as it does without the hands.
     bool byHand = g_manualReload && weapon && weapon == g_manualReload->m_handWeapon.load()
-      && (caller == VrGame::ReloadReturnControl || caller == VrGame::ReloadReturnEmptyClip);
+      && (caller == VrGame::ReloadReturnControl || caller == VrGame::ReloadReturnEmptyClip)
+      && !inVats();
 
     if (byHand) {
       Logger::info(str::format("VR: Reload of '", weaponName(weapon), "' from the ", callerName(caller),
