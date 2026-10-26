@@ -61,9 +61,25 @@ namespace dxvk {
     // this far from the player, horizontally
     constexpr float ClearDistance = 0.6f * VrGameUnitsPerMetre;
 
+    // Factor on a held body's velocities at each Havok step. The game's
+    // grab takes 0.75, which a spring can only make up for up to a slow
+    // walk (findings/grab.md §10); this still stops a body held by one
+    // point from swinging within a fraction of a second.
+    constexpr float ObjectDamping = 0.9f;
+
+    // The spring's target is set from the hand of the frame drawn last,
+    // placed for the player of the frame before, and the step after the
+    // target is set moves the player again
+    constexpr float StaleFrames = 2.0f;
+
+    // How often the lead is logged while the player moves
+    constexpr float LeadLogInterval = 5.0f;
+    constexpr float LeadLogMinSpeed = 1.0f * VrGameUnitsPerMetre;
+
     constexpr uint32_t MaxLoggedGrabs  = 50;
     constexpr uint32_t MaxLoggedMisses = 20;
     constexpr uint32_t MaxLoggedLosses = 20;
+    constexpr uint32_t MaxLoggedLeads  = 10;
 
     template<typename T>
     T readField(const uint8_t* base, uintptr_t offset) {
@@ -255,10 +271,36 @@ namespace dxvk {
     if (!(havokScale() > 0.0f))
       return;
 
+    updateLead(player, dt);
+
     for (uint32_t i = 0; i < VrHandCount; i++)
       updateHand(player, VrHand(i), dt);
 
     restoreFilters(player);
+  }
+
+
+  void VrPhysicsGrab::updateLead(uint8_t* player, float dt) {
+    VrVector3 position = readField<VrVector3>(player, VrGame::RefLocation);
+    VrVector3 step = m_hasPlayerPosition ? position - m_playerPosition : VrVector3();
+
+    m_playerPosition    = position;
+    m_hasPlayerPosition = true;
+    m_lead = vrGrabLead(step, StaleFrames + vrGrabSpringLagSteps(m_spring));
+
+    if (!m_hands[0].grab.holding() && !m_hands[1].grab.holding())
+      return;
+
+    m_leadLogTime += dt;
+
+    if (m_loggedLeads < MaxLoggedLeads && m_leadLogTime >= LeadLogInterval
+     && dt > 0.0f && vrLength(step) > LeadLogMinSpeed * dt) {
+      Logger::info(str::format("VR: The player moves at ", vrLength(step) / (dt * VrGameUnitsPerMetre),
+        " m/s, held objects are aimed ", int32_t(vrLength(m_lead) * 100.0f / VrGameUnitsPerMetre),
+        " cm ahead of the hands"));
+      m_leadLogTime = 0.0f;
+      m_loggedLeads++;
+    }
   }
 
 
@@ -331,18 +373,23 @@ namespace dxvk {
 
     Held& held = m_hands[uint32_t(hand)];
 
-    if (!attach(player, held, best))
+    if (!attach(player, hand, best))
       return false;
 
     if (best.pulled)
-      held.grab.pull(pose, best.point);
+      held.grab.pull(pose, best.point, vrGrabPullSpeed(best.mass));
     else
       held.grab.hold(pose, best.point);
 
     if (m_loggedGrabs < MaxLoggedGrabs) {
+      uint32_t hands = handsOn(held.body);
+      float acceleration = vrGrabMaxAcceleration(best.mass, hands, m_fullAcceleration, m_gravity);
+
       Logger::info(str::format("VR: The ", handName(hand), best.pulled ? " hand pulls " : " hand holds ",
         hexId(held.refId), " (", best.mass, " kg), ", int32_t(best.distance * 100.0f / VrGameUnitsPerMetre),
-        " cm from the hand's centre", held.grouped ? "" : ", still colliding with the player"));
+        " cm from the hand's centre", hands > 1 ? ", with the other hand" : "",
+        ", up to ", m_gravity > 0.0f ? acceleration / m_gravity : acceleration, m_gravity > 0.0f ? " g" : "",
+        held.grouped ? "" : ", still colliding with the player"));
       m_loggedGrabs++;
     }
 
@@ -363,9 +410,12 @@ namespace dxvk {
     uint32_t group     = playerFilter >> VrGame::FilterGroupShift;
     uint32_t rayFilter = (group << VrGame::FilterGroupShift) | VrGame::LayerItemPick;
     float maxMass = settingFloat(VrGame::GrabMaxWeightSetting);
-
-    const uint8_t* otherBody = m_hands[uint32_t(hand) ^ 1u].body;
     bool found = false;
+
+    // What the hands hold has the player's group, which the rays skip:
+    // the other hand's object, and one let go of a moment ago, can be
+    // held again
+    showGroupedBodies(true);
 
     for (const VrGrabRay& ray : vrGrabProbeRays(centre, ProbeRadius)) {
       alignas(16) uint8_t pick[VrGame::PickDataSize];
@@ -381,7 +431,7 @@ namespace dxvk {
 
       uint8_t* body = reinterpret_cast<PickGetBodyFn>(VrGame::PickDataGetRigidBody)(pick, nullptr);
 
-      if (!body || body == otherBody)
+      if (!body)
         continue;
 
       Candidate candidate;
@@ -398,6 +448,7 @@ namespace dxvk {
       found = true;
     }
 
+    showGroupedBodies(false);
     return found;
   }
 
@@ -461,9 +512,13 @@ namespace dxvk {
   }
 
 
-  bool VrPhysicsGrab::attach(uint8_t* player, Held& held, const Candidate& candidate) {
+  bool VrPhysicsGrab::attach(uint8_t* player, VrHand hand, const Candidate& candidate) {
+    Held& held        = m_hands[uint32_t(hand)];
+    const Held& other = m_hands[uint32_t(hand) ^ 1u];
+
     uint8_t* body = candidate.body;
     uint8_t* ref  = candidate.ref;
+    bool shared   = other.grab.holding() && other.body == body;
 
     // The game adds its spring to the world of the reference's cell
     uint8_t* world = nullptr;
@@ -471,6 +526,8 @@ namespace dxvk {
 
     if (!hkWorld || hkWorld != havokWorld(body))
       return false;
+
+    readSpring(hkWorld);
 
     float scale = havokScale();
     VrVector3 point = candidate.point * scale;
@@ -483,19 +540,11 @@ namespace dxvk {
     writeField(info, VrGame::SpringInfoBody, body);
     writeVector4(info, VrGame::SpringInfoLocalPoint, held.local);
     writeVector4(info, VrGame::SpringInfoTarget, point);
-    writeField(info, VrGame::SpringInfoDamping,       settingFloat(VrGame::SpringDampingSetting));
-    writeField(info, VrGame::SpringInfoElasticity,    settingFloat(VrGame::SpringElasticitySetting));
-    writeField(info, VrGame::SpringInfoMaxForce,      settingFloat(VrGame::SpringMaxForceSetting));
-    writeField(info, VrGame::SpringInfoObjectDamping, settingFloat(VrGame::SpringObjectDampingSetting));
-
-    if (!m_loggedSpring) {
-      Logger::info(str::format("VR: Hand springs: damping ", readField<float>(info, VrGame::SpringInfoDamping),
-        ", elasticity ", readField<float>(info, VrGame::SpringInfoElasticity),
-        ", maximum force ", readField<float>(info, VrGame::SpringInfoMaxForce),
-        ", object damping ", readField<float>(info, VrGame::SpringInfoObjectDamping),
-        ", Havok scale ", scale));
-      m_loggedSpring = true;
-    }
+    writeField(info, VrGame::SpringInfoDamping,       m_spring.damping);
+    writeField(info, VrGame::SpringInfoElasticity,    m_spring.elasticity);
+    writeField(info, VrGame::SpringInfoMaxForce,
+      vrGrabMaxAcceleration(candidate.mass, shared ? 2 : 1, m_fullAcceleration, m_gravity));
+    writeField(info, VrGame::SpringInfoObjectDamping, m_spring.objectDamping);
 
     void* memory = reinterpret_cast<NiNewFn>(VrGame::NiNew)(VrGame::SpringSize);
 
@@ -517,17 +566,38 @@ namespace dxvk {
     held.body  = body;
     held.ref   = ref;
     held.refId = readField<uint32_t>(ref, VrGame::FormId);
+    held.mass  = candidate.mass;
+
+    // The other hand took the body already, the game saw it taken
+    if (shared) {
+      held.filter        = other.filter;
+      held.groupedFilter = other.groupedFilter;
+      held.grouped       = other.grouped;
+      return true;
+    }
 
     // Held, the body neither pushes nor hurts the player
     uint32_t playerFilter = 0;
     reinterpret_cast<GetFilterFn>(VrGame::GetCollisionFilter)(player, nullptr, &playerFilter);
     uint32_t group = playerFilter >> VrGame::FilterGroupShift;
 
-    held.filter  = readField<uint32_t>(body, VrGame::BodyFilter);
-    held.grouped = group != 0;
+    held.filter = readField<uint32_t>(body, VrGame::BodyFilter);
+
+    // A body let go of a moment ago still has the player's group
+    for (auto r = m_released.begin(); r != m_released.end(); r++) {
+      if (r->body == body) {
+        held.filter = r->filter;
+        releaseSpring(r->spring);
+        m_released.erase(r);
+        break;
+      }
+    }
+
+    held.groupedFilter = (held.filter & VrGame::FilterKeptBits) | (group << VrGame::FilterGroupShift);
+    held.grouped       = group != 0;
 
     if (held.grouped)
-      updateFilter(body, (held.filter & VrGame::FilterKeptBits) | (group << VrGame::FilterGroupShift));
+      updateFilter(body, held.groupedFilter);
     else if (!m_loggedNoGroup) {
       Logger::warn("VR: The player has no collision group, held objects collide with the player");
       m_loggedNoGroup = true;
@@ -543,6 +613,50 @@ namespace dxvk {
   }
 
 
+  void VrPhysicsGrab::readSpring(uint8_t* hkWorld) {
+    m_spring.damping       = settingFloat(VrGame::SpringDampingSetting);
+    m_spring.elasticity    = settingFloat(VrGame::SpringElasticitySetting);
+    m_spring.objectDamping = ObjectDamping;
+    m_fullAcceleration     = settingFloat(VrGame::SpringMaxForceSetting);
+    m_gravity              = vrLength(readField<VrVector3>(hkWorld, VrGame::WorldGravity));
+
+    if (!m_loggedSpring) {
+      Logger::info(str::format("VR: Hand springs: damping ", m_spring.damping,
+        ", elasticity ", m_spring.elasticity,
+        ", maximum force ", m_fullAcceleration,
+        ", object damping ", m_spring.objectDamping,
+        " (the game's ", settingFloat(VrGame::SpringObjectDampingSetting), ")",
+        ", gravity ", m_gravity,
+        ", Havok scale ", havokScale(),
+        ", aimed ", StaleFrames + vrGrabSpringLagSteps(m_spring), " frames of the player's move ahead"));
+      m_loggedSpring = true;
+    }
+  }
+
+
+  void VrPhysicsGrab::showGroupedBodies(bool own) {
+    // Only read by the rays cast before the next step, which sees the
+    // filters as they were
+    for (const Held& held : m_hands) {
+      if (held.grab.holding() && held.grouped)
+        writeField(held.body, VrGame::BodyFilter, own ? held.filter : held.groupedFilter);
+    }
+
+    for (const Released& released : m_released)
+      writeField(released.body, VrGame::BodyFilter, own ? released.filter : released.groupedFilter);
+  }
+
+
+  uint32_t VrPhysicsGrab::handsOn(const uint8_t* body) const {
+    uint32_t hands = 0;
+
+    for (const Held& held : m_hands)
+      hands += held.grab.holding() && held.body == body ? 1 : 0;
+
+    return hands;
+  }
+
+
   bool VrPhysicsGrab::stillHeld(const Held& held) const {
     uint8_t* action = springAction(held.spring);
     uint8_t* world  = action ? havokWorld(action) : nullptr;
@@ -555,11 +669,15 @@ namespace dxvk {
 
 
   bool VrPhysicsGrab::moveTarget(Held& held, const VrGameCameraPose& pose) {
-    VrVector3 target = held.grab.target(pose);
+    VrVector3 target = held.grab.target(pose) + m_lead;
     VrVector3 point  = bodyPointToWorld(held.body, held.local) * (1.0f / havokScale());
 
     if (vrLength(point - target) > MaxStretch)
       return false;
+
+    // A second hand on the body, or one let go, changes its strength
+    writeField(springAction(held.spring), VrGame::SpringActionMaxForce,
+      vrGrabMaxAcceleration(held.mass, handsOn(held.body), m_fullAcceleration, m_gravity));
 
     reinterpret_cast<SpringSetTargetFn>(VrGame::SpringSetTarget)(held.spring, nullptr, &target);
     return true;
@@ -570,6 +688,9 @@ namespace dxvk {
     if (!held.spring)
       return;
 
+    const Held& other = &held == &m_hands[0] ? m_hands[1] : m_hands[0];
+    bool shared = other.grab.holding() && other.body == held.body;
+
     uint8_t* action = springAction(held.spring);
 
     if (action && havokWorld(action)) {
@@ -578,6 +699,17 @@ namespace dxvk {
       // So that it does not sleep where it was let go
       if (havokWorld(held.body))
         reinterpret_cast<ActivateFn>(VrGame::EntityActivate)(held.body, nullptr);
+    }
+
+    // Still held by the other hand, whose spring keeps the body alive
+    if (shared) {
+      releaseSpring(held.spring);
+      held.body    = nullptr;
+      held.ref     = nullptr;
+      held.refId   = 0;
+      held.mass    = 0.0f;
+      held.grouped = false;
+      return;
     }
 
     if (reinterpret_cast<FormByIdFn>(VrGame::FormById)(held.refId) == held.ref) {
@@ -591,6 +723,7 @@ namespace dxvk {
       released.spring = held.spring;
       released.body   = held.body;
       released.filter = held.filter;
+      released.groupedFilter = held.groupedFilter;
       m_released.push_back(released);
       held.spring = nullptr;
     } else {
@@ -600,6 +733,7 @@ namespace dxvk {
     held.body    = nullptr;
     held.ref     = nullptr;
     held.refId   = 0;
+    held.mass    = 0.0f;
     held.grouped = false;
   }
 

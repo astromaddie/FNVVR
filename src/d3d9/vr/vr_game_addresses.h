@@ -2266,6 +2266,16 @@ namespace dxvk {
     constexpr uintptr_t SpringConstruct            = 0x004B5040;
     constexpr uint8_t   SpringConstructPrologue[]  = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0xF8, 0xAA, 0xF1, 0x00, 0x64, 0xA1 };
     constexpr uintptr_t SpringAssign               = 0x0066B0D0;
+
+    /**
+     * The hkpMouseSpringAction (a bhkMouseSpringAction's Havok object):
+     * applyAction (0x00CBB1E0, vtable 0x010C8E94) clamps each step's
+     * impulse to this float times the body's mass and the step's time.
+     * The hkpWorld's gravity, an hkVector4 in Havok units per second
+     * squared.
+     */
+    constexpr uintptr_t SpringActionMaxForce       = 0x48;
+    constexpr uintptr_t WorldGravity               = 0x10;
     constexpr uintptr_t SpringAddSlot              = 0x9C;
     constexpr uintptr_t SpringRemoveSlot           = 0xA0;
     constexpr uintptr_t SpringSetTarget            = 0x008C5D90;

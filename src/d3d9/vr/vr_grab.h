@@ -53,6 +53,73 @@ namespace dxvk {
           float                 distance);
 
   /**
+   * \brief Constants of a hand's mouse spring (hkpMouseSpringAction)
+   */
+  struct VrGrabSpringConstants {
+    /// Share of the held point's velocity the spring takes off each step
+    float damping       = 0.0f;
+    /// Share of the distance to the target the spring closes each step
+    float elasticity    = 0.0f;
+    /// Factor on the body's own velocities each step
+    float objectDamping = 0.0f;
+  };
+
+  /**
+   * \brief How far a mouse spring's point trails behind a target moving
+   *    at a steady speed, in steps of the target's motion
+   *
+   * Each Havok step, hkpMouseSpringAction::applyAction scales the body's
+   * velocities by the object damping, then changes the point's velocity
+   * by its elasticity times the distance to the target per step, less its
+   * damping times the point's velocity (findings/grab.md §10). At a steady
+   * speed both cancel only with the point this many steps behind.
+   */
+  float vrGrabSpringLagSteps(const VrGrabSpringConstants& spring);
+
+  /**
+   * \brief Heaviest body that hands move as fast as the game's grab moves
+   *    any body, per hand, in kilograms
+   */
+  constexpr float VrGrabLightMass = 10.0f;
+
+  /**
+   * \brief Strongest acceleration hands may give a held body
+   *
+   * The game's spring accelerates every body alike: its maximum force is
+   * relative to the body's mass. A hand instead pushes with a fixed force,
+   * enough for the game's acceleration up to VrGrabLightMass and shared by
+   * the hands holding the same body, so heavier bodies follow more slowly.
+   * It stays above gravity with a margin, so that a body the hand lifted
+   * does not slip out of it.
+   *
+   * \param [in] mass The body's mass, in kilograms
+   * \param [in] hands Hands holding the body
+   * \param [in] fullAcceleration The game's maximum relative force
+   * \param [in] gravity Strength of gravity, in the same unit
+   */
+  float vrGrabMaxAcceleration(
+          float                 mass,
+          uint32_t              hands,
+          float                 fullAcceleration,
+          float                 gravity);
+
+  /**
+   * \brief How far ahead of the hand a held point is aimed while the
+   *    player moves
+   *
+   * The spring's target is set from the hand of the last frame drawn,
+   * before the step that moves the player, and the spring trails behind a
+   * moving target: without a lead, a held object falls behind the hand
+   * while the player walks. The lead is the player's last move times the
+   * frames the point trails, limited in length; a move longer than a walk
+   * can make in a frame (a teleport, a load door) gives none.
+   *
+   * \param [in] playerStep The player's move in the last frame, in game units
+   * \param [in] frames Frames of the player's motion the point trails
+   */
+  VrVector3 vrGrabLead(const VrVector3& playerStep, float frames);
+
+  /**
    * \brief What a hand does with its grip in a frame
    */
   struct VrGrabHandInput {
@@ -88,8 +155,9 @@ namespace dxvk {
    *
    * The held point keeps its place in the hand's frame, so that the object
    * follows the hand's moves and turns. A point pulled from a distance
-   * comes to the hand's centre at a set speed, along the line it had from
-   * the hand in the hand's frame, and is then held there.
+   * comes to the hand's centre at a speed set by its weight (see
+   * vrGrabPullSpeed), along the line it had from the hand in the hand's
+   * frame, and is then held there.
    */
   class VrGrabHand {
 
@@ -98,7 +166,8 @@ namespace dxvk {
     /// How long a press keeps looking for something to hold, in seconds
     constexpr static float GrabWindow = 0.25f;
 
-    /// How fast a pulled point comes to the hand, in game units per second
+    /// How fast a pulled point of a light body comes to the hand, in game
+    /// units per second
     constexpr static float PullSpeed = 4.0f * VrGameUnitsPerMetre;
 
     /**
@@ -123,8 +192,9 @@ namespace dxvk {
      *
      * \param [in] hand The hand in the game world
      * \param [in] point Point pulled, in the game world
+     * \param [in] speed How fast it comes, in game units per second
      */
-    void pull(const VrGameCameraPose& hand, const VrVector3& point);
+    void pull(const VrGameCameraPose& hand, const VrVector3& point, float speed);
 
     /**
      * \brief Stops holding
@@ -156,10 +226,22 @@ namespace dxvk {
     bool      m_gripDown = false;
     bool      m_pulled   = false;
     float     m_window   = 0.0f;
+    float     m_pullSpeed = 0.0f;
     VrVector3 m_offset;
 
     void advancePull(float dt);
 
   };
+
+  /**
+   * \brief How fast a body is pulled to the hand
+   *
+   * VrGrabHand::PullSpeed up to VrGrabLightMass, slower for heavier bodies
+   * (with the square root of the mass ratio, down to a third or so).
+   *
+   * \param [in] mass The body's mass, in kilograms
+   * \returns Game units per second
+   */
+  float vrGrabPullSpeed(float mass);
 
 }

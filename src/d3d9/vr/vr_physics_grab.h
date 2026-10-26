@@ -30,7 +30,16 @@ namespace dxvk {
    * the hand points at, the game's activation target named by this hand
    * (VrHandActivatePick), by its centre of mass into the hand's centre.
    * Objects too heavy for the game's grab, fixed and keyframed bodies, and
-   * actors (living or dead) are not held.
+   * actors (living or dead) are not held. A hand that touches the object
+   * the other hand holds holds it too, with a second spring on the same
+   * body.
+   *
+   * A hand pushes with a fixed force (vrGrabMaxAcceleration), shared by
+   * both hands on one body, so heavy objects follow and come more slowly
+   * than light ones. The springs keep less of the game's damping, which
+   * takes a quarter of the held body's speed at every step and kept it
+   * from following a walking player, and are aimed ahead of the hands by
+   * the player's move (vrGrabLead).
    *
    * Havok steps on another thread while the frame is drawn, so the springs
    * are worked in the game's update of the player, after the game's own
@@ -103,6 +112,7 @@ namespace dxvk {
      */
     struct Held {
       VrGrabHand grab;
+      float      mass   = 0.0f;
       /// NiPointer<bhkMouseSpringAction>, holds a reference
       void*      spring = nullptr;
       /// hkpRigidBody, kept alive by the spring
@@ -112,8 +122,10 @@ namespace dxvk {
       uint32_t   refId  = 0;
       /// Point held, in the body's frame, Havok units
       VrVector3  local;
-      /// The body's own collision filter, and whether it was changed
-      uint32_t   filter = 0;
+      /// The body's own collision filter, the one it has while held, and
+      /// whether it was changed
+      uint32_t   filter  = 0;
+      uint32_t   groupedFilter = 0;
       bool       grouped = false;
     };
 
@@ -124,6 +136,7 @@ namespace dxvk {
       void*    spring = nullptr;
       uint8_t* body   = nullptr;
       uint32_t filter = 0;
+      uint32_t groupedFilter = 0;
     };
 
     /**
@@ -146,13 +159,24 @@ namespace dxvk {
     std::vector<Released>              m_released;
     VrPhysicsGrabEvents                m_events;
 
+    VrGrabSpringConstants m_spring;
+    float     m_fullAcceleration = 0.0f;
+    float     m_gravity          = 0.0f;
+    VrVector3 m_playerPosition;
+    VrVector3 m_lead;
+    bool      m_hasPlayerPosition = false;
+    float     m_leadLogTime       = 0.0f;
+
     uint32_t m_loggedGrabs   = 0;
     uint32_t m_loggedMisses  = 0;
     uint32_t m_loggedLosses  = 0;
+    uint32_t m_loggedLeads   = 0;
     bool     m_loggedSpring  = false;
     bool     m_loggedNoGroup = false;
 
     void update(uint8_t* player, float dt);
+
+    void updateLead(uint8_t* player, float dt);
 
     void updateHand(uint8_t* player, VrHand hand, float dt);
 
@@ -164,7 +188,13 @@ namespace dxvk {
 
     bool holdable(uint8_t* body, float maxMass, Candidate& candidate) const;
 
-    bool attach(uint8_t* player, Held& held, const Candidate& candidate);
+    bool attach(uint8_t* player, VrHand hand, const Candidate& candidate);
+
+    void readSpring(uint8_t* hkWorld);
+
+    void showGroupedBodies(bool own);
+
+    uint32_t handsOn(const uint8_t* body) const;
 
     bool stillHeld(const Held& held) const;
 

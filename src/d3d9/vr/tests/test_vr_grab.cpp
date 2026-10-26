@@ -177,7 +177,7 @@ TEST_CASE(grab_pulled_point_comes_to_the_hand_and_stays) {
 
   float distance = 2.0f * VrGameUnitsPerMetre;
   grab.update(input(&hand, true));
-  grab.pull(hand, { 0.0f, distance, 0.0f });
+  grab.pull(hand, { 0.0f, distance, 0.0f }, VrGrabHand::PullSpeed);
   CHECK(grab.pulling());
   CHECK_NEAR(grab.target(hand).y, distance, 1e-3f);
 
@@ -208,7 +208,7 @@ TEST_CASE(grab_pulled_point_follows_the_hand_on_its_way) {
   VrGrabHand grab;
 
   grab.update(input(&hand, true));
-  grab.pull(hand, { 0.0f, 100.0f, 0.0f });
+  grab.pull(hand, { 0.0f, 100.0f, 0.0f }, VrGrabHand::PullSpeed);
   grab.update(input(&hand, true));
 
   // Turned to the east, the point is in front of the hand there
@@ -221,4 +221,96 @@ TEST_CASE(grab_pulled_point_follows_the_hand_on_its_way) {
   CHECK(grab.update(input(&turned, false)) == VrGrabRequest::Release);
   grab.drop();
   CHECK(!grab.pulling());
+}
+
+
+TEST_CASE(grab_heavy_body_is_pulled_more_slowly) {
+  CHECK_NEAR(vrGrabPullSpeed(0.5f), VrGrabHand::PullSpeed, 1e-3f);
+  CHECK_NEAR(vrGrabPullSpeed(VrGrabLightMass), VrGrabHand::PullSpeed, 1e-3f);
+  CHECK(vrGrabPullSpeed(20.0f) < VrGrabHand::PullSpeed);
+  CHECK(vrGrabPullSpeed(48.0f) < vrGrabPullSpeed(20.0f));
+  // Never to a crawl
+  CHECK(vrGrabPullSpeed(1000.0f) >= 0.3f * VrGrabHand::PullSpeed);
+
+  // A slower pull takes longer to reach the hand
+  VrGameCameraPose hand = northHand({ 0.0f, 0.0f, 0.0f });
+  VrGrabHand grab;
+  grab.update(input(&hand, true));
+  grab.pull(hand, { 0.0f, 100.0f, 0.0f }, vrGrabPullSpeed(48.0f));
+  grab.update(input(&hand, true));
+  CHECK_NEAR(grab.target(hand).y, 100.0f - vrGrabPullSpeed(48.0f) * Frame, 1e-2f);
+}
+
+
+TEST_CASE(grab_hand_force_is_shared_by_the_weight) {
+  constexpr float Full    = 750.0f;
+  constexpr float Gravity = 70.0f;
+
+  // Light bodies follow as with the game's grab
+  CHECK_NEAR(vrGrabMaxAcceleration(2.0f, 1, Full, Gravity), Full, 1e-3f);
+  CHECK_NEAR(vrGrabMaxAcceleration(VrGrabLightMass, 1, Full, Gravity), Full, 1e-3f);
+
+  // Heavier ones less, two hands more than one
+  float one = vrGrabMaxAcceleration(30.0f, 1, Full, Gravity);
+  float two = vrGrabMaxAcceleration(30.0f, 2, Full, Gravity);
+  CHECK(one < Full);
+  CHECK(two > one);
+  CHECK(vrGrabMaxAcceleration(48.0f, 1, Full, Gravity) < one);
+
+  // Always above gravity, never above the game's
+  CHECK(vrGrabMaxAcceleration(1000.0f, 1, Full, Gravity) > Gravity);
+  CHECK(vrGrabMaxAcceleration(1000.0f, 1, 50.0f, Gravity) <= 50.0f);
+}
+
+
+TEST_CASE(grab_spring_lag_matches_its_steady_state) {
+  VrGrabSpringConstants spring;
+  spring.damping       = 0.5f;
+  spring.elasticity    = 0.2f;
+  spring.objectDamping = 0.9f;
+
+  // Step the spring's velocity rule on a target moving at a steady speed
+  constexpr float Dt    = 1.0f / 72.0f;
+  constexpr float Speed = 30.0f;
+
+  float target   = 0.0f;
+  float point    = 0.0f;
+  float velocity = 0.0f;
+
+  for (uint32_t i = 0; i < 2000; i++) {
+    target += Speed * Dt;
+    velocity *= spring.objectDamping;
+    velocity += -spring.damping * velocity + spring.elasticity / Dt * (target - point);
+    point += velocity * Dt;
+  }
+
+  // The target moved again since the last step
+  CHECK_NEAR((target + Speed * Dt - point) / (Speed * Dt), vrGrabSpringLagSteps(spring), 1e-2f);
+
+  // The game's damping takes more of the speed, the point trails further
+  VrGrabSpringConstants game = spring;
+  game.objectDamping = 0.75f;
+  CHECK(vrGrabSpringLagSteps(game) > vrGrabSpringLagSteps(spring));
+}
+
+
+TEST_CASE(grab_lead_follows_the_player_but_not_a_teleport) {
+  VrVector3 step = { 3.0f, 0.0f, 0.0f };
+
+  VrVector3 lead = vrGrabLead(step, 4.0f);
+  CHECK_NEAR(lead.x, 12.0f, 1e-4f);
+  CHECK_NEAR(lead.y, 0.0f, 1e-4f);
+
+  // Standing still, or no frames to make up
+  CHECK_NEAR(vrLength(vrGrabLead(VrVector3(), 4.0f)), 0.0f, 1e-6f);
+  CHECK_NEAR(vrLength(vrGrabLead(step, 0.0f)), 0.0f, 1e-6f);
+
+  // Limited in length
+  VrVector3 sprint = { 0.0f, 0.2f * VrGameUnitsPerMetre, 0.0f };
+  CHECK(vrLength(vrGrabLead(sprint, 5.0f)) < 0.61f * VrGameUnitsPerMetre);
+  CHECK(vrGrabLead(sprint, 5.0f).y > 0.0f);
+
+  // Moved by a load door or a teleport
+  VrVector3 jump = { 0.0f, 5.0f * VrGameUnitsPerMetre, 0.0f };
+  CHECK_NEAR(vrLength(vrGrabLead(jump, 4.0f)), 0.0f, 1e-6f);
 }

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 
 #include "vr_grab.h"
@@ -40,6 +41,62 @@ namespace dxvk {
   }
 
 
+  float vrGrabSpringLagSteps(const VrGrabSpringConstants& spring) {
+    if (!(spring.elasticity > 0.0f))
+      return 0.0f;
+
+    return (1.0f - spring.objectDamping * (1.0f - spring.damping)) / spring.elasticity;
+  }
+
+
+  float vrGrabMaxAcceleration(
+          float                 mass,
+          uint32_t              hands,
+          float                 fullAcceleration,
+          float                 gravity) {
+    // Enough to lift the body and still move it a little
+    constexpr float GravityMargin = 1.5f;
+
+    float minimum = std::min(GravityMargin * gravity, fullAcceleration);
+
+    if (!(mass > 0.0f))
+      return fullAcceleration;
+
+    float acceleration = fullAcceleration * float(hands) * VrGrabLightMass / mass;
+    return std::max(std::min(acceleration, fullAcceleration), minimum);
+  }
+
+
+  VrVector3 vrGrabLead(const VrVector3& playerStep, float frames) {
+    // Faster than any run: the player was moved, not walking
+    constexpr float MaxStep = 1.0f * VrGameUnitsPerMetre;
+    constexpr float MaxLead = 0.6f * VrGameUnitsPerMetre;
+
+    float step = vrLength(playerStep);
+
+    if (step > MaxStep || !(frames > 0.0f))
+      return VrVector3();
+
+    VrVector3 lead = playerStep * frames;
+    float length = step * frames;
+
+    if (length > MaxLead)
+      lead = lead * (MaxLead / length);
+
+    return lead;
+  }
+
+
+  float vrGrabPullSpeed(float mass) {
+    constexpr float MinScale = 0.35f;
+
+    if (!(mass > VrGrabLightMass))
+      return VrGrabHand::PullSpeed;
+
+    return VrGrabHand::PullSpeed * std::max(std::sqrt(VrGrabLightMass / mass), MinScale);
+  }
+
+
   VrGrabRequest VrGrabHand::update(const VrGrabHandInput& input) {
     bool pressed = input.grip && !m_gripDown;
     m_gripDown = input.grip;
@@ -78,9 +135,10 @@ namespace dxvk {
   }
 
 
-  void VrGrabHand::pull(const VrGameCameraPose& hand, const VrVector3& point) {
+  void VrGrabHand::pull(const VrGameCameraPose& hand, const VrVector3& point, float speed) {
     hold(hand, point);
-    m_pulled = true;
+    m_pulled    = true;
+    m_pullSpeed = speed;
   }
 
 
@@ -93,7 +151,7 @@ namespace dxvk {
 
   void VrGrabHand::advancePull(float dt) {
     float distance = vrLength(m_offset);
-    float step     = PullSpeed * dt;
+    float step     = m_pullSpeed * dt;
 
     if (distance <= step) {
       m_offset = VrVector3();
