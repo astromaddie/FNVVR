@@ -509,6 +509,7 @@ namespace dxvk {
       hideHud();
       hideHandHud();
       m_powerCharge.reset();
+      m_powerRefusal.reset();
 
       if (m_chargeRing)
         m_chargeRing->hide();
@@ -1267,6 +1268,7 @@ namespace dxvk {
     if (state != VrGameStateKind::InGame || !m_hasReference || !right.isActive || !input.isHeadTracked) {
       m_meleeSwing->update(nullptr, nullptr, false, false, m_gameCameraPose, m_gameCameraPose, dt);
       m_powerCharge.reset();
+      m_powerRefusal.reset();
       m_chargeRing->hide();
       return;
     }
@@ -1363,7 +1365,8 @@ namespace dxvk {
     // automatic ones and fires the others
     bool swung = m_meleeSwing->swingsWithHand();
     bool held  = swung && input.hasActions && input.actions.isPressed(VrAction::Attack);
-    bool allowed = held && m_powerRules && m_powerRules->allowed(cost);
+    bool lacksActionPoints = false;
+    bool allowed = held && m_powerRules && m_powerRules->allowed(cost, lacksActionPoints);
     bool wasCharged = m_powerCharge.charged();
 
     if (!m_powerRules) {
@@ -1372,6 +1375,12 @@ namespace dxvk {
     }
 
     m_powerCharge.update(held, allowed, m_powerRules->frameTime(), m_powerRules->holdTime());
+
+    if (m_powerRefusal.update(held, lacksActionPoints, m_powerRules->frameTime(), m_powerRules->holdTime())) {
+      Logger::info(str::format("VR: A power attack for ", cost, " action points was refused, the player has ",
+        m_powerRules->actionPoints()));
+      m_powerRules->tellLowActionPoints();
+    }
 
     if (m_powerCharge.charged() && !wasCharged)
       m_backend.applyHaptic(VrHand::Right, ChargedHaptic, ChargedHapticDuration);

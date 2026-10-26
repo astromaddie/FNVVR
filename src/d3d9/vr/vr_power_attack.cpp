@@ -80,6 +80,32 @@ namespace dxvk {
   }
 
 
+  void VrPowerRefusal::reset() {
+    *this = VrPowerRefusal();
+  }
+
+
+  bool VrPowerRefusal::update(bool held, bool lacksActionPoints, float dt, float holdTime) {
+    if (!held) {
+      reset();
+      return false;
+    }
+
+    if (m_refused && lacksActionPoints)
+      m_time += std::max(dt, 0.0f);
+    else
+      m_time = 0.0f;
+
+    m_refused = lacksActionPoints;
+
+    if (m_told || !m_refused || m_time <= holdTime)
+      return false;
+
+    m_told = true;
+    return true;
+  }
+
+
   void vrPaintChargeRing(VrPaintList& list, float fill, bool charged) {
     list.clear();
 

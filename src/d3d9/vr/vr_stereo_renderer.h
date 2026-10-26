@@ -357,6 +357,7 @@ namespace dxvk {
     bool                                m_ammoInHand     = false;
     bool                                m_ammoButtonDown = false;
     VrPowerCharge       m_powerCharge;
+    VrPowerRefusal      m_powerRefusal;
     uint32_t            m_loggedPowerHits = 0;
 
     // The game's console, typed in on a terminal with the lasers

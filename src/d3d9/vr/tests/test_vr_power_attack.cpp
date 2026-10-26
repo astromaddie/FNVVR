@@ -111,6 +111,44 @@ TEST_CASE(power_charge_does_not_build_while_not_allowed) {
 }
 
 
+TEST_CASE(power_refusal_tells_once_per_hold) {
+  VrPowerRefusal refusal;
+
+  // The press frame adds nothing, then the time of a charge must pass
+  CHECK(!refusal.update(true, true, 1.0f, HoldTime));
+  CHECK(!refusal.update(true, true, 0.2f, HoldTime));
+  CHECK(refusal.update(true, true, 0.11f, HoldTime));
+
+  // Told once while it stays held
+  CHECK(!refusal.update(true, true, 1.0f, HoldTime));
+
+  // Let go and held again: told again after a charge's time
+  CHECK(!refusal.update(false, true, 0.1f, HoldTime));
+  CHECK(!refusal.update(true, true, 0.0f, HoldTime));
+  CHECK(!refusal.update(true, true, 0.2f, HoldTime));
+  CHECK(refusal.update(true, true, 0.2f, HoldTime));
+}
+
+
+TEST_CASE(power_refusal_needs_a_whole_charge_short_of_action_points) {
+  VrPowerRefusal refusal;
+
+  // Enough action points: nothing to tell, however long
+  CHECK(!refusal.update(true, false, 0.0f, HoldTime));
+  CHECK(!refusal.update(true, false, 1.0f, HoldTime));
+
+  // Short of them from now on: starts from zero
+  CHECK(!refusal.update(true, true, 1.0f, HoldTime));
+  CHECK(!refusal.update(true, true, 0.2f, HoldTime));
+
+  // Enough again for a frame: the time starts over
+  CHECK(!refusal.update(true, false, 0.2f, HoldTime));
+  CHECK(!refusal.update(true, true, 0.2f, HoldTime));
+  CHECK(!refusal.update(true, true, 0.2f, HoldTime));
+  CHECK(refusal.update(true, true, 0.2f, HoldTime));
+}
+
+
 TEST_CASE(power_ring_fills_clockwise_from_the_top) {
   constexpr float Size = 64.0f;
   VrPaintList list(64, 64);

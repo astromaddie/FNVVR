@@ -1805,6 +1805,21 @@ namespace dxvk {
     constexpr uint32_t  HudMessageSad          = 2;
 
     /**
+     * What V.A.T.S. shows by its action point meter when the player has
+     * too few of them, see findings/melee.md §12.5: the sActionPointsShort
+     * label ("AP") and the sVATSMessageLowAP text beside it, both read by
+     * VATSMenu::Create at the checked sites (string value at SettingValue).
+     * The inventory plays UIVATSInsufficientAP when action points or a
+     * hotkey are refused.
+     */
+    constexpr uintptr_t ActionPointsShortSetting  = 0x011D3E8C;
+    constexpr uintptr_t ActionPointsShortReadSite = 0x007EA40A;
+    constexpr uint8_t   ActionPointsShortRead[]   = { 0xB9, 0x8C, 0x3E, 0x1D, 0x01, 0xE8, 0xDC, 0x99, 0xC1, 0xFF };
+    constexpr uintptr_t LowApMessageSetting       = 0x011D1D90;
+    constexpr uintptr_t LowApMessageReadSite      = 0x007EA497;
+    constexpr uint8_t   LowApMessageRead[]        = { 0xB9, 0x90, 0x1D, 0x1D, 0x01, 0xE8, 0x4F, 0x99, 0xC1, 0xFF };
+
+    /**
      * Weapon form: the data of its name (TESFullName at +0x30) and of its
      * model's path (TESModel at +0x3C). Its clip size is WeaponClipRounds.
      */
