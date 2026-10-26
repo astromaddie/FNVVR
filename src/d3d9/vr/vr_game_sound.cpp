@@ -81,6 +81,18 @@ namespace dxvk {
   }
 
 
+  bool vrPlayInterfaceSound(const char* editorId) {
+    const uint8_t* sound = vrFindGameSound(editorId);
+
+    if (!sound)
+      return false;
+
+    vrPlayGameSound(sound, VrGame::SoundFlag2D | VrGame::SoundFlagSystem | VrGame::SoundFlagOneShot,
+      VrVector3(), 1.0f, 1.0f);
+    return true;
+  }
+
+
   bool vrGameSoundLoops(const uint8_t* sound) {
     if (!sound)
       return false;

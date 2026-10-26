@@ -7,6 +7,7 @@
 #include "vr_game_addresses.h"
 #include "vr_game_ammo.h"
 #include "vr_game_memory.h"
+#include "vr_game_sound.h"
 #include "vr_manual_reload.h"
 #include "vr_melee.h"
 #include "vr_sound_keys.h"
@@ -65,6 +66,10 @@ namespace dxvk {
     // How long the message that no rounds are left is shown, in seconds,
     // as V.A.T.S. shows it; none is queued again meanwhile
     constexpr float NoAmmoMessageTime = 2.0f;
+
+    // The sound the game plays when a lock or a terminal needs more skill
+    // than the player has (LockPickMenu::Create, BGSTerminal::Activate)
+    constexpr const char* NoAmmoSound = "UIPopUpMessageGeneral";
 
     VrManualReload* g_manualReload = nullptr;
 
@@ -694,7 +699,17 @@ namespace dxvk {
 
 
   void VrManualReload::showNoAmmo() {
-    if (!m_showsNoAmmo || m_noAmmoTime > 0.0f)
+    if (m_noAmmoTime > 0.0f)
+      return;
+
+    m_noAmmoTime = NoAmmoMessageTime;
+
+    if (!vrPlayInterfaceSound(NoAmmoSound) && !m_loggedNoAmmoSound) {
+      Logger::warn(str::format("VR: The sound '", NoAmmoSound, "' was not found"));
+      m_loggedNoAmmoSound = true;
+    }
+
+    if (!m_showsNoAmmo)
       return;
 
     auto setting = reinterpret_cast<const uint8_t*>(VrGame::NoAmmoMessageSetting);
@@ -705,7 +720,6 @@ namespace dxvk {
 
     reinterpret_cast<ShowHudMessageFn>(VrGame::ShowHudMessage)(text, VrGame::HudMessageSad,
       nullptr, nullptr, NoAmmoMessageTime, 0);
-    m_noAmmoTime = NoAmmoMessageTime;
   }
 
 

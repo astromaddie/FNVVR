@@ -404,6 +404,7 @@ namespace dxvk {
     // shown has left, in seconds
     bool            m_showsNoAmmo = false;
     float           m_noAmmoTime  = 0.0f;
+    bool            m_loggedNoAmmoSound = false;
 
     // Ammunition of the magazine or rounds taken behind the back
     // (TESAmmo*), compared but not dereferenced
