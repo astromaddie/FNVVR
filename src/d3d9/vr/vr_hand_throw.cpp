@@ -241,8 +241,11 @@ namespace dxvk {
     if (pressed && !placed)
       m_tracker.reset();
 
+    // The throw follows the controller's own motion: the model's centre can
+    // sit a hand's width from it, as a spear held for its throw does, and
+    // the wrist's flick at the release would turn its motion up or down
     VrVector3 centre = vrPointFromHand(*input.hand, held->centre);
-    m_tracker.add(inBody(input.body, centre), input.dt);
+    m_tracker.add(inBody(input.body, input.hand->position), input.dt);
     m_holding = input.attack;
 
     if (!acts || !ready)
@@ -272,6 +275,7 @@ namespace dxvk {
       ? -vrComputeAimAngles(vrPointFromHand(input.body, released) - input.body.position).pitch
       : 0.0f;
     pending.player    = readVector(player(), VrGame::RefLocation);
+    pending.centre    = held->centre;
     pending.release.origin = centre;
 
     if (placed) {
@@ -417,7 +421,9 @@ namespace dxvk {
     Logger::info(str::format("VR: Threw '", weaponName(pending.form), "', hand at ", pending.handSpeed, " m/s, ",
       -angles.pitch * DegreesPerRadian, " degrees up (when the trigger let go ", pending.releasedSpeed, " m/s, ",
       pending.releasedPitch * DegreesPerRadian, " degrees up): ", speeds.given / VrGameUnitsPerMetre,
-      " m/s (game's full throw ", speeds.full / VrGameUnitsPerMetre, " m/s)",
+      " m/s (game's full throw ", speeds.full / VrGameUnitsPerMetre, " m/s), from its centre ",
+      pending.centre.x * CentimetresPerUnit, " cm ahead, ", pending.centre.y * CentimetresPerUnit, " cm above, ",
+      pending.centre.z * CentimetresPerUnit, " cm right of the controller",
       m_firesInUpdate ? ", in the player's update" : ", while the frame is drawn",
       projectile ? "" : ", no projectile was launched"));
 
