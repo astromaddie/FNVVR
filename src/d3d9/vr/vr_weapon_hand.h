@@ -128,9 +128,10 @@ namespace dxvk {
    *   drawn in the hand instead, along the barrel as it is drawn, with the
    *   game's spread kept. The game's auto-aim, which would turn them
    *   towards the point under the centre of its camera, the head, leaves
-   *   them alone. A flame stays on the shooter's projectile node every
-   *   frame: while FlameProjectile places it, that node is put at the
-   *   muzzle drawn in the hand.
+   *   them alone. A flame, or a laser beam while it fades, stays on the
+   *   shooter's projectile node every frame: while FlameProjectile or
+   *   BeamProjectile places it, that node is put at the muzzle drawn in
+   *   the hand.
    * - AnimData::MorphOrBlendToSequence starts the game's animations. When
    *   the other hand supports a pistol, the game's aim animation starts
    *   without blending from the previous pose, so the left hand is on the
@@ -732,7 +733,7 @@ namespace dxvk {
     VrGameRotation   m_muzzleRotation;
     VrVector3        m_aimDirection;
     bool             m_hasAim = false;
-    bool             m_loggedFlame = false;
+    bool             m_loggedFollow = false;
 
     // Melee weapon held still in the hand, see placeModel: the weapon node
     // and form it was drawn with, compared but not dereferenced, and its
@@ -1025,6 +1026,15 @@ namespace dxvk {
             void*                 unused,
             float                 dt);
 
+    static void __fastcall beamProcess3DHook(
+            uint8_t*              projectile,
+            void*                 unused);
+
+    static void __fastcall beamUpdateHook(
+            uint8_t*              projectile,
+            void*                 unused,
+            float                 dt);
+
     /**
      * \brief Where the player's shots start, aimed with the hand
      *
@@ -1038,8 +1048,8 @@ namespace dxvk {
             VrVector3&            muzzle);
 
     /**
-     * \brief Calls a FlameProjectile function with the shooter's
-     *    projectile node at the muzzle drawn in the hand
+     * \brief Calls a FlameProjectile or BeamProjectile function with
+     *    the shooter's projectile node at the muzzle drawn in the hand
      *
      * The node is restored afterwards: the game animates the first-person
      * model from it.

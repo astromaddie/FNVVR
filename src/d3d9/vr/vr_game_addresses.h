@@ -277,6 +277,19 @@ namespace dxvk {
     constexpr uintptr_t FlameProcess3D       = 0x009B3320;
     constexpr uintptr_t FlameUpdateSlot      = 0x0108F604;
     constexpr uintptr_t FlameUpdate          = 0x009B34C0;
+
+    /**
+     * BeamProjectile vtable entries (table 0x0108C3C4, same slots as the
+     * flame's), both __thiscall: Process3D (no argument) stores the beam's
+     * rotation relative to the shooter's projectile node in kFollowOffset,
+     * and UpdateProjectile (frame time) puts the beam at that node's world
+     * translate, and for the player turned with it, every frame until it
+     * fades, at most 5 s. Lasers are beams. See findings/weapon.md §10.1.
+     */
+    constexpr uintptr_t BeamProcess3DSlot    = 0x0108C6D0;
+    constexpr uintptr_t BeamProcess3D        = 0x00979140;
+    constexpr uintptr_t BeamUpdateSlot       = 0x0108C6D4;
+    constexpr uintptr_t BeamUpdate           = 0x00979330;
     constexpr uintptr_t ProjectileShooter    = 0xFC;
     constexpr uintptr_t RefProjectileNodeSlot = 0x20C;
 

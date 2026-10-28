@@ -44,11 +44,11 @@ namespace dxvk {
     // Projectile::GetSpeed, __thiscall without arguments, returns a float
     using ProjectileGetSpeedFn = float (__fastcall*)(uint8_t* projectile, void* unused);
 
-    // FlameProjectile::Process3D is __thiscall without arguments
-    using FlameProcess3DFn = void (__fastcall*)(uint8_t* projectile, void* unused);
+    // Process3D of a flame or beam projectile is __thiscall without arguments
+    using ProjectileProcess3DFn = void (__fastcall*)(uint8_t* projectile, void* unused);
 
-    // FlameProjectile::UpdateProjectile is __thiscall with the frame time
-    using FlameUpdateFn = void (__fastcall*)(uint8_t* projectile, void* unused, float dt);
+    // UpdateProjectile of a flame or beam is __thiscall with the frame time
+    using ProjectileUpdateFn = void (__fastcall*)(uint8_t* projectile, void* unused, float dt);
 
     // TESObjectREFR::GetProjectileNode, __thiscall without arguments
     using GetProjectileNodeFn = uint8_t* (__fastcall*)(uint8_t* reference, void* unused);
@@ -564,6 +564,13 @@ namespace dxvk {
           VrGame::FlameUpdate, reinterpret_cast<const void*>(&VrWeaponHand::flameUpdateHook))))
       Logger::warn("VR: The flame projectile functions were not found, flames come from in front of the head");
 
+    // If these fail, laser beams follow the head while they fade
+    if (found && !(VrGameMemory::redirectVirtual(VrGame::BeamProcess3DSlot,
+          VrGame::BeamProcess3D, reinterpret_cast<const void*>(&VrWeaponHand::beamProcess3DHook))
+        && VrGameMemory::redirectVirtual(VrGame::BeamUpdateSlot,
+          VrGame::BeamUpdate, reinterpret_cast<const void*>(&VrWeaponHand::beamUpdateHook))))
+      Logger::warn("VR: The beam projectile functions were not found, laser beams follow the head");
+
     // If this one fails, the hand's shots still bend towards where the head looks
     if (found && !VrGameMemory::redirectCall(VrGame::AutoAimCallSite,
         VrGame::ApplyAutoAim, reinterpret_cast<const void*>(&VrWeaponHand::autoAimHook)))
@@ -846,9 +853,9 @@ namespace dxvk {
     writeRotation(node, VrGame::ObjectWorldRotation, rotation);
     writeVector(node, VrGame::ObjectWorldTranslation, translation);
 
-    if (g_weaponHand && !g_weaponHand->m_loggedFlame) {
-      Logger::info("VR: Flames come from the muzzle drawn in the hand");
-      g_weaponHand->m_loggedFlame = true;
+    if (g_weaponHand && !g_weaponHand->m_loggedFollow) {
+      Logger::info("VR: Flames and beams stay on the muzzle drawn in the hand");
+      g_weaponHand->m_loggedFollow = true;
     }
   }
 
@@ -859,7 +866,7 @@ namespace dxvk {
     // The flame keeps the rotation it has to the node from here on: its
     // spread, once the node is at the muzzle
     withNodeAtMuzzle(projectile, [projectile] {
-      reinterpret_cast<FlameProcess3DFn>(VrGame::FlameProcess3D)(projectile, nullptr);
+      reinterpret_cast<ProjectileProcess3DFn>(VrGame::FlameProcess3D)(projectile, nullptr);
     });
   }
 
@@ -870,7 +877,29 @@ namespace dxvk {
           float                 dt) {
     // The flame is placed, then picks what it burns from there
     withNodeAtMuzzle(projectile, [projectile, dt] {
-      reinterpret_cast<FlameUpdateFn>(VrGame::FlameUpdate)(projectile, nullptr, dt);
+      reinterpret_cast<ProjectileUpdateFn>(VrGame::FlameUpdate)(projectile, nullptr, dt);
+    });
+  }
+
+
+  void __fastcall VrWeaponHand::beamProcess3DHook(
+          uint8_t*              projectile,
+          void*                 unused) {
+    // As a flame: the beam keeps its spread to the node
+    withNodeAtMuzzle(projectile, [projectile] {
+      reinterpret_cast<ProjectileProcess3DFn>(VrGame::BeamProcess3D)(projectile, nullptr);
+    });
+  }
+
+
+  void __fastcall VrWeaponHand::beamUpdateHook(
+          uint8_t*              projectile,
+          void*                 unused,
+          float                 dt) {
+    // The beam stays on the muzzle while it fades, as the game keeps it on
+    // its own
+    withNodeAtMuzzle(projectile, [projectile, dt] {
+      reinterpret_cast<ProjectileUpdateFn>(VrGame::BeamUpdate)(projectile, nullptr, dt);
     });
   }
 
