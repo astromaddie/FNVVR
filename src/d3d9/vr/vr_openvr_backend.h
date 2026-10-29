@@ -173,6 +173,7 @@ namespace dxvk {
       bool     visible = false;
       bool     failed  = false;
       bool     logged  = false;
+      bool     premultiplied = false;
     };
 
     bool createPanel(VrPanelId id);

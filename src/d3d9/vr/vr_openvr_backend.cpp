@@ -75,11 +75,11 @@ namespace dxvk {
     // terminal, nearer than the menu it is opened from, over all of them.
     constexpr std::array<const char*, VrPanelCount> PanelOverlayKeys  = {
       "fnvvr.panel", "fnvvr.hud.head", "fnvvr.hud.wrist", "fnvvr.hud.prompt", "fnvvr.hud.charge",
-      "fnvvr.terminal" };
+      "fnvvr.hud.ammo", "fnvvr.quickwheel", "fnvvr.terminal" };
     constexpr std::array<const char*, VrPanelCount> PanelOverlayNames = {
       "Fallout: New Vegas", "Fallout: New Vegas HUD", "Fallout: New Vegas wrist HUD",
       "Fallout: New Vegas interaction prompt", "Fallout: New Vegas power attack charge",
-      "Fallout: New Vegas console" };
+      "Fallout: New Vegas ammunition", "Fallout: New Vegas quick wheel", "Fallout: New Vegas console" };
 
     // Overlay key and name of each hand's laser, indexed by VrHand. Lasers
     // are drawn over the panels.
@@ -1044,6 +1044,11 @@ namespace dxvk {
 
     overlay->SetOverlayWidthInMeters(state.handle, panel.width);
 
+    if (panel.premultiplied != state.premultiplied) {
+      overlay->SetOverlayFlag(state.handle, vr::VROverlayFlags_IsPremultiplied, panel.premultiplied);
+      state.premultiplied = panel.premultiplied;
+    }
+
     auto start = high_resolution_clock::now();
 
     if (!m_transition->toTransferSource(&panel.image, 1))
@@ -1123,6 +1128,7 @@ namespace dxvk {
 
       state.handle  = 0;
       state.visible = false;
+      state.premultiplied = false;
     }
   }
 

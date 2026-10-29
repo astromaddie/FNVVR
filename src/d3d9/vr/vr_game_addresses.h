@@ -100,6 +100,17 @@ namespace dxvk {
     constexpr uintptr_t CameraUpdateWorldToCamera = 0x00A70BA0;
 
     /**
+     * BoundInFrustum (0x004B5FF0, used by NodeInFrustum and PointInFrustum)
+     * keeps the frustum planes of the last camera it was given, and only
+     * sets them again for another camera pointer or another value of the
+     * game's time, see findings/render.md "Frustum plane cache". The
+     * checked site stores that camera.
+     */
+    constexpr uintptr_t FrustumCacheCamera     = 0x011C632C;
+    constexpr uintptr_t FrustumCacheStoreSite  = 0x004B6090;
+    constexpr uint8_t   FrustumCacheStore[]    = { 0x89, 0x0D, 0x2C, 0x63, 0x1C, 0x01 };
+
+    /**
      * Call to XInputGetState in OSInputGlobals::Poll, and the game's import
      * thunk (a jump through the XInput import) that it calls
      */
@@ -266,6 +277,19 @@ namespace dxvk {
     constexpr uintptr_t FlameProcess3D       = 0x009B3320;
     constexpr uintptr_t FlameUpdateSlot      = 0x0108F604;
     constexpr uintptr_t FlameUpdate          = 0x009B34C0;
+
+    /**
+     * BeamProjectile vtable entries (table 0x0108C3C4, same slots as the
+     * flame's), both __thiscall: Process3D (no argument) stores the beam's
+     * rotation relative to the shooter's projectile node in kFollowOffset,
+     * and UpdateProjectile (frame time) puts the beam at that node's world
+     * translate, and for the player turned with it, every frame until it
+     * fades, at most 5 s. Lasers are beams. See findings/weapon.md §10.1.
+     */
+    constexpr uintptr_t BeamProcess3DSlot    = 0x0108C6D0;
+    constexpr uintptr_t BeamProcess3D        = 0x00979140;
+    constexpr uintptr_t BeamUpdateSlot       = 0x0108C6D4;
+    constexpr uintptr_t BeamUpdate           = 0x00979330;
     constexpr uintptr_t ProjectileShooter    = 0xFC;
     constexpr uintptr_t RefProjectileNodeSlot = 0x20C;
 
@@ -716,6 +740,19 @@ namespace dxvk {
       0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x08, 0x89, 0x4D, 0xF8, 0x8B, 0x45, 0xF8,
       0x0F, 0xB6, 0x88, 0x4C, 0x06, 0x00, 0x00,
     };
+
+    /**
+     * The game's temporary third person, see findings/camera.md §8.1:
+     * PlayerCharacter::ForceTemp3rdPerson sets the player's bTemp3rdPerson
+     * byte to use furniture (TESFurniture::Activate, sitting down and
+     * getting up) and for the Sandman and Cannibal kills;
+     * PlayerCharacter::UpdateTemp3rdPerson (0x009503D0) clears it and goes
+     * back to first person once the animation is over. Its read there,
+     * movzx ecx, byte [eax+0x64D], checks the offset.
+     */
+    constexpr uintptr_t PlayerTempThirdPerson     = 0x64D;
+    constexpr uintptr_t TempThirdPersonReadSite   = 0x009503DA;
+    constexpr uint8_t   TempThirdPersonRead[]     = { 0x0F, 0xB6, 0x88, 0x4D, 0x06, 0x00, 0x00 };
 
     /** LoadingMenu*, not null while a loading screen is shown */
     constexpr uintptr_t LoadingMenu = 0x011DA0C0;
@@ -1513,7 +1550,7 @@ namespace dxvk {
      * Developer mode (VrDeveloperMode), see findings/developer-mode.md.
      * SetGodMode (__cdecl, bool) is what the console's tgm calls. The data
      * handler's object list (+0x04) chains every loaded TESObject through
-     * +0x20. A weapon (form type 0x28) is not playable when bit 0x80 of its
+     * +0x20. A weapon (form type 0x28; armour is 0x18) is not playable when bit 0x80 of its
      * flags at +0x100 is set. Items are added as the console's AddItem does:
      * a TESContainer (12 bytes) built on the stack, filled with AddObject
      * (__thiscall, object, count, extra) and handed to the player with
@@ -1535,6 +1572,7 @@ namespace dxvk {
     constexpr uintptr_t FormFlags                  = 0x08;
     constexpr uint32_t  FormFlagDeleted            = 0x20;
     constexpr uint8_t   FormTypeWeapon             = 0x28;
+    constexpr uint8_t   FormTypeArmor              = 0x18;
     constexpr uintptr_t WeaponFlags                = 0x100;
     constexpr uint8_t   WeaponFlagNotPlayable      = 0x80;
     /// TESObjectWEAP::IsAutomaticWeapon (0x00524B40) tests this bit of the
@@ -1770,6 +1808,40 @@ namespace dxvk {
      * TESObjectWEAP::GetAttackFailSound 0x005224C0)
      */
     constexpr uintptr_t WeaponAttackFailSound      = 0x22C;
+
+    /**
+     * The message V.A.T.S. shows when the player has too little ammunition,
+     * see findings/reload.md §4.1. VATSMenu::DoIdle reads the
+     * sVATSMessageNoAmmo game setting (string value at SettingValue, "You
+     * don't have enough ammo." in English) at the checked site and hands it
+     * to HUDMainMenu::ShowMessage with the sad face (2), no image, no sound,
+     * 2 s and not instant. Interface::ShowMessage (__cdecl, same arguments)
+     * does the same once the HUD exists.
+     */
+    constexpr uintptr_t NoAmmoMessageSetting   = 0x011D28C8;
+    constexpr uintptr_t NoAmmoMessageReadSite  = 0x007EE86C;
+    constexpr uint8_t   NoAmmoMessageRead[] = {
+      0xB9, 0xC8, 0x28, 0x1D, 0x01, 0xE8, 0x7A, 0x55, 0xC1, 0xFF,
+      0x50, 0x8B, 0x0D, 0xC0, 0x96, 0x1D, 0x01, 0xE8, 0xFE, 0x6A, 0xF8, 0xFF,
+    };
+    constexpr uintptr_t ShowHudMessage         = 0x007052F0;
+    constexpr uint8_t   ShowHudMessagePrologue[] = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x38, 0xC3, 0xEE, 0x00 };
+    constexpr uint32_t  HudMessageSad          = 2;
+
+    /**
+     * What V.A.T.S. shows by its action point meter when the player has
+     * too few of them, see findings/melee.md §12.5: the sActionPointsShort
+     * label ("AP") and the sVATSMessageLowAP text beside it, both read by
+     * VATSMenu::Create at the checked sites (string value at SettingValue).
+     * The inventory plays UIVATSInsufficientAP when action points or a
+     * hotkey are refused.
+     */
+    constexpr uintptr_t ActionPointsShortSetting  = 0x011D3E8C;
+    constexpr uintptr_t ActionPointsShortReadSite = 0x007EA40A;
+    constexpr uint8_t   ActionPointsShortRead[]   = { 0xB9, 0x8C, 0x3E, 0x1D, 0x01, 0xE8, 0xDC, 0x99, 0xC1, 0xFF };
+    constexpr uintptr_t LowApMessageSetting       = 0x011D1D90;
+    constexpr uintptr_t LowApMessageReadSite      = 0x007EA497;
+    constexpr uint8_t   LowApMessageRead[]        = { 0xB9, 0x90, 0x1D, 0x1D, 0x01, 0xE8, 0x4F, 0x99, 0xC1, 0xFF };
 
     /**
      * Weapon form: the data of its name (TESFullName at +0x30) and of its
@@ -2035,6 +2107,254 @@ namespace dxvk {
     constexpr uint8_t VatsShutdownEffectPrologue[]   = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x0C, 0x89, 0x4D, 0xFC, 0x6A, 0x00, 0x6A };
     constexpr uint8_t AccumulateScenePrologue[]      = { 0x6A, 0xFF, 0x68, 0x18, 0xAD, 0xF2, 0x00, 0x64, 0xA1, 0x00, 0x00, 0x00 };
     constexpr uint8_t RenderScenePrologue[]          = { 0x8B, 0x0D, 0x48, 0x47, 0x1F, 0x01, 0x56, 0x8B, 0x74, 0x24, 0x0C, 0x85 };
+
+    /**
+     * Holsters, see findings/quick-menu.md §5. Actor::PlayPickUpSound
+     * (__thiscall: item form, pick up, use; ret 0xC) plays the item's pick
+     * up or put down sound, in 2D for the player. Actor::GetAnimAction
+     * (__thiscall, no argument) returns the player's anim action, -1 when
+     * none.
+     */
+    constexpr uintptr_t PlayPickUpSound            = 0x008ADED0;
+    constexpr uint8_t   PlayPickUpSoundPrologue[]  = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x68, 0x51, 0xF1, 0x00, 0x64, 0xA1 };
+    constexpr uintptr_t ActorGetAnimAction         = 0x008A7570;
+    constexpr uint8_t   ActorGetAnimActionPrologue[] = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x8B, 0x45, 0xFC, 0x83, 0x78 };
+
+    /**
+     * Hotkeys, see findings/quick-menu.md §1-3. Eight slots, the second of
+     * which is the ammunition swap, not a hotkey.
+     *
+     * - InventoryChanges::GetHotKeyItem (__thiscall, slot, ret 4) returns a
+     *   new inventory entry, freed with the entry's deleting destructor
+     *   (__thiscall, flags 1).
+     * - An entry's name (__thiscall, no argument), icon path relative to
+     *   Data\Textures (__thiscall, reference 0, ret 4), whether it is worn
+     *   (__thiscall, 0, ret 4, bool) and its weapon's hotkey slot
+     *   (__thiscall, -1 if none).
+     * - The HUD's hotkey wheel (HUDMainMenu+0x1C8) and the inventory's
+     *   (InventoryMenu+0xE8): Select (__thiscall, slot, ret 4) picks a slot,
+     *   Use (__thiscall) equips or unequips its item as the gamepad's D-pad
+     *   does, Visible (__thiscall, bool) tells whether the wheel is shown.
+     */
+    constexpr uint32_t  HotKeySlotCount            = 8;
+    constexpr uint32_t  HotKeyAmmoSwapSlot         = 1;
+    constexpr uintptr_t GetHotKeyItem              = 0x004BF4B0;
+    constexpr uint8_t   GetHotKeyItemPrologue[]    = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x38, 0x12, 0xEF, 0x00, 0x64, 0xA1 };
+    constexpr uintptr_t InventoryEntryDelete       = 0x004459E0;
+    constexpr uint8_t   InventoryEntryDeletePrologue[] = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x8B, 0x4D, 0xFC, 0xE8, 0x01 };
+    constexpr uintptr_t InventoryEntryName         = 0x004BE2D0;
+    constexpr uint8_t   InventoryEntryNamePrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x08, 0x89, 0x4D, 0xF8, 0x6A, 0x00, 0x68 };
+    constexpr uintptr_t InventoryEntryIcon         = 0x004BE200;
+    constexpr uint8_t   InventoryEntryIconPrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x14, 0x89, 0x4D, 0xEC, 0xC7, 0x45, 0xFC };
+    constexpr uintptr_t InventoryEntryWorn         = 0x004BDDD0;
+    constexpr uint8_t   InventoryEntryWornPrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x0C, 0x89, 0x4D, 0xF4, 0x8B, 0x45, 0xF4 };
+    constexpr uintptr_t InventoryEntryHotKey       = 0x004BD7A0;
+    constexpr uint8_t   InventoryEntryHotKeyPrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x0C, 0x89, 0x4D, 0xF4, 0xC7, 0x45, 0xFC };
+    constexpr uintptr_t HotKeyWheelSelect          = 0x00701E00;
+    constexpr uint8_t   HotKeyWheelSelectPrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x08, 0x89, 0x4D, 0xFC, 0x8B, 0x45, 0x08 };
+    constexpr uintptr_t HotKeyWheelUse             = 0x00701E80;
+    constexpr uint8_t   HotKeyWheelUsePrologue[]   = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x38, 0x56, 0x89, 0x4D, 0xE4, 0xA1, 0x3C };
+    constexpr uintptr_t HotKeyWheelVisible         = 0x00701740;
+    constexpr uint8_t   HotKeyWheelVisiblePrologue[] = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x68, 0xA3, 0x0F, 0x00, 0x00 };
+    constexpr uintptr_t HudHotKeyWheel             = 0x1C8;
+
+    /**
+     * The Pip-Boy's inventory, see findings/quick-menu.md §3: whether a menu
+     * is the top one (__cdecl, menu id), the InventoryMenu and its hotkey
+     * wheel, shown while the gamepad's hotkey button (RB) is held.
+     */
+    constexpr uintptr_t IsTopMenu                  = 0x00702450;
+    constexpr uint8_t   IsTopMenuPrologue[]        = { 0x55, 0x8B, 0xEC, 0x51, 0xE8, 0xB7, 0x4D, 0xDB, 0xFF, 0x85, 0xC0, 0x74 };
+    constexpr uint32_t  InventoryMenuId            = 0x3EA;
+    constexpr uintptr_t InventoryMenuInstance      = 0x011D9EA4;
+    constexpr uintptr_t InventoryMenuHotKeyWheel   = 0xE8;
+
+    /**
+     * Ammunition swap, see findings/quick-menu.md §4. A weapon's ammunition
+     * (BGSAmmoForm::pAmmo) is a list form (form type 0x55, BSSimpleList of
+     * forms at +0x18: form, next) when it takes several types. A swap
+     * gives the process a new clip entry (the game's allocator, __cdecl
+     * size; the entry's constructor, __thiscall form and count, ret 8;
+     * process vtable SetCurrentAmmo) and tells the weapon's hotkey which
+     * ammunition it uses (__thiscall on the player, slot and ammunition,
+     * ret 8). PlayerCharacter::AmmoSwapHelper (__thiscall, animate, only if
+     * empty, ret 8) is the game's own swap to the next type held.
+     */
+    constexpr uint8_t   FormTypeList               = 0x55;
+    constexpr uintptr_t WeaponAmmo                 = 0xA8;
+    constexpr uintptr_t ListFormItems              = 0x18;
+    constexpr uintptr_t ProcessSetCurrentAmmoSlot  = 0x168;
+    constexpr uintptr_t GameAllocate               = 0x00401000;
+    constexpr uint8_t   GameAllocatePrologue[]     = { 0x55, 0x8B, 0xEC, 0x8B, 0x45, 0x08, 0x50, 0xE8, 0x14, 0x00, 0x00, 0x00 };
+    constexpr uintptr_t InventoryEntryConstruct    = 0x004BC550;
+    constexpr uint8_t   InventoryEntryConstructPrologue[] = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x4B, 0xD6, 0xEE, 0x00, 0x64, 0xA1 };
+    constexpr uintptr_t SetAmmoForHotKey           = 0x004BFB70;
+    constexpr uint8_t   SetAmmoForHotKeyPrologue[] = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x8D, 0x45, 0x0C, 0x50, 0x8B };
+    constexpr uintptr_t AmmoSwapHelper             = 0x009462C0;
+    constexpr uint8_t   AmmoSwapHelperPrologue[]   = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x2B, 0x7F, 0xF1, 0x00, 0x64, 0xA1 };
+
+    /**
+     * The HUD's colour, the uHUDColor:Interface setting (value at +4,
+     * 0xRRGGBBAA)
+     */
+    constexpr uintptr_t HudColorSetting            = 0x011D8AD4;
+
+    /**
+     * Physics grab with the hands, see findings/grab.md §8. The VR springs
+     * are worked from the call to PlayerCharacter::HandlePhysicsGrab
+     * (__thiscall, frame time, ret 4) in PlayerCharacter::Update, on the
+     * main thread before the AI threads step Havok.
+     */
+    constexpr uintptr_t PhysicsGrabCallSite        = 0x0094363C;
+    constexpr uintptr_t HandlePhysicsGrab          = 0x0095F6C0;
+
+    /**
+     * Havok ray picks as PlayerCharacter::CreateMouseSpring casts them:
+     * bhkPickData (0xB0 bytes, 16-aligned, no destructor) built by its
+     * constructor and setters (__thiscall; positions in game units, the
+     * filter by value), cast by bhkWorld::PickObject (vtable slot, returns
+     * a bool). GethkRigidBody returns the body hit or null; the hit fraction
+     * is a float in the pick. The ray's filter is the item pick layer with
+     * the player's collision group (MobileObject::GetCollisionFilter,
+     * __thiscall, writes the filter to its argument), so it skips the
+     * player and what the player holds. NI2HK scales game units to Havok
+     * units, set when the game starts.
+     */
+    constexpr uintptr_t PickDataConstruct          = 0x004A3C20;
+    constexpr uint8_t   PickDataConstructPrologue[] = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x8B, 0x4D, 0xFC, 0xE8, 0x91 };
+    constexpr uintptr_t PickDataSetFilter          = 0x004A3F70;
+    constexpr uintptr_t PickDataSetFrom            = 0x004A3DA0;
+    constexpr uintptr_t PickDataSetLength          = 0x007F68A0;
+    constexpr uintptr_t PickDataGetRigidBody       = 0x00C66FD0;
+    constexpr uintptr_t PickDataHitFraction        = 0x40;
+    constexpr size_t    PickDataSize               = 0xB0;
+    constexpr uintptr_t WorldPickObjectSlot        = 0xC8;
+    constexpr uintptr_t GetCollisionFilter         = 0x00931ED0;
+    constexpr uint32_t  LayerItemPick              = 0x24;
+    constexpr uint32_t  FilterGroupShift           = 16;
+    constexpr uint32_t  FilterKeptBits             = 0x7FFF;
+    constexpr uintptr_t HavokScale                 = 0x011C582C;
+
+    /**
+     * From a body to its reference: bhkCollisionObject::Getbhk (__cdecl,
+     * the hkpRigidBody), whose scene object is at NiCollisionObject+0x08,
+     * then TESObjectREFR::FindReferenceFor3D (__cdecl). A reference's cell
+     * (TESObjectREFR::GetParentCell, __thiscall) and the cell's bhkWorld
+     * (TESObjectCELL::GetbhkWorld, __thiscall); a bhkRefObject's Havok
+     * object is at +0x08. TESObjectREFR::GetObjectReference (__thiscall)
+     * is compared with the two ash pile forms, which the game never grabs.
+     */
+    constexpr uintptr_t CollisionObjectForBody     = 0x004B5A20;
+    constexpr uintptr_t CollisionSceneObject       = 0x08;
+    constexpr uintptr_t FindReferenceFor3D         = 0x0056F930;
+    constexpr uint8_t   FindReferenceFor3DPrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x14, 0x8B, 0x45, 0x08, 0x89, 0x45, 0xFC };
+    constexpr uintptr_t RefGetParentCell           = 0x008D6F30;
+    constexpr uintptr_t CellGetWorld               = 0x004543C0;
+    constexpr uintptr_t RefObjectHavok             = 0x08;
+    constexpr uintptr_t RefGetBaseForm             = 0x007AF430;
+
+    /**
+     * From a reference to its first body, as HandlePhysicsGrab finds the
+     * body of the activation target: the reference's 3D (RefGet3DSlot),
+     * FindFirstCollisionObject (__cdecl, the scene object, walks the
+     * children) and bhkCollisionObject::GetRigidBody (__thiscall, the
+     * bhkRigidBody, whose hkpRigidBody is at RefObjectHavok).
+     */
+    constexpr uintptr_t FindFirstCollisionObject   = 0x004B5260;
+    constexpr uint8_t   FindFirstCollisionObjectPrologue[] = { 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x10, 0xC7, 0x45, 0xFC, 0x00, 0x00, 0x00 };
+    constexpr uintptr_t CollisionObjectGetBody     = 0x006FA820;
+    constexpr uintptr_t AshPileForm1               = 0x011CA27C;
+    constexpr uintptr_t AshPileForm2               = 0x011CA280;
+
+    /**
+     * Havok 7.1 bodies (hkpRigidBody): the world (null outside of one), the
+     * collision filter, the motion type (4 keyframed, 5 fixed), the
+     * inverse mass, the rotation's three columns, the position and the
+     * centre of mass (the swept transform's m_centerOfMass1), all
+     * hkVector4 in Havok units. An action's world is at +0x08 too.
+     * hkpEntity::activate (__thiscall) wakes the body;
+     * hkpWorld::updateCollisionFilterOnEntity (__thiscall, entity, update
+     * mode 0, shape collections 1, ret 0xC) applies a new filter.
+     */
+    constexpr uintptr_t HavokObjectWorld           = 0x08;
+    constexpr uintptr_t BodyFilter                 = 0x2C;
+    constexpr uintptr_t BodyMotionType             = 0xE8;
+    constexpr uint8_t   MotionKeyframed            = 4;
+    constexpr uint8_t   MotionFixed                = 5;
+    constexpr uintptr_t BodyInverseMass            = 0x1AC;
+    constexpr uintptr_t BodyRotation               = 0xF0;
+    constexpr uintptr_t BodyPosition               = 0x120;
+    constexpr uintptr_t BodyCentreOfMass           = 0x140;
+    constexpr uintptr_t EntityActivate             = 0x00C9C1D0;
+    constexpr uintptr_t WorldUpdateFilter          = 0x00C946E0;
+    constexpr uint8_t   WorldUpdateFilterPrologue[] = { 0x81, 0xEC, 0x30, 0x08, 0x00, 0x00, 0x53, 0x8B, 0xD9, 0x83, 0xBB, 0x94 };
+
+    /**
+     * A mouse spring as CreateMouseSpring makes one: the info's constructor
+     * (__thiscall, 0x40 bytes, 16-aligned: +0x04 body, +0x10 point in the
+     * body's frame and +0x20 target, Havok units, +0x30 damping, +0x34
+     * elasticity, +0x38 maximum relative force, +0x3C object damping), the
+     * game's NiNew (__cdecl size), bhkMouseSpringAction's constructor
+     * (__thiscall, the info) and NiPointer assignment (__thiscall on the
+     * pointer). bhkUnaryAction::Add (vtable, the bhkWorld) and
+     * bhkAction::Remove (vtable, nothing when out of a world).
+     * SetMousePosition (__thiscall, a point in game units) moves the
+     * target. The Z grab's settings (values at SettingValue) give the
+     * spring's constants and the heaviest body a hand lifts.
+     */
+    constexpr uintptr_t SpringInfoConstruct        = 0x004B4F40;
+    constexpr uint8_t   SpringInfoConstructPrologue[] = { 0x55, 0x8B, 0xEC, 0x51, 0x89, 0x4D, 0xFC, 0x8B, 0x4D, 0xFC, 0xE8, 0x61 };
+    constexpr size_t    SpringInfoSize             = 0x40;
+    constexpr uintptr_t SpringInfoBody             = 0x04;
+    constexpr uintptr_t SpringInfoLocalPoint       = 0x10;
+    constexpr uintptr_t SpringInfoTarget           = 0x20;
+    constexpr uintptr_t SpringInfoDamping          = 0x30;
+    constexpr uintptr_t SpringInfoElasticity       = 0x34;
+    constexpr uintptr_t SpringInfoMaxForce         = 0x38;
+    constexpr uintptr_t SpringInfoObjectDamping    = 0x3C;
+    constexpr uintptr_t NiNew                      = 0x00AA13E0;
+    constexpr uint8_t   NiNewPrologue[]            = { 0x51, 0x8B, 0x44, 0x24, 0x08, 0x85, 0xC0, 0x75, 0x05, 0xB8, 0x01, 0x00 };
+    constexpr size_t    SpringSize                 = 0x10;
+    constexpr uintptr_t SpringConstruct            = 0x004B5040;
+    constexpr uint8_t   SpringConstructPrologue[]  = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0xF8, 0xAA, 0xF1, 0x00, 0x64, 0xA1 };
+    constexpr uintptr_t SpringAssign               = 0x0066B0D0;
+
+    /**
+     * The hkpMouseSpringAction (a bhkMouseSpringAction's Havok object):
+     * applyAction (0x00CBB1E0, vtable 0x010C8E94) clamps each step's
+     * impulse to this float times the body's mass and the step's time.
+     * The hkpWorld's gravity, an hkVector4 in Havok units per second
+     * squared.
+     */
+    constexpr uintptr_t SpringActionMaxForce       = 0x48;
+    constexpr uintptr_t WorldGravity               = 0x10;
+    constexpr uintptr_t SpringAddSlot              = 0x9C;
+    constexpr uintptr_t SpringRemoveSlot           = 0xA0;
+    constexpr uintptr_t SpringSetTarget            = 0x008C5D90;
+    constexpr uint8_t   SpringSetTargetPrologue[]  = { 0x53, 0x8B, 0xDC, 0x51, 0x83, 0xE4, 0xF0, 0x83, 0xC4, 0x04, 0x55, 0x8B };
+    constexpr uintptr_t SpringDampingSetting       = 0x011D0358;
+    constexpr uintptr_t SpringElasticitySetting    = 0x011CFEEC;
+    constexpr uintptr_t SpringObjectDampingSetting = 0x011D08C8;
+    constexpr uintptr_t SpringMaxForceSetting      = 0x011D0FFC;
+    constexpr uintptr_t GrabMaxWeightSetting       = 0x011D1230;
+
+    /**
+     * What the game does around its own grab: the OnGrab and OnRelease
+     * script blocks (Script::SetActionFlag, __cdecl with no form, the
+     * reference's extra data at +0x44 and the flag),
+     * TESObjectREFR::AddChange (vtable, 4 so the new position is saved),
+     * ExtraDataList::NotifyGuardsAboutActivation (__thiscall, the
+     * reference and the player) and RemoveExtra (__thiscall, type 0x7C).
+     */
+    constexpr uintptr_t SetActionFlag              = 0x005AC750;
+    constexpr uintptr_t RefExtraData               = 0x44;
+    constexpr uint32_t  ActionOnGrab               = 0x80000;
+    constexpr uint32_t  ActionOnRelease            = 0x100000;
+    constexpr uintptr_t RefAddChangeSlot           = 0x48;
+    constexpr uint32_t  ChangeMoved                = 4;
+    constexpr uintptr_t NotifyGuards               = 0x004213C0;
+    constexpr uintptr_t RemoveExtra                = 0x00410140;
+    constexpr uint8_t   ExtraGuarded               = 0x7C;
 
   }
 

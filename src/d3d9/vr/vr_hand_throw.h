@@ -113,6 +113,8 @@ namespace dxvk {
       VrThrowRelease release;
       /// Where the player was when the hand let go, in the game world
       VrVector3      player;
+      /// The model's centre in the right hand's frame, where it leaves from
+      VrVector3      centre;
       float          handSpeed = 0.0f;
       /// The hand's speed and pitch, in radians, when the trigger let go
       float          releasedSpeed = 0.0f;

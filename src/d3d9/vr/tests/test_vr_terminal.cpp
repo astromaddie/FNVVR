@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -55,8 +56,32 @@ namespace {
     return uv;
   }
 
-  bool differs(const uint32_t* a, const std::vector<uint32_t>& b) {
-    return std::memcmp(a, b.data(), b.size() * sizeof(uint32_t)) != 0;
+  bool hasBlend(const VrPaintList& list, VrPaintBlend blend) {
+    for (const VrPaintBatch& batch : list.batches()) {
+      if (batch.blend == blend)
+        return true;
+    }
+
+    return false;
+  }
+
+  // Bounds of the vertices of the batches that draw an image
+  void imageBounds(const VrPaintList& list, const VrImage* image, float bounds[4]) {
+    bounds[0] = bounds[1] = 1.0e9f;
+    bounds[2] = bounds[3] = -1.0e9f;
+
+    for (const VrPaintBatch& batch : list.batches()) {
+      if (batch.image != image)
+        continue;
+
+      for (uint32_t i = batch.first; i < batch.first + batch.count; i++) {
+        const VrPaintVertex& vertex = list.vertices()[i];
+        bounds[0] = std::min(bounds[0], vertex.x);
+        bounds[1] = std::min(bounds[1], vertex.y);
+        bounds[2] = std::max(bounds[2], vertex.x);
+        bounds[3] = std::max(bounds[3], vertex.y);
+      }
+    }
   }
 
   void put32(std::vector<uint8_t>& data, size_t offset, uint32_t value) {
@@ -317,7 +342,7 @@ TEST_CASE(bitmap_font_reads_glyph_metrics) {
 }
 
 
-TEST_CASE(terminal_image_draws_only_what_changed) {
+TEST_CASE(terminal_image_shows_the_view) {
   std::vector<uint8_t> file = fontFile(14.0f, 20.0f);
   VrBitmapFont font;
   font.parse(file.data(), file.size());
@@ -325,41 +350,46 @@ TEST_CASE(terminal_image_draws_only_what_changed) {
   VrTerminalImage image;
   CHECK(image.initialize(terminalTexture(), font, solidGlyphs()));
 
-  VrTerminalKeyboardView view;
-  CHECK(image.update(view));
-
-  constexpr uint32_t Width  = VrTerminalImage::Width;
-  constexpr uint32_t Height = VrTerminalImage::Height;
-  std::vector<uint32_t> first(image.pixels(), image.pixels() + Width * Height);
-
   // The black edge of the plate is transparent, its middle opaque
-  CHECK((first[0] >> 24) == 0);
-  CHECK((first[(Height / 2) * Width + Width / 2] >> 24) == 0xFF);
+  const VrImage& plate = image.plate();
+  CHECK(plate.width == uint32_t(VrTerminalKeyboard::Plate.width()));
+  CHECK((plate.at(0, 0) >> 24) == 0);
+  CHECK(plate.at(plate.width / 2, plate.height / 2) == 0xFF969682u);
 
-  // Nothing changed, nothing is drawn
-  CHECK(!image.update(view));
+  VrTerminalKeyboardView view;
+  VrPaintList list(VrTerminalImage::Width, VrTerminalImage::Height);
+  image.paint(list, view, 0.0f, 0.0f, nullptr, false);
 
-  // The hovered key, a pressed key and Shift change the image
+  // The plate fills the image, the names are printed over it
+  float bounds[4];
+  imageBounds(list, &plate, bounds);
+  CHECK(bounds[0] == 0.0f && bounds[1] == 0.0f);
+  CHECK(bounds[2] == float(VrTerminalImage::Width) && bounds[3] == float(VrTerminalImage::Height));
+  CHECK(list.batches()[0].blend == VrPaintBlend::Over);
+  CHECK(hasBlend(list, VrPaintBlend::OverKeepAlpha));
+  CHECK(!hasBlend(list, VrPaintBlend::Brighten));
+  CHECK(!hasBlend(list, VrPaintBlend::Multiply));
+  size_t plain = list.vertices().size();
+
+  // The hovered key is brightened, a pressed key darkened
+  list.clear();
   view.hoveredKey = findChar('q');
-  CHECK(image.update(view));
-  CHECK(differs(image.pixels(), first));
+  image.paint(list, view, 0.0f, 0.0f, nullptr, false);
+  CHECK(hasBlend(list, VrPaintBlend::Brighten));
+  CHECK(hasBlend(list, VrPaintBlend::Add));
 
+  list.clear();
   view.hoveredKey = -1;
-  CHECK(image.update(view));
-  CHECK(!differs(image.pixels(), first));
-
   view.pressedKey = findLabel("ENTER");
-  CHECK(image.update(view));
-  CHECK(differs(image.pixels(), first));
+  image.paint(list, view, 0.0f, 0.0f, nullptr, false);
+  CHECK(hasBlend(list, VrPaintBlend::Multiply));
 
+  // Shift lights the light
+  list.clear();
   view.pressedKey = -1;
   view.shift = true;
-  CHECK(image.update(view));
-  CHECK(differs(image.pixels(), first));
-
-  view.shift = false;
-  CHECK(image.update(view));
-  CHECK(!differs(image.pixels(), first));
+  image.paint(list, view, 0.0f, 0.0f, nullptr, false);
+  CHECK(list.vertices().size() > plain);
 }
 
 
@@ -375,7 +405,10 @@ TEST_CASE(terminal_image_needs_the_whole_plate) {
 
   VrTerminalImage image;
   CHECK(!image.initialize(small, font, solidGlyphs()));
-  CHECK(!image.update(VrTerminalKeyboardView()));
+
+  VrPaintList list(VrTerminalImage::Width, VrTerminalImage::Height);
+  image.paint(list, VrTerminalKeyboardView(), 0.0f, 0.0f, nullptr, false);
+  CHECK(list.vertices().empty());
 }
 
 
@@ -384,50 +417,37 @@ TEST_CASE(terminal_texture_lays_the_keys_on_the_enlarged_texture) {
   VrBitmapFont font;
   font.parse(file.data(), file.size());
 
-  // A texture whose alpha the keyboard must keep
-  VrImage texture = terminalTexture();
-
-  for (uint32_t& texel : texture.pixels)
-    texel = (texel & 0x00FFFFFFu) | 0x80000000u;
-
   VrTerminalImage image;
   CHECK(image.initialize(terminalTexture(), font, solidGlyphs()));
 
-  VrTerminalKeyboardView view;
-  view.hoveredKey = findChar('q');
-  image.update(view);
-
   VrTerminalTexture copy;
-  CHECK(copy.initialize(texture));
+  CHECK(copy.initialize(terminalTexture()));
   CHECK(copy.width()  == 512 * VrTerminalTexture::Scale);
   CHECK(copy.height() == 512 * VrTerminalTexture::Scale);
 
-  std::vector<uint32_t> base;
-  copy.drawBase(base);
-  CHECK(base.size() == size_t(copy.width()) * copy.height());
+  VrTerminalKeyboardView view;
+  view.hoveredKey = findChar('q');
 
-  // The middle of a texel keeps its colour
-  constexpr uint32_t Scale = VrTerminalTexture::Scale;
-  uint32_t texelX = 100, texelY = 340;
-  CHECK(base[size_t(texelY * Scale + Scale / 2) * copy.width() + texelX * Scale + Scale / 2]
-    == texture.at(texelX, texelY));
+  VrPaintList list(copy.width(), copy.height());
+  copy.paint(list, image, view);
 
-  std::vector<uint32_t> keyTops(size_t(VrTerminalTexture::KeyTopsWidth) * VrTerminalTexture::KeyTopsHeight);
-  copy.drawKeyTops(image, keyTops.data());
+  // First the whole texture, enlarged, replacing what was there
+  const VrPaintBatch& base = list.batches()[0];
+  CHECK(base.blend == VrPaintBlend::Copy);
+  CHECK(base.use == VrPaintImageUse::Picture);
+  CHECK(list.vertices()[base.first + 2].x == float(copy.width()));
+  CHECK(list.vertices()[base.first + 2].y == float(copy.height()));
 
-  // On the lit key the keyboard's colours, with the texture's alpha
-  const VrTerminalKey& key = keyAt(findChar('q'));
-  uint32_t x = uint32_t(0.5f * (key.rect.left + key.rect.right)) * Scale;
-  uint32_t y = uint32_t(0.5f * (key.rect.top + key.rect.bottom)) * Scale;
+  // Then the keyboard on the key tops only, keeping the texture's alpha
+  constexpr float Scale = float(VrTerminalTexture::Scale);
+  const VrTexelRect& tops = VrTerminalTexture::KeyTops;
 
-  uint32_t drawn = keyTops[size_t(y - VrTerminalTexture::KeyTopsY) * VrTerminalTexture::KeyTopsWidth
-    + x - VrTerminalTexture::KeyTopsX];
-  uint32_t keyboard = image.pixels()[size_t(y - uint32_t(VrTerminalKeyboard::Plate.top) * Scale) * VrTerminalImage::Width
-    + x - uint32_t(VrTerminalKeyboard::Plate.left) * Scale];
-
-  CHECK((drawn >> 24) == 0x80);
-  CHECK((drawn & 0x00FFFFFFu) == (keyboard & 0x00FFFFFFu));
-  CHECK((drawn & 0x00FFFFFFu) != (texture.at(x / Scale, y / Scale) & 0x00FFFFFFu));
+  float bounds[4];
+  imageBounds(list, &image.plate(), bounds);
+  CHECK(bounds[0] == tops.left * Scale && bounds[1] == tops.top * Scale);
+  CHECK(bounds[2] == tops.right * Scale && bounds[3] == tops.bottom * Scale);
+  CHECK(!hasBlend(list, VrPaintBlend::Over));
+  CHECK(hasBlend(list, VrPaintBlend::Brighten));
 }
 
 

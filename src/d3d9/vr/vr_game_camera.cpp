@@ -2,6 +2,7 @@
 
 #include "vr_game_addresses.h"
 #include "vr_game_camera.h"
+#include "vr_game_memory.h"
 
 namespace dxvk {
 
@@ -87,6 +88,18 @@ namespace dxvk {
   void VrGameCamera::refresh() {
     auto update = reinterpret_cast<UpdateWorldToCameraFn>(VrGame::CameraUpdateWorldToCamera);
     update(m_camera, nullptr);
+
+    if (!m_checkedFrustumCache) {
+      m_hasFrustumCache = VrGameMemory::matches(VrGame::FrustumCacheStoreSite,
+        VrGame::FrustumCacheStore, sizeof(VrGame::FrustumCacheStore));
+      m_checkedFrustumCache = true;
+    }
+
+    // The game's visibility tests keep the planes of a camera for the whole
+    // frame, while the camera is moved for each eye and for the culling:
+    // forgetting the camera makes the next test take its planes again
+    if (m_hasFrustumCache)
+      *reinterpret_cast<void**>(VrGame::FrustumCacheCamera) = nullptr;
   }
 
 }

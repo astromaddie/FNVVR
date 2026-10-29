@@ -80,44 +80,54 @@ namespace dxvk {
   }
 
 
-  void vrDrawChargeRing(uint32_t* pixels, uint32_t size, float fill, bool charged) {
-    float centre = 0.5f * float(size);
-    float outer  = RingOuter * float(size);
-    float inner  = RingInner * float(size);
-    float middle = 0.5f * (outer + inner);
-    float filled = (charged ? 1.0f : std::clamp(fill, 0.0f, 1.0f)) * 2.0f * Pi;
+  void VrPowerRefusal::reset() {
+    *this = VrPowerRefusal();
+  }
 
-    for (uint32_t y = 0; y < size; y++) {
-      for (uint32_t x = 0; x < size; x++) {
-        float dx = float(x) + 0.5f - centre;
-        float dy = float(y) + 0.5f - centre;
-        float r  = std::sqrt(dx * dx + dy * dy);
 
-        // Coverage of the pixel by the ring, smoothed over one pixel
-        float ring = std::clamp(std::min(outer - r, r - inner) + 0.5f, 0.0f, 1.0f);
-        float alpha = 0.0f;
-
-        if (ring > 0.0f) {
-          // Clockwise from the top, as seen in the image
-          float angle = std::atan2(dx, -dy);
-
-          if (angle < 0.0f)
-            angle += 2.0f * Pi;
-
-          // Coverage by the filled arc, smoothed over one pixel along the ring
-          float arc = std::clamp((filled - angle) * middle + 0.5f, 0.0f, 1.0f);
-
-          if (filled <= 0.0f)
-            arc = 0.0f;
-
-          float lit = charged ? ChargedAlpha : FillAlpha;
-          alpha = ring * (TrackAlpha + (lit - TrackAlpha) * arc);
-        }
-
-        uint32_t a = uint32_t(std::lround(alpha * 255.0f));
-        pixels[y * size + x] = (a << 24) | RingColor;
-      }
+  bool VrPowerRefusal::update(bool held, bool lacksActionPoints, float dt, float holdTime) {
+    if (!held) {
+      reset();
+      return false;
     }
+
+    if (m_refused && lacksActionPoints)
+      m_time += std::max(dt, 0.0f);
+    else
+      m_time = 0.0f;
+
+    m_refused = lacksActionPoints;
+
+    if (m_told || !m_refused || m_time <= holdTime)
+      return false;
+
+    m_told = true;
+    return true;
+  }
+
+
+  void vrPaintChargeRing(VrPaintList& list, float fill, bool charged) {
+    list.clear();
+
+    float size   = float(list.width());
+    float centre = 0.5f * size;
+    float outer  = RingOuter * size;
+    float inner  = RingInner * size;
+    float filled = (charged ? 1.0f : std::clamp(fill, 0.0f, 1.0f)) * 2.0f * Pi;
+    float lit    = charged ? ChargedAlpha : FillAlpha;
+
+    VrColour colour = VrColour::fromRgba(RingColor << 8 | 0xFFu);
+
+    if (filled >= 2.0f * Pi) {
+      list.fillSector(centre, centre, inner, outer, 0.0f, filled, colour.faded(lit));
+      return;
+    }
+
+    list.fillSector(centre, centre, inner, outer, 0.0f, 2.0f * Pi, colour.faded(TrackAlpha));
+
+    // Over the track, the filled part adds up to the lit opacity
+    if (filled > 0.0f)
+      list.fillSector(centre, centre, inner, outer, 0.0f, filled, colour.faded((lit - TrackAlpha) / (1.0f - TrackAlpha)));
   }
 
 

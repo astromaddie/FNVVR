@@ -22,6 +22,8 @@ namespace dxvk {
   enum class VrFirstPersonMode {
     /// The weapon in the right hand, the left hand free or on the weapon
     Hands,
+    /// The weapon is holstered: both hands are free, each at its controller
+    FreeHands,
     /// The left forearm carries the Pip-Boy, the right hand is hidden
     PipBoy,
     /// Nothing is drawn: the controllers point at a menu with their lasers,
@@ -126,9 +128,10 @@ namespace dxvk {
    *   drawn in the hand instead, along the barrel as it is drawn, with the
    *   game's spread kept. The game's auto-aim, which would turn them
    *   towards the point under the centre of its camera, the head, leaves
-   *   them alone. A flame stays on the shooter's projectile node every
-   *   frame: while FlameProjectile places it, that node is put at the
-   *   muzzle drawn in the hand.
+   *   them alone. A flame, or a laser beam while it fades, stays on the
+   *   shooter's projectile node every frame: while FlameProjectile or
+   *   BeamProjectile places it, that node is put at the muzzle drawn in
+   *   the hand.
    * - AnimData::MorphOrBlendToSequence starts the game's animations. When
    *   the other hand supports a pistol, the game's aim animation starts
    *   without blending from the previous pose, so the left hand is on the
@@ -190,7 +193,7 @@ namespace dxvk {
      * \param [in] grip Whether the other hand's grip on the weapon is held:
      *    it takes the weapon once it comes near it, and lets go on release
      * \param [in] mode What the model shows. \c hand is ignored unless it
-     *    is VrFirstPersonMode::Hands.
+     *    is VrFirstPersonMode::Hands or VrFirstPersonMode::FreeHands.
      * \param [in] dt Time since the previous frame, in seconds
      */
     void beginFrame(
@@ -236,6 +239,15 @@ namespace dxvk {
      */
     bool wantsGameAim() const {
       return m_braced;
+    }
+
+    /**
+     * \brief Whether the left hand holds the weapon or supports it
+     *
+     * Decided when the model was last placed, in the previous frame.
+     */
+    bool leftHandOnWeapon() const {
+      return m_twoHanded || m_braced;
     }
 
     /**
@@ -721,7 +733,7 @@ namespace dxvk {
     VrGameRotation   m_muzzleRotation;
     VrVector3        m_aimDirection;
     bool             m_hasAim = false;
-    bool             m_loggedFlame = false;
+    bool             m_loggedFollow = false;
 
     // Melee weapon held still in the hand, see placeModel: the weapon node
     // and form it was drawn with, compared but not dereferenced, and its
@@ -933,6 +945,20 @@ namespace dxvk {
     uint32_t         m_throwAnimationTries = 0;
     uint32_t         m_throwAnimationWait  = 0;
 
+    // Thrown weapon held as its attack animation lets go of it, see
+    // regripThrown: the weapon it was read for, compared but not
+    // dereferenced, whether the hand holds it so, and the weapon node's
+    // own local transform while it is posed
+    VrThrownGrip     m_thrownGrip;
+    bool             m_hasThrownGrip    = false;
+    bool             m_usesThrownGrip   = false;
+    const uint8_t*   m_thrownGripForm   = nullptr;
+    uint32_t         m_thrownGripTries  = 0;
+    uint32_t         m_thrownGripWait   = 0;
+    VrGameRotation   m_gripSavedRotate;
+    VrVector3        m_gripSavedTranslate;
+    float            m_gripSavedScale   = 1.0f;
+
     // The identity, for a part held at the hand bone itself
     VrGameTransform  m_atHandBone;
 
@@ -967,6 +993,9 @@ namespace dxvk {
     bool             m_hidesRightHand = false;
     bool             m_hidesModel = false;
     bool             m_loggedHidden = false;
+    // The weapon node is culled while the weapon is holstered
+    bool             m_hidesHolstered = false;
+    bool             m_loggedFreeHands = false;
 
     static void __fastcall updateHook(
             uint8_t*              object,
@@ -997,6 +1026,15 @@ namespace dxvk {
             void*                 unused,
             float                 dt);
 
+    static void __fastcall beamProcess3DHook(
+            uint8_t*              projectile,
+            void*                 unused);
+
+    static void __fastcall beamUpdateHook(
+            uint8_t*              projectile,
+            void*                 unused,
+            float                 dt);
+
     /**
      * \brief Where the player's shots start, aimed with the hand
      *
@@ -1010,8 +1048,8 @@ namespace dxvk {
             VrVector3&            muzzle);
 
     /**
-     * \brief Calls a FlameProjectile function with the shooter's
-     *    projectile node at the muzzle drawn in the hand
+     * \brief Calls a FlameProjectile or BeamProjectile function with
+     *    the shooter's projectile node at the muzzle drawn in the hand
      *
      * The node is restored afterwards: the game animates the first-person
      * model from it.
@@ -1041,6 +1079,8 @@ namespace dxvk {
 
     void placePipBoyArm(uint8_t* root, const VrVector3& shift, void* updateData);
 
+    void placeFreeHands(uint8_t* root, const VrVector3& drawnRoot, const VrVector3& shift, void* updateData);
+
     static PipBoyNodes findPipBoy(uint8_t* root);
 
     void measurePipBoyScreen(const PipBoyNodes& nodes);
@@ -1065,6 +1105,25 @@ namespace dxvk {
       const uint8_t*              form,
             int8_t                type,
       const VrThrowAnimationNodes& nodes);
+
+    /**
+     * \brief Holds a thrown weapon as its attack animation lets go of it
+     *
+     * When the game's idle holds the weapon turned far from that, such as
+     * a spear held as a cane that the attack flips in the hand, the
+     * weapon node is posed in the right hand as at the release and its
+     * world transform updated. It keeps that local transform until
+     * restoreThrownGrip, after the model's update.
+     *
+     * \returns Whether the weapon node was posed
+     */
+    bool regripThrown(uint8_t* root, uint8_t* weapon, const uint8_t* form, void* updateData);
+
+    /**
+     * \brief Gives the weapon node its own local transform back and poses
+     *    the parts below it as at the release
+     */
+    void restoreThrownGrip(uint8_t* weapon, void* updateData);
 
     void posePart(uint8_t* part, const VrPartPose& pose, void* updateData);
 

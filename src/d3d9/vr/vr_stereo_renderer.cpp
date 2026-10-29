@@ -7,6 +7,7 @@
 
 #include "vr_d3d9_bridge.h"
 #include "vr_game_addresses.h"
+#include "vr_game_ammo.h"
 #include "vr_game_console.h"
 #include "vr_game_memory.h"
 #include "vr_game_nodes.h"
@@ -90,13 +91,39 @@ namespace dxvk {
     constexpr int64_t ThrowHapticDuration = 25'000'000;
 
     // Pulses of the manual reload: on the left controller when it takes a
-    // magazine, on both when the magazine goes in, and a faint one when no
-    // rounds are left behind the back or the magazine enters or leaves its
-    // well
+    // magazine, on both when the magazine goes in, a faint one when the
+    // magazine enters or leaves its well, and a long dull one when no
+    // rounds are left behind the back, unlike any other
     constexpr float   MagazineTakenHaptic    = 0.4f;
     constexpr float   MagazineInsertedHaptic = 0.7f;
     constexpr float   MagazineFaintHaptic    = 0.15f;
     constexpr int64_t MagazineHapticDuration = 25'000'000;
+    constexpr float   NoRoundsHaptic         = 0.3f;
+    constexpr int64_t NoRoundsHapticDuration = 150'000'000;
+
+    // Pulses of the right hand at the holster: a light one when it gets
+    // there, a firm one when the weapon goes in or comes out
+    constexpr float   HolsterReachedHaptic   = 0.15f;
+    constexpr float   HolsterHaptic          = 0.6f;
+    constexpr int64_t HolsterHapticDuration  = 25'000'000;
+
+    // A hand taking hold of an object, and letting go of it
+    constexpr float   GrabHaptic             = 0.4f;
+    constexpr float   ReleaseHaptic          = 0.1f;
+    constexpr int64_t GrabHapticDuration     = 20'000'000;
+
+    // The quick wheel opens with the right stick pushed this far down, and
+    // stays open while it is pushed at least this far any way
+    constexpr float   WheelOpenDeflection    = 0.6f;
+    constexpr float   WheelKeepDeflection    = 0.3f;
+
+    // Pulses of the quick wheel and of the ammunition in the left hand:
+    // a tick for each cell or type, a firm one when it is used, a long dull
+    // one when it is refused
+    constexpr float   QuickTickHaptic        = 0.12f;
+    constexpr int64_t QuickTickDuration      = 12'000'000;
+    constexpr float   QuickUsedHaptic        = 0.5f;
+    constexpr int64_t QuickUsedDuration      = 30'000'000;
 
     /**
      * \brief Checks whether a state has no 3D scene and is shown on the panel
@@ -261,10 +288,13 @@ namespace dxvk {
     if (renderer->m_meleeSwing && !renderer->m_powerRules)
       Logger::warn("VR: The game's power attack rules were not found, melee swings are never power attacks");
 
-    renderer->m_chargeRing = std::make_unique<VrChargeRing>(device, backend);
+    renderer->m_painter    = std::make_unique<VrPainter>(device);
+    renderer->m_chargeRing = std::make_unique<VrChargeRing>(*renderer->m_painter, backend);
+    renderer->m_quickWheel = std::make_unique<VrQuickWheel>(*renderer->m_painter, backend, renderer->m_gameImages);
+    renderer->m_ammoLabel  = std::make_unique<VrAmmoLabel>(*renderer->m_painter, backend, renderer->m_gameImages);
 
     if (VrGameConsole::install())
-      renderer->m_terminal = std::make_unique<VrConsoleTerminal>(device, backend);
+      renderer->m_terminal = std::make_unique<VrConsoleTerminal>(*renderer->m_painter, backend);
 
     renderer->m_handPick = VrHandActivatePick::install();
 
@@ -313,6 +343,13 @@ namespace dxvk {
 
     if (!renderer->m_manualReload)
       Logger::info("VR: The player's reload was not found, the weapons are reloaded as in the game");
+
+    renderer->m_physicsGrab = VrPhysicsGrab::install();
+
+    if (renderer->m_physicsGrab)
+      renderer->m_controls.setGrabByHands(true);
+    else
+      Logger::info("VR: The game's grab was not found, the right grip grabs as the game's grab key");
 
     if (renderer->m_manualReload && renderer->m_weaponHand) {
       renderer->m_partHighlight = VrPartHighlight::install(
@@ -484,10 +521,12 @@ namespace dxvk {
       hideHud();
       hideHandHud();
       m_powerCharge.reset();
+      m_powerRefusal.reset();
 
       if (m_chargeRing)
         m_chargeRing->hide();
 
+      hideQuickPanels();
       renderPanelFrame(main, state);
       return;
     }
@@ -555,6 +594,19 @@ namespace dxvk {
     m_rightHandAtPipBoy = isRightHandAtPipBoy(input, state);
     m_controls.setRightHandAtPipBoy(m_rightHandAtPipBoy ? m_pipBoyControl.lightHoldTime() : 0.0f);
 
+    // The right grip holsters or draws at the holster, and the trigger does
+    // not draw the holstered weapon
+    m_controls.setRightHandAtHolster(m_holster.atHolster());
+
+    // X changes the ammunition in the left hand, the quick wheel holds the
+    // right stick
+    m_controls.setReloadTaken(m_ammoInHand);
+    m_controls.setRightStickTaken(m_quickWheel && m_quickWheel->isOpen());
+
+    // The Pip-Boy inventory's hotkey wheel takes the navigation stick
+    m_controls.setHotKeyWheelShown(state == VrGameStateKind::PipBoy && VrGameHotKeys::inventoryWheelShown());
+    m_controls.setHandsFree(m_weaponDrawn && m_weaponDrawn->playerHolstered());
+
     float dt = float(timing.predictedPeriod) * 1e-9f;
 
     updateControls(input, state, true, dt);
@@ -579,10 +631,14 @@ namespace dxvk {
     // The game turned its camera with the head already
     m_controls.updateCamera(m_gameCameraPose, dt);
     updateNpcGaze();
+    updateHolster(input, state);
+    updateQuickWheel(input, state);
     updateWeaponHand(input, state, modelCamera, dt);
     updateManualReload(input, state, dt);
+    updateAmmoChoice(input, state);
     updateMeleeSwing(input, state, dt);
     updateHandThrow(input, state, dt);
+    updatePhysicsGrab(input, state);
     updateHandPick(input, state);
     updatePipBoyGaze(input, state, dt);
 
@@ -665,6 +721,12 @@ namespace dxvk {
     // Nothing in the world can be pointed at without the stereo view
     if (m_handPick)
       m_handPick->setRays({ });
+
+    // Nor held
+    if (m_physicsGrab) {
+      for (uint32_t i = 0; i < VrHandCount; i++)
+        m_physicsGrab->setHand(VrHand(i), nullptr, false, false, false);
+    }
 
     if (m_npcGaze)
       m_npcGaze->setHead(nullptr);
@@ -903,8 +965,220 @@ namespace dxvk {
     VrGameCameraPose hand      = handInGame(right);
     VrGameCameraPose otherHand = handInGame(left);
 
+    VrFirstPersonMode mode = m_weaponDrawn && m_weaponDrawn->playerHolstered()
+      ? VrFirstPersonMode::FreeHands
+      : VrFirstPersonMode::Hands;
+
     m_weaponHand->beginFrame(gameCamera, &hand, left.isActive ? &otherHand : nullptr,
-      input.hasActions && input.actions.isPressed(VrAction::TwoHandGrip), VrFirstPersonMode::Hands, dt);
+      leftGripOnWeapon(input), mode, dt);
+  }
+
+
+  void VrStereoRenderer::updateQuickWheel(const VrInputState& input, VrGameStateKind state) {
+    if (!m_quickWheel)
+      return;
+
+    if (state != VrGameStateKind::InGame) {
+      m_quickWheel->close();
+      return;
+    }
+
+    const VrControllerState& right = input.controllers[uint32_t(VrHand::Right)];
+    bool tracked = input.hasActions && right.isActive && m_hasHeadPose;
+
+    const VrVector2& stick = input.actions.turn;
+
+    VrQuickWheelInput wheel;
+    wheel.head = tracked ? &m_headPose : nullptr;
+    wheel.hand = tracked ? &right.gripPose : nullptr;
+    wheel.manualReload = m_manualReload && m_manualReload->enabled();
+    wheel.held = m_quickWheel->isOpen()
+      ? std::sqrt(stick.x * stick.x + stick.y * stick.y) >= WheelKeepDeflection
+      : stick.y <= -WheelOpenDeflection;
+
+    switch (m_quickWheel->update(wheel)) {
+      case VrQuickWheelEvent::Opened:
+      case VrQuickWheelEvent::Picked:
+        m_backend.applyHaptic(VrHand::Right, QuickTickHaptic, QuickTickDuration);
+        break;
+
+      case VrQuickWheelEvent::Used:
+        m_backend.applyHaptic(VrHand::Right, QuickUsedHaptic, QuickUsedDuration);
+
+        // A weapon chosen on the wheel comes into the hand
+        if (m_quickWheel->drawsWeapon() && m_weaponDrawn)
+          m_weaponDrawn->draw();
+        break;
+
+      case VrQuickWheelEvent::Failed:
+        m_backend.applyHaptic(VrHand::Right, NoRoundsHaptic, NoRoundsHapticDuration);
+        break;
+
+      case VrQuickWheelEvent::Closed:
+      case VrQuickWheelEvent::None:
+        break;
+    }
+  }
+
+
+  void VrStereoRenderer::updateAmmoChoice(const VrInputState& input, VrGameStateKind state) {
+    bool inGame = state == VrGameStateKind::InGame && input.hasActions;
+    bool down   = inGame && input.actions.isPressed(VrAction::Reload);
+    bool pressed = down && !m_ammoButtonDown;
+    m_ammoButtonDown = down;
+
+    bool holds = inGame && m_manualReload && m_manualReload->holdsAmmo();
+
+    // The press was kept from the game if the hand already held it
+    if (pressed && holds && m_ammoInHand) {
+      if (m_manualReload->cycleAmmo())
+        m_backend.applyHaptic(VrHand::Left, QuickTickHaptic * 2.0f, QuickTickDuration);
+      else
+        m_backend.applyHaptic(VrHand::Left, NoRoundsHaptic, NoRoundsHapticDuration);
+    }
+
+    m_ammoInHand = holds;
+
+    const VrControllerState& left = input.controllers[uint32_t(VrHand::Left)];
+
+    if (!m_ammoLabel || !holds || !left.isActive || !m_hasHeadPose || !VrGameAmmo::available()) {
+      if (m_ammoLabel)
+        m_ammoLabel->hide();
+      return;
+    }
+
+    // Only a weapon that takes several types says which one the hand holds
+    std::vector<VrAmmoType> types = VrGameAmmo::types();
+    const VrAmmoType* held = nullptr;
+    bool more = false;
+
+    for (const VrAmmoType& type : types) {
+      if (type.form == m_manualReload->heldAmmo())
+        held = &type;
+      else if (type.held > 0)
+        more = true;
+    }
+
+    if (types.size() < 2 || !held) {
+      m_ammoLabel->hide();
+      return;
+    }
+
+    m_ammoLabel->show(m_headPose, left.gripPose.position, held->name, held->held, more);
+  }
+
+
+  void VrStereoRenderer::hideQuickPanels() {
+    if (m_quickWheel)
+      m_quickWheel->close();
+
+    if (m_ammoLabel)
+      m_ammoLabel->hide();
+  }
+
+
+  void VrStereoRenderer::updateHolster(const VrInputState& input, VrGameStateKind state) {
+    if (!m_weaponDrawn)
+      return;
+
+    const VrControllerState& right = input.controllers[uint32_t(VrHand::Right)];
+
+    int32_t type = -1;
+    VrWeaponDrawn::equippedWeapon(type);
+
+    VrHolsterInput holster;
+    holster.active = state == VrGameStateKind::InGame && m_hasReference && m_hasHeadPose
+      && right.isActive && input.hasActions && !m_rightHandAtPipBoy;
+    holster.kind   = vrHolsterForWeaponType(type);
+    holster.drawn  = !m_weaponDrawn->playerHolstered();
+    holster.grip   = input.actions.isPressed(VrAction::Grab);
+
+    if (holster.active) {
+      holster.head = vrComputeEyeCameraPose(m_gameCameraPose,
+        vrComputeEyeInReference(m_reference, m_headPose), VrGameUnitsPerMetre);
+      holster.hand = handInGame(right).position;
+    }
+
+    switch (m_holster.update(holster)) {
+      case VrHolsterEvent::Entered:
+        m_backend.applyHaptic(VrHand::Right, HolsterReachedHaptic, HolsterHapticDuration);
+        break;
+
+      case VrHolsterEvent::Holstered:
+        m_weaponDrawn->holster();
+        m_backend.applyHaptic(VrHand::Right, HolsterHaptic, HolsterHapticDuration);
+        break;
+
+      case VrHolsterEvent::Drawn:
+        m_weaponDrawn->draw();
+        m_backend.applyHaptic(VrHand::Right, HolsterHaptic, HolsterHapticDuration);
+        break;
+
+      case VrHolsterEvent::None:
+        break;
+    }
+  }
+
+
+  void VrStereoRenderer::updatePhysicsGrab(
+    const VrInputState&         input,
+          VrGameStateKind       state) {
+    if (!m_physicsGrab)
+      return;
+
+    const VrControllerState& right = input.controllers[uint32_t(VrHand::Right)];
+    const VrControllerState& left  = input.controllers[uint32_t(VrHand::Left)];
+
+    bool inGame = state == VrGameStateKind::InGame && m_hasReference && input.hasActions;
+
+    // The right hand holds objects only while the weapon is holstered. A
+    // press at the holster, at the Pip-Boy or with the quick wheel open
+    // does something else, but an object held there stays held.
+    bool rightBusy = m_holster.atHolster() || m_rightHandAtPipBoy || (m_quickWheel && m_quickWheel->isOpen());
+    bool rightFree = m_weaponDrawn && m_weaponDrawn->playerHolstered()
+      && (m_physicsGrab->holds(VrHand::Right) || !rightBusy);
+
+    // The left hand is free unless it holds the weapon, arms a grenade or
+    // reloads
+    bool leftFree = !(m_weaponHand && m_weaponHand->leftHandOnWeapon())
+      && !(m_handThrow && m_handThrow->throwsWithHand())
+      && !(m_manualReload && m_manualReload->leftHandBusy());
+
+    VrGameCameraPose rightHand;
+    VrGameCameraPose leftHand;
+
+    if (inGame && right.isActive)
+      rightHand = handInGame(right);
+
+    if (inGame && left.isActive)
+      leftHand = handInGame(left);
+
+    // The hand whose ray named the game's activation target may pull it;
+    // the target stays the game's until its next pick, after this frame
+    bool aimedRight = m_handPick && m_handPick->pickedWithHands() && m_handPick->hand() == VrHand::Right;
+    bool aimedLeft  = m_handPick && m_handPick->pickedWithHands() && m_handPick->hand() == VrHand::Left;
+
+    m_physicsGrab->setHand(VrHand::Right, inGame && right.isActive ? &rightHand : nullptr,
+      input.actions.isPressed(VrAction::Grab), rightFree, aimedRight);
+    m_physicsGrab->setHand(VrHand::Left, inGame && left.isActive ? &leftHand : nullptr,
+      input.actions.isPressed(VrAction::TwoHandGrip), leftFree, aimedLeft);
+
+    // What the player's last update did
+    VrPhysicsGrabEvents events = m_physicsGrab->takeEvents();
+
+    for (uint32_t i = 0; i < VrHandCount; i++) {
+      if (events.grabbed[i])
+        m_backend.applyHaptic(VrHand(i), GrabHaptic, GrabHapticDuration);
+      else if (events.released[i])
+        m_backend.applyHaptic(VrHand(i), ReleaseHaptic, GrabHapticDuration);
+    }
+  }
+
+
+  bool VrStereoRenderer::leftGripOnWeapon(const VrInputState& input) const {
+    // A left hand holding an object keeps it off the weapon
+    return input.hasActions && input.actions.isPressed(VrAction::TwoHandGrip)
+      && !(m_physicsGrab && m_physicsGrab->holds(VrHand::Left));
   }
 
 
@@ -934,7 +1208,7 @@ namespace dxvk {
       hands.head         = &head;
       hands.rightHand    = &rightHand;
       hands.leftHand     = &leftHand;
-      hands.leftOnWeapon = input.actions.isPressed(VrAction::TwoHandGrip);
+      hands.leftOnWeapon = leftGripOnWeapon(input);
       hands.grip         = input.actions.isPressed(VrAction::Magazine);
     }
 
@@ -972,6 +1246,9 @@ namespace dxvk {
         break;
 
       case VrMagazineEvent::NoRounds:
+        m_backend.applyHaptic(VrHand::Left, NoRoundsHaptic, NoRoundsHapticDuration);
+        break;
+
       case VrMagazineEvent::Cleared:
       case VrMagazineEvent::Engaged:
         m_backend.applyHaptic(VrHand::Left, MagazineFaintHaptic, MagazineHapticDuration);
@@ -992,6 +1269,9 @@ namespace dxvk {
         break;
 
       case VrRoundEvent::NoRounds:
+        m_backend.applyHaptic(VrHand::Left, NoRoundsHaptic, NoRoundsHapticDuration);
+        break;
+
       case VrRoundEvent::Started:
       case VrRoundEvent::Full:
         m_backend.applyHaptic(VrHand::Left, MagazineFaintHaptic, MagazineHapticDuration);
@@ -1069,6 +1349,7 @@ namespace dxvk {
     if (state != VrGameStateKind::InGame || !m_hasReference || !right.isActive || !input.isHeadTracked) {
       m_meleeSwing->update(nullptr, nullptr, false, false, m_gameCameraPose, m_gameCameraPose, dt);
       m_powerCharge.reset();
+      m_powerRefusal.reset();
       m_chargeRing->hide();
       return;
     }
@@ -1127,7 +1408,7 @@ namespace dxvk {
       rightHand     = handInGame(right);
       hands.hand    = &rightHand;
       hands.attack  = input.actions.isPressed(VrAction::Attack);
-      hands.grip    = input.actions.isPressed(VrAction::TwoHandGrip);
+      hands.grip    = leftGripOnWeapon(input);
       hands.trigger = input.actions.isPressed(VrAction::Magazine);
 
       if (left.isActive) {
@@ -1165,7 +1446,8 @@ namespace dxvk {
     // automatic ones and fires the others
     bool swung = m_meleeSwing->swingsWithHand();
     bool held  = swung && input.hasActions && input.actions.isPressed(VrAction::Attack);
-    bool allowed = held && m_powerRules && m_powerRules->allowed(cost);
+    bool lacksActionPoints = false;
+    bool allowed = held && m_powerRules && m_powerRules->allowed(cost, lacksActionPoints);
     bool wasCharged = m_powerCharge.charged();
 
     if (!m_powerRules) {
@@ -1174,6 +1456,12 @@ namespace dxvk {
     }
 
     m_powerCharge.update(held, allowed, m_powerRules->frameTime(), m_powerRules->holdTime());
+
+    if (m_powerRefusal.update(held, lacksActionPoints, m_powerRules->frameTime(), m_powerRules->holdTime())) {
+      Logger::info(str::format("VR: A power attack for ", cost, " action points was refused, the player has ",
+        m_powerRules->actionPoints()));
+      m_powerRules->tellLowActionPoints();
+    }
 
     if (m_powerCharge.charged() && !wasCharged)
       m_backend.applyHaptic(VrHand::Right, ChargedHaptic, ChargedHapticDuration);
@@ -1759,7 +2047,18 @@ namespace dxvk {
     if (hasMeters)
       meters = pixelsToRect(interfaceToPixels(metersGroup, imageSize.x / size.x, desc));
 
-    VrHeadHudLayout layout = vrComputeHeadHudLayout(imageSize, shift, hasMeters ? &meters : nullptr);
+    // The messages and objectives in the top left corner, which the meters
+    // must not cover
+    VrInterfaceRect messagesGroup;
+    VrInterfaceRect objectivesGroup;
+    bool hasMessages   = m_hudLayers.groupRect(VrGame::HudMessages, messagesGroup);
+    bool hasObjectives = m_hudLayers.groupRect(VrGame::HudQuestReminder, objectivesGroup);
+
+    float cornerRight = vrComputeHudCornerRight(hasMessages ? &messagesGroup : nullptr,
+      hasObjectives ? &objectivesGroup : nullptr) * imageSize.x / size.x;
+
+    VrHeadHudLayout layout = vrComputeHeadHudLayout(imageSize, shift,
+      hasMeters ? &meters : nullptr, std::round(cornerRight));
 
     if (FAILED(m_device->ColorFill(destination.ptr(), nullptr, D3DCOLOR_ARGB(0, 0, 0, 0))))
       return false;

@@ -1,10 +1,13 @@
+#include <algorithm>
 #include <cfloat>
 
 #include "../../util/log/log.h"
 #include "../../util/util_string.h"
 
 #include "vr_game_addresses.h"
+#include "vr_game_ammo.h"
 #include "vr_game_memory.h"
+#include "vr_game_sound.h"
 #include "vr_manual_reload.h"
 #include "vr_melee.h"
 #include "vr_sound_keys.h"
@@ -41,6 +44,11 @@ namespace dxvk {
     // bool in AL
     using HasModEffectFn = uint32_t (__fastcall*)(uint8_t* entry, void* unused, uint32_t effect);
 
+    // Interface::ShowMessage, __cdecl with the text, the face, the image,
+    // the sound, the time and whether it is shown at once
+    using ShowHudMessageFn = uint32_t (__cdecl*)(const char* text, uint32_t emotion, const char* image,
+      const char* sound, float time, uint32_t instant);
+
     // Frames during which the clip of a reload is watched: the equipment
     // queue fills it a frame or so after the reload
     constexpr uint32_t ClipWatchFrames = 4;
@@ -54,6 +62,14 @@ namespace dxvk {
 
     // Part of its travel the rack part of a jammed weapon rests back by
     constexpr float JamRest = 0.3f;
+
+    // How long the message that no rounds are left is shown, in seconds,
+    // as V.A.T.S. shows it; none is queued again meanwhile
+    constexpr float NoAmmoMessageTime = 2.0f;
+
+    // The sound the game plays when a lock or a terminal needs more skill
+    // than the player has (LockPickMenu::Create, BGSTerminal::Activate)
+    constexpr const char* NoAmmoSound = "UIPopUpMessageGeneral";
 
     VrManualReload* g_manualReload = nullptr;
 
@@ -118,6 +134,40 @@ namespace dxvk {
       return held > (beyondClip ? readField<int32_t>(entry, VrGame::InventoryEntryCount) : 0);
     }
 
+    /**
+     * \brief The ammunition a hand takes behind the back
+     *
+     * The clip's type while rounds of it are left, otherwise the first
+     * type of the weapon's list with rounds left, see findings/quick-menu.md
+     * §6, decision 3.
+     *
+     * \param [in] beyondClip Count only the rounds that are not in the clip
+     * \returns The ammunition, or \c nullptr if no type has rounds left
+     */
+    const uint8_t* ammoToTake(uint8_t* actor, bool beyondClip) {
+      uint8_t* entry = currentAmmo(actor);
+      auto current = entry ? readField<const uint8_t*>(entry, VrGame::InventoryEntryForm) : nullptr;
+      int32_t clip = entry ? readField<int32_t>(entry, VrGame::InventoryEntryCount) : 0;
+
+      if (!VrGameAmmo::available())
+        return holdsRounds(actor, beyondClip) ? current : nullptr;
+
+      std::vector<VrAmmoType> types = VrGameAmmo::types();
+
+      for (const VrAmmoType& type : types) {
+        if (type.form == current && type.held > (beyondClip ? clip : 0))
+          return current;
+      }
+
+      for (const VrAmmoType& type : types) {
+        if (type.form != current && type.held > 0)
+          return type.form;
+      }
+
+      // A weapon whose ammunition the list does not give
+      return types.empty() && holdsRounds(actor, beyondClip) ? current : nullptr;
+    }
+
     const char* callerName(uintptr_t returnAddress) {
       switch (returnAddress) {
         case VrGame::ReloadReturnControl:   return "reload control";
@@ -176,6 +226,14 @@ namespace dxvk {
       Logger::warn("VR: The clip reads of the attack were not found, jams are left to the game");
 
     std::unique_ptr<VrManualReload> reload(new VrManualReload());
+    reload->m_showsNoAmmo = VrGameMemory::matches(VrGame::NoAmmoMessageReadSite,
+        VrGame::NoAmmoMessageRead, sizeof(VrGame::NoAmmoMessageRead))
+      && VrGameMemory::matches(VrGame::ShowHudMessage,
+        VrGame::ShowHudMessagePrologue, sizeof(VrGame::ShowHudMessagePrologue));
+
+    if (!reload->m_showsNoAmmo)
+      Logger::warn("VR: The game's no ammo message was not found, running out of rounds is only felt");
+
     g_manualReload = reload.get();
     return reload;
   }
@@ -228,6 +286,7 @@ namespace dxvk {
       m_jammed      = false;
       m_unchambered = false;
       m_refusedClip = -1;
+      m_heldAmmo    = nullptr;
       m_lastWeapon  = weapon;
       m_lastClip    = clip;
     }
@@ -328,7 +387,7 @@ namespace dxvk {
       magazine.well       = vrPointFromHand(right, *input.well);
       magazine.axis       = right.forward * input.axis.x + right.up * input.axis.y + right.right * input.axis.z;
       magazine.head       = *input.head;
-      magazine.roundsHeld = m_magazine.state() != VrMagazineState::Out || holdsRounds(character, false);
+      magazine.roundsHeld = m_magazine.state() != VrMagazineState::Out || ammoToTake(character, false);
     }
 
     if (rack.active) {
@@ -485,6 +544,8 @@ namespace dxvk {
 
     switch (events.magazine) {
       case VrMagazineEvent::Ejected:
+        // The magazine taken out keeps the type it was loaded with
+        m_heldAmmo = nullptr;
         ejectMagazine(character, weapon, input.animation ? &input.animation->out : nullptr, magazine.well,
           input.rack && clip > 0);
 
@@ -494,8 +555,10 @@ namespace dxvk {
         break;
 
       case VrMagazineEvent::Inserted:
+        loadHeldAmmo();
         insertMagazine(character, weapon, input.animation ? &input.animation->in : nullptr, magazine.well,
           !input.rack || clipCount(character) > 0);
+        m_heldAmmo = nullptr;
         break;
 
       case VrMagazineEvent::Cleared:
@@ -512,6 +575,7 @@ namespace dxvk {
         break;
 
       case VrMagazineEvent::Taken:
+        m_heldAmmo = ammoToTake(character, false);
         Logger::info(str::format(hinged ? "VR: New shells for '" : str::format("VR: A new ", load, " for '"),
           weaponName(weapon), hinged ? "' are taken behind the back" : "' is taken behind the back"));
         break;
@@ -522,6 +586,7 @@ namespace dxvk {
         break;
 
       case VrMagazineEvent::Dropped:
+        m_heldAmmo = nullptr;
         Logger::info(str::format("VR: The ", load, " of '", weaponName(weapon), hinged ? "' are let go of" : "' is let go of"));
         break;
 
@@ -577,7 +642,84 @@ namespace dxvk {
     else
       m_rackRest = m_jammed ? JamRest * input.rackTravel : 0.0f;
 
+    m_noAmmoTime = std::max(m_noAmmoTime - input.frameTime, 0.0f);
+
+    if (events.magazine == VrMagazineEvent::NoRounds || events.round == VrRoundEvent::NoRounds)
+      showNoAmmo();
+
     return events;
+  }
+
+
+  bool VrManualReload::holdsAmmo() const {
+    VrMagazineState magazine = m_magazine.state();
+
+    // Rounds going into the port are no longer changed
+    bool held = m_loadsRounds
+      ? m_rounds.state() == VrRoundState::Holding
+      : magazine == VrMagazineState::InHand || magazine == VrMagazineState::Seating;
+
+    // A magazine taken out of the weapon is not one taken behind the back
+    return held && m_heldAmmo;
+  }
+
+
+  bool VrManualReload::cycleAmmo() {
+    if (!holdsAmmo() || !VrGameAmmo::available())
+      return false;
+
+    std::vector<VrAmmoType> types = VrGameAmmo::types();
+    size_t count = types.size();
+    size_t index = 0;
+
+    while (index < count && types[index].form != m_heldAmmo)
+      index += 1;
+
+    // The next type with rounds left, after the one held
+    for (size_t step = 1; step < count; step++) {
+      const VrAmmoType& next = types[(index + step) % count];
+
+      if (next.held > 0 && next.form != m_heldAmmo) {
+        m_heldAmmo = next.form;
+        Logger::info(str::format("VR: The left hand now holds '", next.name, "'"));
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+
+  void VrManualReload::loadHeldAmmo() {
+    if (!m_heldAmmo || !VrGameAmmo::available() || m_heldAmmo == VrGameAmmo::current())
+      return;
+
+    VrGameAmmo::select(m_heldAmmo);
+  }
+
+
+  void VrManualReload::showNoAmmo() {
+    if (m_noAmmoTime > 0.0f)
+      return;
+
+    m_noAmmoTime = NoAmmoMessageTime;
+
+    if (!vrPlayInterfaceSound(NoAmmoSound) && !m_loggedNoAmmoSound) {
+      Logger::warn(str::format("VR: The sound '", NoAmmoSound, "' was not found"));
+      m_loggedNoAmmoSound = true;
+    }
+
+    if (!m_showsNoAmmo)
+      return;
+
+    auto setting = reinterpret_cast<const uint8_t*>(VrGame::NoAmmoMessageSetting);
+    auto text    = readField<const char*>(setting, VrGame::SettingValue);
+
+    if (!text || !*text)
+      return;
+
+    reinterpret_cast<ShowHudMessageFn>(VrGame::ShowHudMessage)(text, VrGame::HudMessageSad,
+      nullptr, nullptr, NoAmmoMessageTime, 0);
   }
 
 
@@ -712,7 +854,7 @@ namespace dxvk {
       rounds.round      = vrPointFromHand(*input.leftHand, input.held);
       rounds.port       = vrPointFromHand(*input.rightHand, *input.port);
       rounds.head       = *input.head;
-      rounds.roundsHeld = holdsRounds(player, true);
+      rounds.roundsHeld = ammoToTake(player, true) != nullptr;
       rounds.dt         = input.frameTime * reloadSpeed(player);
     }
 
@@ -724,6 +866,7 @@ namespace dxvk {
 
     switch (event) {
       case VrRoundEvent::Taken:
+        m_heldAmmo = ammoToTake(player, true);
         Logger::info(str::format("VR: A handful of rounds for '", weaponName(weapon), "' is taken behind the back"));
         break;
 
@@ -749,6 +892,7 @@ namespace dxvk {
         break;
 
       case VrRoundEvent::Dropped:
+        m_heldAmmo = nullptr;
         Logger::info(str::format("VR: The rounds of '", weaponName(weapon), "' are let go of, clip ", clipCount(player)));
         break;
 
@@ -770,6 +914,8 @@ namespace dxvk {
 
 
   bool VrManualReload::loadRound(uint8_t* player, uint8_t* weapon) {
+    loadHeldAmmo();
+
     int32_t before = clipCount(player);
 
     // The game's own looping reload with no animation adds one round
@@ -841,9 +987,12 @@ namespace dxvk {
     int32_t   before = clipCount(player);
 
     // The weapons reloaded by hand are not reloaded by the control or when
-    // a shot empties the clip: an empty clip clicks
+    // a shot empties the clip: an empty clip clicks. V.A.T.S. plays its
+    // queued shots on its own and waits for the game's reload, so there
+    // the game reloads as it does without the hands.
     bool byHand = g_manualReload && weapon && weapon == g_manualReload->m_handWeapon.load()
-      && (caller == VrGame::ReloadReturnControl || caller == VrGame::ReloadReturnEmptyClip);
+      && (caller == VrGame::ReloadReturnControl || caller == VrGame::ReloadReturnEmptyClip)
+      && !inVats();
 
     if (byHand) {
       Logger::info(str::format("VR: Reload of '", weaponName(weapon), "' from the ", callerName(caller),

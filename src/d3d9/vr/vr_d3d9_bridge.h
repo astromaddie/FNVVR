@@ -90,6 +90,8 @@ namespace dxvk {
      * \param [in] pose Panel pose, relative to \c anchor
      * \param [in] width Panel width, in metres
      * \param [in] anchor What the pose is relative to
+     * \param [in] premultiplied Whether the image's colours are
+     *    premultiplied by its alpha
      * \returns \c true if the backend accepted the panel
      */
     static bool submitPanel(
@@ -99,7 +101,8 @@ namespace dxvk {
             IDirect3DTexture9*    texture,
       const VrPose&               pose,
             float                 width,
-            VrPanelAnchor         anchor);
+            VrPanelAnchor         anchor,
+            bool                  premultiplied = false);
 
   private:
 

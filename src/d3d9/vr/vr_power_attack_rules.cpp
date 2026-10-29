@@ -3,6 +3,7 @@
 
 #include "vr_game_addresses.h"
 #include "vr_game_memory.h"
+#include "vr_game_sound.h"
 #include "vr_power_attack_rules.h"
 
 namespace dxvk {
@@ -26,6 +27,17 @@ namespace dxvk {
     // BGSEntryPoint::HandleEntryPoint, variadic: one float result here
     using HandleEntryPointFn = void (__cdecl*)(uint32_t entryPoint, const uint8_t* owner, float* result);
 
+    // Interface::ShowMessage, __cdecl with the text, the face, the image,
+    // the sound, the time and whether it is shown at once
+    using ShowHudMessageFn = uint32_t (__cdecl*)(const char* text, uint32_t emotion, const char* image,
+      const char* sound, float time, uint32_t instant);
+
+    // How long the message is shown, in seconds, as V.A.T.S. shows its own
+    constexpr float LowActionPointsTime = 2.0f;
+
+    // The sound the inventory plays when action points are short
+    constexpr const char* LowActionPointsSound = "UIVATSInsufficientAP";
+
     // ActorValueOwner::GetActorFloatValue
     using GetAvFloatFn = float (__fastcall*)(const uint8_t* owner, void* unused, uint32_t index);
 
@@ -45,6 +57,11 @@ namespace dxvk {
 
     const uint8_t* player() {
       return *reinterpret_cast<const uint8_t* const*>(VrGame::Player);
+    }
+
+    const char* settingString(uintptr_t setting) {
+      const char* text = readField<const char*>(reinterpret_cast<const void*>(setting), VrGame::SettingValue);
+      return text ? text : "";
     }
 
   }
@@ -68,6 +85,15 @@ namespace dxvk {
       return nullptr;
 
     std::unique_ptr<VrPowerAttackRules> rules(new VrPowerAttackRules(cost));
+    rules->m_tellsLowActionPoints = VrGameMemory::matches(VrGame::ActionPointsShortReadSite,
+        VrGame::ActionPointsShortRead, sizeof(VrGame::ActionPointsShortRead))
+      && VrGameMemory::matches(VrGame::LowApMessageReadSite,
+        VrGame::LowApMessageRead, sizeof(VrGame::LowApMessageRead))
+      && VrGameMemory::matches(VrGame::ShowHudMessage,
+        VrGame::ShowHudMessagePrologue, sizeof(VrGame::ShowHudMessagePrologue));
+
+    if (!rules->m_tellsLowActionPoints)
+      Logger::warn("VR: The game's low action points message was not found, a refused power attack is only heard");
 
     Logger::info(str::format("VR: Holding the trigger for ", rules->holdTime(),
       " s charges a power attack with a melee weapon, for ", cost.base, " action points plus ",
@@ -86,9 +112,10 @@ namespace dxvk {
   }
 
 
-  bool VrPowerAttackRules::allowed(int32_t& cost) const {
+  bool VrPowerAttackRules::allowed(int32_t& cost, bool& lacksActionPoints) const {
     const uint8_t* pc = player();
     cost = 0;
+    lacksActionPoints = false;
 
     if (!pc)
       return false;
@@ -103,7 +130,24 @@ namespace dxvk {
     if (reinterpret_cast<IsGodModeFn>(VrGame::PlayerIsGodMode)())
       return true;
 
-    return float(cost) <= actionPoints();
+    lacksActionPoints = float(cost) > actionPoints();
+    return !lacksActionPoints;
+  }
+
+
+  void VrPowerAttackRules::tellLowActionPoints() const {
+    vrPlayInterfaceSound(LowActionPointsSound);
+
+    if (!m_tellsLowActionPoints)
+      return;
+
+    // "AP" and the word V.A.T.S. writes beside its meter, in the game's
+    // language
+    std::string text = str::format(settingString(VrGame::ActionPointsShortSetting), " ",
+      settingString(VrGame::LowApMessageSetting));
+
+    reinterpret_cast<ShowHudMessageFn>(VrGame::ShowHudMessage)(text.c_str(), VrGame::HudMessageSad,
+      nullptr, nullptr, LowActionPointsTime, 0);
   }
 
 

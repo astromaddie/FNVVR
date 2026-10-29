@@ -149,6 +149,30 @@ TEST_CASE(menu_navigation_presses_the_dominant_dpad_direction) {
 }
 
 
+TEST_CASE(hotkey_wheel_takes_the_dpad_with_its_diagonals) {
+  VrActionState actions;
+  actions.setPressed(VrAction::MenuNext, true);
+  auto buttons = [&] (VrVector2 stick) {
+    actions.move = stick;
+    return vrComputePadState(actions, VrInputContext::Menu, nullptr, VrMenuNavigation::HotKeyWheel).buttons;
+  };
+
+  constexpr uint16_t Rb = VrGamepadButton::RightShoulder;
+
+  CHECK(buttons({ 0.0f, -0.3f }) == Rb);
+  CHECK(buttons({ 0.0f, -0.8f }) == (Rb | VrGamepadButton::DpadDown));
+  CHECK(buttons({ -0.6f, -0.6f }) == (Rb | VrGamepadButton::DpadDown | VrGamepadButton::DpadLeft));
+  CHECK(buttons({ 0.6f, 0.6f }) == (Rb | VrGamepadButton::DpadUp | VrGamepadButton::DpadRight));
+  // 20 degrees off the right is still right alone
+  CHECK(buttons({ 0.94f, 0.34f }) == (Rb | VrGamepadButton::DpadRight));
+
+  // The list does not see the stick
+  VrPadState pad = vrComputePadState(actions, VrInputContext::Menu, nullptr, VrMenuNavigation::HotKeyWheel);
+  CHECK(pad.thumbLeftX == 0);
+  CHECK(pad.thumbLeftY == 0);
+}
+
+
 TEST_CASE(menu_sticks_are_passed_on) {
   VrActionState actions;
   actions.move = { -1.0f, 0.5f };

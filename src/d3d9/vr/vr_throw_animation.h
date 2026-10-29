@@ -85,6 +85,21 @@ namespace dxvk {
   };
 
   /**
+   * \brief How the attack animation of a thrown weapon holds it when it
+   *    lets go of it
+   */
+  struct VrThrownGrip {
+    /// The weapon node in the right hand bone's frame at the release
+    VrSequencePose          weapon;
+    /// The parts below the weapon node the animation moves, in their
+    /// parents at the release, parents first
+    std::vector<VrPartPose> parts;
+    /// The largest turn, in radians, of the weapon node or of one of these
+    /// parts in the right hand, from the pose the game holds it in now
+    float                   turn = 0.0f;
+  };
+
+  /**
    * \brief The nodes of the first-person model a throw's animation is
    *    read on
    */
@@ -125,5 +140,27 @@ namespace dxvk {
           VrThrowArming         arming,
     const VrThrowAnimationNodes& nodes,
           VrThrowAnimation&     animation);
+
+  /**
+   * \brief Reads how the player's first-person attack animation of the
+   *    equipped thrown weapon holds it when it lets go of it
+   *
+   * At the animation's Release key (else its Hit key, else its end). Read
+   * while the game holds the weapon in its idle pose, to compare with it.
+   *
+   * \param [in] player The player character
+   * \param [in] weapon The weapon form
+   * \param [in] weaponNode The weapon node of the first-person model
+   * \param [in] rightHand The right hand bone above it
+   * \param [out] grip How the animation holds the weapon then
+   * \returns \c false if the weapon has no such animation, or the weapon
+   *    node is not below the hand bone
+   */
+  bool vrReadThrownGrip(
+          uint8_t*              player,
+    const uint8_t*              weapon,
+          uint8_t*              weaponNode,
+          uint8_t*              rightHand,
+          VrThrownGrip&         grip);
 
 }

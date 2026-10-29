@@ -23,6 +23,11 @@ namespace dxvk {
    *   including the walk up to it), fighting controls disabled by a script,
    *   dead. The game itself refuses to draw while swimming or aiming down
    *   the sights.
+   * - The player holsters and draws the weapon with the hand, see
+   *   VrHolsterHand: once holstered by the player it stays holstered until
+   *   the player draws it, or until something draws it (the game, a
+   *   script, an item used from the quick wheel), or until no weapon that
+   *   can be holstered is equipped.
    *
    * Only used on the game's main thread.
    */
@@ -45,6 +50,31 @@ namespace dxvk {
      */
     void update();
 
+    /**
+     * \brief Puts the player's weapon in its holster, with its put down sound
+     */
+    void holster();
+
+    /**
+     * \brief Takes the player's weapon out of its holster, with its pick up sound
+     */
+    void draw();
+
+    /**
+     * \brief Whether the player holstered the weapon and it stays so
+     */
+    bool playerHolstered() const {
+      return m_playerHolstered;
+    }
+
+    /**
+     * \brief The equipped weapon's form and animation type
+     *
+     * \param [out] type Its animation type, -1 without a weapon
+     * \returns The weapon (TESObjectWEAP*), or \c nullptr
+     */
+    static const uint8_t* equippedWeapon(int32_t& type);
+
   private:
 
     VrWeaponDrawn() = default;
@@ -53,6 +83,10 @@ namespace dxvk {
     bool m_loggedHolster   = false;
     bool m_loggedDraw      = false;
     bool m_loggedFurniture = false;
+
+    bool m_playerHolstered = false;
+
+    void playSound(bool pickUp) const;
 
     static uint32_t __fastcall equipWaitHook(
             uint8_t*              animData,

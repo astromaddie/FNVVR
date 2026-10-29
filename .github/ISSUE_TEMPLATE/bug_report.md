@@ -14,6 +14,20 @@ If you use Windows, please check the following page: https://github.com/doitsuji
 ### Software information
 Name of the game, settings used etc. Include any mods or add-ons if applicable.
 
+### Steam Frame / FNVVR installation
+If this is a Frame tracking or input issue, follow [the install checks](https://github.com/astromaddie/FNVVR/blob/master/docs/FRAME_INSTALL.md)
+and include:
+
+- Frame release/build ID and `build-info.json` (if present):
+- Actual SHA-256 of `d3d9.dll`, `FalloutNV.exe` and action/binding JSON files:
+- Proton version, Steam launch options and active `dxvk.conf`:
+- Any `DXVK_CONFIG_FILE` / `DXVK_VR_BACKEND` overrides or game-hook mods:
+- Does SteamVR track elsewhere, do menu panels respond, and does the first-person gameplay camera track?
+- Complete fresh `FalloutNV_d3d9.log`, with private paths redacted if needed:
+
+`First poses received, head tracked: no` describes only the first pose sample;
+it does not establish that tracking stayed inactive. Do not upload the game executable or assets.
+
 ### System information
 - GPU:
 - Driver:

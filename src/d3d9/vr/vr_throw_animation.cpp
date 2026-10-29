@@ -445,4 +445,66 @@ namespace dxvk {
     return true;
   }
 
+
+
+  bool vrReadThrownGrip(
+          uint8_t*              player,
+    const uint8_t*              weapon,
+          uint8_t*              weaponNode,
+          uint8_t*              rightHand,
+          VrThrownGrip&         grip) {
+    grip = VrThrownGrip();
+
+    uint32_t group = readField<uint8_t>(weapon, VrGame::WeaponAttackAnimation);
+    const uint8_t* sequence = group != NoAttackAnimation ? vrFindPlayerSequence(player, group) : nullptr;
+
+    if (!sequence) {
+      Logger::info(str::format("VR: The thrown weapon has no first-person attack animation (", group, ")"));
+      return false;
+    }
+
+    float end     = readField<float>(sequence, VrGame::SequenceEndKeyTime);
+    float release = findRelease(sequence, end);
+
+    VrSequenceTracks tracks(sequence);
+
+    if (!tracks.toAncestor(weaponNode, rightHand, release, grip.weapon)) {
+      Logger::info("VR: The thrown weapon's node is not below the right hand bone");
+      return false;
+    }
+
+    grip.parts = readParts(tracks, weaponNode, false, release);
+
+    // Each turn is taken in the hand, from where the game holds it now
+    VrGameRotation toHand = vrTranspose(readRotation(rightHand, VrGame::ObjectWorldRotation));
+
+    auto turnOf = [&] (uint8_t* node, const VrGameRotation& released) {
+      return vrRotationAngle(toHand * readRotation(node, VrGame::ObjectWorldRotation), released);
+    };
+
+    float weaponTurn = turnOf(weaponNode, grip.weapon.rotate);
+    float partTurn   = 0.0f;
+
+    for (const VrPartPose& part : grip.parts) {
+      auto node = reinterpret_cast<uint8_t*>(vrFindGameObject(
+        reinterpret_cast<uintptr_t>(weaponNode), part.name.c_str(), MaxPartDepth));
+      VrSequencePose released;
+
+      if (node && tracks.toAncestor(node, rightHand, release, released))
+        partTurn = std::max(partTurn, turnOf(node, released.rotate));
+    }
+
+    grip.turn = std::max(weaponTurn, partTurn);
+
+    constexpr float DegreesPerRadian = 57.2957795f;
+
+    Logger::info(str::format("VR: Thrown weapon attack animation (group ", group, ") lets go at ", release,
+      " s: the weapon node", tracks.moves(weaponNode) ? " (animated)" : " (not animated)", " is turned ",
+      int(std::lround(weaponTurn * DegreesPerRadian)), " degrees in the right hand from its idle pose, ",
+      grip.parts.size(), " part(s) below it animated, turned up to ",
+      int(std::lround(partTurn * DegreesPerRadian)), " degrees; chain at the release ",
+      describeChain(tracks, weaponNode, rightHand, release)));
+    return true;
+  }
+
 }

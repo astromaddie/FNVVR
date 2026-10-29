@@ -44,11 +44,11 @@ namespace dxvk {
     // Projectile::GetSpeed, __thiscall without arguments, returns a float
     using ProjectileGetSpeedFn = float (__fastcall*)(uint8_t* projectile, void* unused);
 
-    // FlameProjectile::Process3D is __thiscall without arguments
-    using FlameProcess3DFn = void (__fastcall*)(uint8_t* projectile, void* unused);
+    // Process3D of a flame or beam projectile is __thiscall without arguments
+    using ProjectileProcess3DFn = void (__fastcall*)(uint8_t* projectile, void* unused);
 
-    // FlameProjectile::UpdateProjectile is __thiscall with the frame time
-    using FlameUpdateFn = void (__fastcall*)(uint8_t* projectile, void* unused, float dt);
+    // UpdateProjectile of a flame or beam is __thiscall with the frame time
+    using ProjectileUpdateFn = void (__fastcall*)(uint8_t* projectile, void* unused, float dt);
 
     // TESObjectREFR::GetProjectileNode, __thiscall without arguments
     using GetProjectileNodeFn = uint8_t* (__fastcall*)(uint8_t* reference, void* unused);
@@ -134,6 +134,11 @@ namespace dxvk {
 
     // The same for the attack animation of a grenade or mine
     constexpr uint32_t ThrowAnimationTries       = 3;
+
+    // How far the release of a thrown weapon's attack animation turns it
+    // in the hand from the idle pose, in radians (75 degrees), for the
+    // hand to hold it as at the release: a spear's idle holds it as a cane
+    constexpr float ThrownRegripTurn = 1.3089969f;
 
     // Bones of the free hand that take a pose: its fingers, the wrist and
     // the forearm's twist bone
@@ -463,6 +468,33 @@ namespace dxvk {
     };
 
     /**
+     * \brief Curls the fingers below the right hand bone as the player's are
+     *
+     * \param [in] hand The right hand bone
+     * \param [in] curls The player's finger curls
+     * \param [out] fingers The bones' local rotations before, to write back
+     * \returns How many bones were posed
+     */
+    uint32_t poseRightFingers(uint8_t* hand, const VrFingerCurls& curls,
+        std::array<SavedBone, VrFingerBoneCount>& fingers) {
+      uint32_t count = 0;
+
+      forEachObject(hand, MaxModelDepth, [&curls, &fingers, &count] (uint8_t* object) {
+        auto name = field<const char*>(object, VrGame::ObjectName);
+        VrHand side;
+        uint32_t index;
+
+        if (!name || count == fingers.size() || !vrFindFingerBone(name, side, index) || side != VrHand::Right)
+          return;
+
+        fingers[count++] = { object, readRotation(object, VrGame::ObjectLocalRotation) };
+        writeRotation(object, VrGame::ObjectLocalRotation, vrPoseFingerBone(index, side, curls));
+      });
+
+      return count;
+    }
+
+    /**
      * \brief Where a bone below the left hand is in the hand bone's frame
      *
      * With the bones between them posed as placeOtherHand poses them, in
@@ -532,6 +564,13 @@ namespace dxvk {
           VrGame::FlameUpdate, reinterpret_cast<const void*>(&VrWeaponHand::flameUpdateHook))))
       Logger::warn("VR: The flame projectile functions were not found, flames come from in front of the head");
 
+    // If these fail, laser beams follow the head while they fade
+    if (found && !(VrGameMemory::redirectVirtual(VrGame::BeamProcess3DSlot,
+          VrGame::BeamProcess3D, reinterpret_cast<const void*>(&VrWeaponHand::beamProcess3DHook))
+        && VrGameMemory::redirectVirtual(VrGame::BeamUpdateSlot,
+          VrGame::BeamUpdate, reinterpret_cast<const void*>(&VrWeaponHand::beamUpdateHook))))
+      Logger::warn("VR: The beam projectile functions were not found, laser beams follow the head");
+
     // If this one fails, the hand's shots still bend towards where the head looks
     if (found && !VrGameMemory::redirectCall(VrGame::AutoAimCallSite,
         VrGame::ApplyAutoAim, reinterpret_cast<const void*>(&VrWeaponHand::autoAimHook)))
@@ -575,7 +614,7 @@ namespace dxvk {
           bool                  grip,
           VrFirstPersonMode     mode,
           float                 dt) {
-    if (mode != VrFirstPersonMode::Hands)
+    if (mode != VrFirstPersonMode::Hands && mode != VrFirstPersonMode::FreeHands)
       hand = nullptr;
 
     m_frameTime         = dt;
@@ -814,9 +853,9 @@ namespace dxvk {
     writeRotation(node, VrGame::ObjectWorldRotation, rotation);
     writeVector(node, VrGame::ObjectWorldTranslation, translation);
 
-    if (g_weaponHand && !g_weaponHand->m_loggedFlame) {
-      Logger::info("VR: Flames come from the muzzle drawn in the hand");
-      g_weaponHand->m_loggedFlame = true;
+    if (g_weaponHand && !g_weaponHand->m_loggedFollow) {
+      Logger::info("VR: Flames and beams stay on the muzzle drawn in the hand");
+      g_weaponHand->m_loggedFollow = true;
     }
   }
 
@@ -827,7 +866,7 @@ namespace dxvk {
     // The flame keeps the rotation it has to the node from here on: its
     // spread, once the node is at the muzzle
     withNodeAtMuzzle(projectile, [projectile] {
-      reinterpret_cast<FlameProcess3DFn>(VrGame::FlameProcess3D)(projectile, nullptr);
+      reinterpret_cast<ProjectileProcess3DFn>(VrGame::FlameProcess3D)(projectile, nullptr);
     });
   }
 
@@ -838,7 +877,29 @@ namespace dxvk {
           float                 dt) {
     // The flame is placed, then picks what it burns from there
     withNodeAtMuzzle(projectile, [projectile, dt] {
-      reinterpret_cast<FlameUpdateFn>(VrGame::FlameUpdate)(projectile, nullptr, dt);
+      reinterpret_cast<ProjectileUpdateFn>(VrGame::FlameUpdate)(projectile, nullptr, dt);
+    });
+  }
+
+
+  void __fastcall VrWeaponHand::beamProcess3DHook(
+          uint8_t*              projectile,
+          void*                 unused) {
+    // As a flame: the beam keeps its spread to the node
+    withNodeAtMuzzle(projectile, [projectile] {
+      reinterpret_cast<ProjectileProcess3DFn>(VrGame::BeamProcess3D)(projectile, nullptr);
+    });
+  }
+
+
+  void __fastcall VrWeaponHand::beamUpdateHook(
+          uint8_t*              projectile,
+          void*                 unused,
+          float                 dt) {
+    // The beam stays on the muzzle while it fades, as the game keeps it on
+    // its own
+    withNodeAtMuzzle(projectile, [projectile, dt] {
+      reinterpret_cast<ProjectileUpdateFn>(VrGame::BeamUpdate)(projectile, nullptr, dt);
     });
   }
 
@@ -973,9 +1034,12 @@ namespace dxvk {
       return;
     }
 
-    // The arms and the weapon are culled one by one from here on
-    if (m_hidesModel)
+    // The arms and the weapon are culled one by one from here on. The
+    // weapon node, culled while it is holstered, is shown again with them.
+    if (m_hidesModel || (m_hidesHolstered && m_mode != VrFirstPersonMode::FreeHands)) {
       showArms(root);
+      m_hidesHolstered = false;
+    }
 
     if (m_mode == VrFirstPersonMode::PipBoy) {
       m_hasAim    = false;
@@ -983,6 +1047,16 @@ namespace dxvk {
       m_twoHanded = false;
       m_braced    = false;
       placePipBoyArm(root, shift, updateData);
+      return;
+    }
+
+    if (m_mode == VrFirstPersonMode::FreeHands && m_hasHand) {
+      m_hasAim     = false;
+      m_hasBlade   = false;
+      m_twoHanded  = false;
+      m_braced     = false;
+      m_drawWeapon = nullptr;
+      placeFreeHands(root, drawnRoot, shift, updateData);
       return;
     }
 
@@ -1058,6 +1132,15 @@ namespace dxvk {
       return;
     }
 
+    // A thrown weapon the idle holds otherwise than its throw is held as
+    // the throw lets go of it
+    bool regripped = !fist && type == WeaponTypeThrown && regripThrown(root, weapon, form, updateData);
+
+    if (regripped) {
+      drawnWeapon    = readVector(weapon, VrGame::ObjectWorldTranslation);
+      weaponRotation = readRotation(weapon, VrGame::ObjectWorldRotation);
+    }
+
     VrGameTransform rig = held
       ? vrComputeRigHoldingWeapon(weaponRotation, drawnWeapon, m_heldSettle.rotation(), hand)
       : vrComputeRigToHand(m_gameCamera, drawnWeapon, hand);
@@ -1101,21 +1184,8 @@ namespace dxvk {
     std::array<SavedBone, VrFingerBoneCount> fingers;
     uint32_t fingerCount = 0;
 
-    if (fist && !form && m_hasFingers[uint32_t(VrHand::Right)]) {
-      const VrFingerCurls& curls = m_fingerCurls[uint32_t(VrHand::Right)];
-
-      forEachObject(fist, MaxModelDepth, [&curls, &fingers, &fingerCount] (uint8_t* object) {
-        auto name = field<const char*>(object, VrGame::ObjectName);
-        VrHand side;
-        uint32_t index;
-
-        if (!name || fingerCount == fingers.size() || !vrFindFingerBone(name, side, index) || side != VrHand::Right)
-          return;
-
-        fingers[fingerCount++] = { object, readRotation(object, VrGame::ObjectLocalRotation) };
-        writeRotation(object, VrGame::ObjectLocalRotation, vrPoseFingerBone(index, side, curls));
-      });
-    }
+    if (fist && !form && m_hasFingers[uint32_t(VrHand::Right)])
+      fingerCount = poseRightFingers(fist, m_fingerCurls[uint32_t(VrHand::Right)], fingers);
 
     writeRotation(root, VrGame::ObjectLocalRotation, vrTranspose(parent.rotate) * worldRotation);
     writeVector(root, VrGame::NodeLocalTranslate, parent.toLocal(worldTranslation));
@@ -1125,6 +1195,9 @@ namespace dxvk {
     // starts from the game's fingers
     writeRotation(root, VrGame::ObjectLocalRotation, rotation);
     writeVector(root, VrGame::NodeLocalTranslate, translation);
+
+    if (regripped)
+      restoreThrownGrip(weapon, updateData);
 
     for (uint32_t i = 0; i < fingerCount; i++)
       writeRotation(fingers[i].bone, VrGame::ObjectLocalRotation, fingers[i].rotate);
@@ -1238,6 +1311,76 @@ namespace dxvk {
     if (!m_loggedActive) {
       Logger::info("VR: The weapon is in the right hand");
       m_loggedActive = true;
+    }
+  }
+
+
+  void VrWeaponHand::placeFreeHands(
+          uint8_t*              root,
+    const VrVector3&            drawnRoot,
+    const VrVector3&            shift,
+          void*                 updateData) {
+    uint8_t* rightHand = findObject(root, VrGame::RightHandNodeName);
+    uint8_t* otherHand = findObject(root, VrGame::LeftHandNodeName);
+    uint8_t* forearm   = otherHand ? field<uint8_t*>(otherHand, VrGame::ObjectParent) : nullptr;
+
+    if (!rightHand) {
+      showArms(root);
+      return;
+    }
+
+    ParentFrame parent = parentFrame(root);
+
+    // The right hand bone takes the free hand's pose around its
+    // controller, mirrored, wherever the game holds the arms with the
+    // weapon holstered
+    VrGameCameraPose hand = m_hand;
+    hand.position = hand.position - shift;
+
+    VrGameTransform target = vrComputeHeldTransform(hand, vrMirrorHandPose(FreeHandPose));
+    VrGameRotation drawnRotation = readRotation(rightHand, VrGame::ObjectWorldRotation);
+    VrVector3 drawnHand = readVector(rightHand, VrGame::ObjectWorldTranslation);
+
+    VrGameTransform rig;
+    rig.rotate    = target.rotate * vrTranspose(drawnRotation);
+    rig.translate = target.translate - rig.rotate * drawnHand;
+
+    VrGameRotation worldRotation = rig.rotate * readRotation(root, VrGame::ObjectWorldRotation);
+    VrVector3 worldTranslation   = rig.rotate * drawnRoot + rig.translate;
+
+    VrGameRotation rotation = readRotation(root, VrGame::ObjectLocalRotation);
+    VrVector3 translation   = readVector(root, VrGame::NodeLocalTranslate);
+
+    std::array<SavedBone, VrFingerBoneCount> fingers;
+    uint32_t fingerCount = 0;
+
+    if (m_hasFingers[uint32_t(VrHand::Right)])
+      fingerCount = poseRightFingers(rightHand, m_fingerCurls[uint32_t(VrHand::Right)], fingers);
+
+    writeRotation(root, VrGame::ObjectLocalRotation, vrTranspose(parent.rotate) * worldRotation);
+    writeVector(root, VrGame::NodeLocalTranslate, parent.toLocal(worldTranslation));
+    updateObject(root, updateData);
+
+    writeRotation(root, VrGame::ObjectLocalRotation, rotation);
+    writeVector(root, VrGame::NodeLocalTranslate, translation);
+
+    for (uint32_t i = 0; i < fingerCount; i++)
+      writeRotation(fingers[i].bone, VrGame::ObjectLocalRotation, fingers[i].rotate);
+
+    if (forearm && m_hasOtherHand)
+      placeOtherHand(root, otherHand, shift, updateData, nullptr);
+
+    hideArms(root, false);
+
+    // A holstered weapon is not in the hand
+    if (uint8_t* weapon = findObject(root, VrGame::WeaponNodeName))
+      hide(weapon, !m_loggedFreeHands);
+
+    m_hidesHolstered = true;
+
+    if (!m_loggedFreeHands) {
+      Logger::info("VR: The weapon is holstered, both hands take the free pose around their controllers");
+      m_loggedFreeHands = true;
     }
   }
 
@@ -2987,6 +3130,78 @@ namespace dxvk {
     }
 
     m_hasThrowAnimation = vrReadThrowAnimation(player(), form, arming, nodes, m_throwAnimation);
+  }
+
+
+  bool VrWeaponHand::regripThrown(uint8_t* root, uint8_t* weapon, const uint8_t* form, void* updateData) {
+    if (form != m_thrownGripForm) {
+      m_thrownGripForm  = form;
+      m_hasThrownGrip   = false;
+      m_usesThrownGrip  = false;
+      m_thrownGripTries = 0;
+      m_thrownGripWait  = 0;
+    }
+
+    uint8_t* rightHand = findObject(root, VrGame::RightHandNodeName);
+
+    if (!rightHand)
+      return false;
+
+    // Read while the game holds the weapon in its idle pose, compared with
+    // it, before anything is written to it
+    if (!m_hasThrownGrip && m_thrownGripTries < ThrowAnimationTries && m_drawSettle.settled()) {
+      if (m_thrownGripWait) {
+        m_thrownGripWait -= 1;
+      } else {
+        m_thrownGripTries += 1;
+        m_thrownGripWait   = ReloadAnimationRetryDraws;
+        m_hasThrownGrip    = vrReadThrownGrip(player(), form, weapon, rightHand, m_thrownGrip);
+
+        if (m_hasThrownGrip) {
+          m_usesThrownGrip = m_thrownGrip.turn > ThrownRegripTurn;
+
+          const char* model = readField<const char*>(form, VrGame::WeaponModelPath);
+          Logger::info(str::format("VR: '", model ? model : "", "' is held ", m_usesThrownGrip
+            ? "as its attack animation lets go of it" : "in its idle pose, close enough to its throw"));
+        }
+      }
+    }
+
+    uint8_t* parent = field<uint8_t*>(weapon, VrGame::ObjectParent);
+
+    if (!m_usesThrownGrip || !parent)
+      return false;
+
+    // The release's pose in the hand, brought to the weapon node's parent
+    // as the game holds it now
+    ParentFrame hand  = { readRotation(rightHand, VrGame::ObjectWorldRotation),
+                          readVector(rightHand, VrGame::ObjectWorldTranslation),
+                          field<float>(rightHand, VrGame::ObjectWorldScale) };
+    ParentFrame frame = parentFrame(weapon);
+
+    VrGameRotation worldRotation = hand.rotate * m_thrownGrip.weapon.rotate;
+    VrVector3      worldPosition = hand.toWorld(m_thrownGrip.weapon.translate);
+
+    m_gripSavedRotate    = readRotation(weapon, VrGame::ObjectLocalRotation);
+    m_gripSavedTranslate = readVector(weapon, VrGame::NodeLocalTranslate);
+    m_gripSavedScale     = field<float>(weapon, VrGame::ObjectLocalScale);
+
+    writeRotation(weapon, VrGame::ObjectLocalRotation, vrTranspose(frame.rotate) * worldRotation);
+    writeVector(weapon, VrGame::NodeLocalTranslate, frame.toLocal(worldPosition));
+    *reinterpret_cast<float*>(weapon + VrGame::ObjectLocalScale) =
+      m_thrownGrip.weapon.scale * hand.scale / frame.scale;
+    updateObject(weapon, updateData);
+    return true;
+  }
+
+
+  void VrWeaponHand::restoreThrownGrip(uint8_t* weapon, void* updateData) {
+    // The next eye's update starts from the game's pose again
+    writeRotation(weapon, VrGame::ObjectLocalRotation, m_gripSavedRotate);
+    writeVector(weapon, VrGame::NodeLocalTranslate, m_gripSavedTranslate);
+    *reinterpret_cast<float*>(weapon + VrGame::ObjectLocalScale) = m_gripSavedScale;
+
+    poseParts(weapon, m_thrownGrip.parts, updateData);
   }
 
 

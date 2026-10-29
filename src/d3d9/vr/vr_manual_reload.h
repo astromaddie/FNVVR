@@ -158,6 +158,10 @@ namespace dxvk {
    * while it is open the weapon does not fire, and while it is shut no
    * box goes out or in.
    *
+   * When the hand reaches behind the back with no rounds left, the game's
+   * no ammo message of V.A.T.S. is shown on the HUD, at most once while it
+   * is shown (findings/reload.md §4.1).
+   *
    * The reloads may be started from the game's other threads, so the clip
    * left to watch is shared under a lock, and the weapon reloaded by hand
    * is atomic.
@@ -189,6 +193,10 @@ namespace dxvk {
      * Off, every weapon is reloaded as in the game.
      */
     void setEnabled(bool enabled);
+
+    bool enabled() const {
+      return m_enabled;
+    }
 
     /**
      * \brief Follows the hands and reloads the weapon in the right hand
@@ -287,6 +295,30 @@ namespace dxvk {
     }
 
     /**
+     * \brief Whether the left hand holds a magazine or rounds taken behind
+     *    the back, which \ref cycleAmmo can change
+     */
+    bool holdsAmmo() const;
+
+    /**
+     * \brief The ammunition the left hand holds, valid with \ref holdsAmmo
+     *
+     * The clip's type while rounds of it are left, as the hand took it; it
+     * goes into the weapon with the magazine or rounds, see
+     * findings/quick-menu.md §6, decision 3.
+     */
+    const uint8_t* heldAmmo() const {
+      return m_heldAmmo;
+    }
+
+    /**
+     * \brief Makes the ammunition in the left hand the next type with rounds left
+     *
+     * \returns \c false if nothing changed
+     */
+    bool cycleAmmo();
+
+    /**
      * \brief Where the reload of the weapon in the hand stands, for the
      *    parts that glow, see vrPartsToWork
      */
@@ -368,7 +400,21 @@ namespace dxvk {
     // -1: it is full while its clip holds that many
     int32_t         m_refusedClip = -1;
 
+    // The game's no ammo message can be shown, and how long the last one
+    // shown has left, in seconds
+    bool            m_showsNoAmmo = false;
+    float           m_noAmmoTime  = 0.0f;
+    bool            m_loggedNoAmmoSound = false;
+
+    // Ammunition of the magazine or rounds taken behind the back
+    // (TESAmmo*), compared but not dereferenced
+    const uint8_t*  m_heldAmmo = nullptr;
+
+    void loadHeldAmmo();
+
     void clearJam(const uint8_t* weapon, const char* how);
+
+    void showNoAmmo();
 
     void watchClip(int32_t clip);
 

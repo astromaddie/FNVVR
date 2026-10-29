@@ -6,8 +6,13 @@ The original FNVVR was Windows-only: it shared frames between the game's DirectX
 
 The output is a single 32-bit `d3d9.dll`, which the game loads in place of the stock one. It runs under Proton on Linux and under Wine or Windows.
 
-Steam Frame development: [current status, build baseline and 90/120 Hz targets](docs/VR_ARCHITECTURE.md).
-Steam Frame controller reference: [controls and menu bindings](docs/FRAME_CONTROLS.md).
+## Steam Frame
+
+[Download the Frame build](https://github.com/astromaddie/FNVVR/releases/tag/frame-2026.10.29.1), then follow the [Frame install and head-tracking troubleshooting guide](docs/FRAME_INSTALL.md). The package includes the 32-bit mod, an OpenVR-enabled configuration, native Frame bindings, source revisions and SHA-256 checksums. The game runs locally through Frame's Proton/FEX compatibility path; this is not a native ARM64 engine port. Supply your own Steam game installation.
+
+[Controller reference](docs/FRAME_CONTROLS.md) · [Build and runtime evidence](docs/VR_ARCHITECTURE.md) · [Upstream changelog](CHANGELOG.md)
+
+The Frame fork includes upstream `df4l/FNVVR` master through `6b1a47d0` (2026-10-29), including changes after upstream v0.9.0. This is a separate Frame prerelease, not an upstream release. Compare the actual installed DLL against the package's `build-info.json`; a source checkout or an old release ZIP does not update a game installation.
 
 ## Status
 
@@ -15,9 +20,9 @@ Steam Frame controller reference: [controls and menu bindings](docs/FRAME_CONTRO
 - Main menu, in-game menus and subtitles on panels in front of the head.
 - Mouse-style menu input through the controllers, with a laser pointer for the menu panels.
 - Motion controls: move, snap or smooth turn, buttons and sticks mapped to the game's gamepad, first-person weapon held in the right hand.
-- Not yet done: the compass and health bar on the back of the hand, the hand-anchored interaction prompt, the immersive forearm Pip-Boy, optics and scopes, and culling and cloud behaviour with head rotation.
+- Hand HUD, interaction prompts and a forearm Pip-Boy; manual reloads, holsters, a hotkey wheel and physics grabs. See the [changelog](CHANGELOG.md) for context-specific behavior and recent fixes.
 
-Work is tested with the emulator backend and unit tests first. Anything that needs a headset is verified by hand and is listed as confirmed or pending in the project notes.
+The [architecture notes](docs/VR_ARCHITECTURE.md) separate source/build checks from runtime evidence. A refresh preference or main-menu timer does not establish sustained gameplay performance.
 
 ## Architecture
 
@@ -80,11 +85,11 @@ Settings are read from `dxvk.conf` next to the executable. The main VR options a
 | `d3d9.vrHeadsetResolution` | on | Renders at the headset's eye height and at least 4:3 width. |
 | `d3d9.vrHideGamepad` | on | Hides real gamepads from the game while a headset backend is used. |
 
-The GPU is not spoofed: the deployed `dxvk.conf` sets `d3d9.hideNvidiaGpu` to `False`.
+The Frame preset sets `d3d9.hideNvidiaGpu = False`. The fork may still report its fallback AMD adapter identity for Qualcomm; use the Vulkan device log to identify the actual GPU.
 
 Useful environment variables:
 
-- `DXVK_VR_BACKEND=openvr|emulator|off`: overrides `d3d9.vrBackend`.
+- `DXVK_VR_BACKEND=openvr|emulator|off`: overrides `d3d9.vrBackend`. Use `openvr` on Frame; `openxr` is not a backend in this fork.
 - `DXVK_LOG_LEVEL=none|error|warn|info|debug` and `DXVK_LOG_PATH=/some/directory`: logging.
 
 ## Upstream DXVK

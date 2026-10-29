@@ -89,13 +89,33 @@ namespace dxvk {
       return stick.x > 0.0f ? VrGamepadButton::DpadRight : VrGamepadButton::DpadLeft;
     }
 
+    uint16_t hotKeyWheelButtons(const VrVector2& stick) {
+      if (std::max(std::abs(stick.x), std::abs(stick.y)) < NavigateThreshold)
+        return 0;
+
+      // Eight sectors of 45 degrees: a diagonal presses both of its
+      // directions at once, as the wheel needs them pressed together
+      constexpr float Tilt = 0.41421356f; // tan(22.5 degrees)
+
+      uint16_t buttons = 0;
+
+      if (std::abs(stick.y) > Tilt * std::abs(stick.x))
+        buttons |= stick.y > 0.0f ? VrGamepadButton::DpadUp : VrGamepadButton::DpadDown;
+
+      if (std::abs(stick.x) > Tilt * std::abs(stick.y))
+        buttons |= stick.x > 0.0f ? VrGamepadButton::DpadRight : VrGamepadButton::DpadLeft;
+
+      return buttons;
+    }
+
   }
 
 
   VrPadState vrComputePadState(
     const VrActionState&        actions,
           VrInputContext        context,
-    const uint8_t*              bindings) {
+    const uint8_t*              bindings,
+          VrMenuNavigation      navigation) {
     VrPadState pad;
 
     if (context == VrInputContext::Menu) {
@@ -111,6 +131,14 @@ namespace dxvk {
       if (actions.isPressed(VrAction::MenuRightTrigger))
         pad.rightTrigger = 0xFF;
 
+      pad.thumbRightX = thumbValue(actions.turn.x);
+      pad.thumbRightY = thumbValue(actions.turn.y);
+
+      if (navigation == VrMenuNavigation::HotKeyWheel) {
+        pad.buttons |= hotKeyWheelButtons(actions.move);
+        return pad;
+      }
+
       // The sticks are passed on as well, for menus that read them directly
       // (lockpicking: the left stick turns the pin, the right one the
       // screwdriver). The interface treats the left stick and the D-pad as
@@ -118,8 +146,6 @@ namespace dxvk {
       pad.buttons    |= navigateButtons(actions.move);
       pad.thumbLeftX  = thumbValue(actions.move.x);
       pad.thumbLeftY  = thumbValue(actions.move.y);
-      pad.thumbRightX = thumbValue(actions.turn.x);
-      pad.thumbRightY = thumbValue(actions.turn.y);
       return pad;
     }
 
